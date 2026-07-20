@@ -1,0 +1,68 @@
+import esphome.codegen as cg
+import esphome.config_validation as cv
+from esphome import pins
+from esphome.components import uart
+from esphome.const import CONF_ID, CONF_FLOW_CONTROL_PIN
+from esphome.cpp_helpers import gpio_pin_expression
+
+CODEOWNERS = ["@agjendem"]
+DEPENDENCIES = ["uart"]
+MULTI_CONF = False
+
+flexit_sl4r_ns = cg.esphome_ns.namespace("flexit_sl4r")
+FlexitSL4RComponent = flexit_sl4r_ns.class_("FlexitSL4RComponent", cg.Component, uart.UARTDevice)
+
+CONF_FLEXIT_SL4R_ID = "flexit_sl4r_id"
+CONF_COMMAND_TEMPLATE = "command_template"
+
+# Vongravens eksempel-kommando (verifisert sjekksum, se research/protocol-notes.md).
+# Byte 11/12/15 (viftetrinn/forvarme/settpunkt) og 16/17 (sjekksum) overskrives
+# alltid før sending, så verdiene her for dem er kosmetiske. ALLE ANDRE byte
+# MÅ verifiseres mot vårt eget anlegg (avlytting i Fase 1) før Fase 2 (sending)
+# tas i bruk.
+DEFAULT_COMMAND_TEMPLATE = [195, 4, 0, 199, 81, 193, 4, 8, 32, 15, 0, 34, 0, 4, 0, 18, 52, 236]
+
+CONFIG_SCHEMA = (
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(FlexitSL4RComponent),
+            cv.Optional(
+                CONF_COMMAND_TEMPLATE, default=DEFAULT_COMMAND_TEMPLATE
+            ): cv.All(cv.ensure_list(cv.uint8_t), cv.Length(min=18, max=18)),
+            cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
+        }
+    )
+    .extend(uart.UART_DEVICE_SCHEMA)
+    .extend(cv.COMPONENT_SCHEMA)
+)
+
+FINAL_VALIDATE_SCHEMA = uart.final_validate_device_schema(
+    "flexit_sl4r",
+    baud_rate=19200,
+    require_tx=True,
+    require_rx=True,
+    parity="NONE",
+    stop_bits=1,
+)
+
+# Brukt av child-platformene (select/switch/number/binary_sensor) for å referere
+# til hub-komponenten. CS50 sender data raskt nok til at standard 64-byte
+# RX-buffer flommer over i løpet av sekunder (se research/protocol-notes.md) —
+# rx_buffer_size i uart:-blokken i eksempel-YAML-en MÅ derfor settes romslig.
+FLEXIT_SL4R_CLIENT_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(CONF_FLEXIT_SL4R_ID): cv.use_id(FlexitSL4RComponent),
+    }
+)
+
+
+async def to_code(config):
+    var = cg.new_Pvariable(config[CONF_ID])
+    await cg.register_component(var, config)
+    await uart.register_uart_device(var, config)
+
+    cg.add(var.set_command_template(config[CONF_COMMAND_TEMPLATE]))
+
+    if flow_control_pin_config := config.get(CONF_FLOW_CONTROL_PIN):
+        pin = await gpio_pin_expression(flow_control_pin_config)
+        cg.add(var.set_flow_control_pin(pin))

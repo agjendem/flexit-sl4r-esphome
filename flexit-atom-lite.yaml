@@ -1,0 +1,94 @@
+substitutions:
+  name: flexit-sl4r
+  friendly_name: Flexit SL4R
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: "Flexit SL4R (CS50/CI50) RS485-bro på M5Stack ATOM Lite + Tail485"
+
+esp32:
+  board: m5stack-atom
+  framework:
+    type: arduino
+
+# USB/konsoll-logging på standard UART0 — kolliderer ikke med RS485-bussen,
+# som kjører på en egen UART (se uart: nedenfor, G26/G32 via Tail485).
+logger:
+
+api:
+  encryption:
+    key: !secret flexit_sl4r_api_key
+
+ota:
+  - platform: esphome
+    password: !secret flexit_sl4r_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+
+captive_portal:
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+# ATOM Tail485 (SP485EEN-L) kobles til ATOM Lites bakkontakt: G26=TX, G32=RX
+# (fast pinout på selve Tail485-modulen, se research/protocol-notes.md).
+# rx_buffer_size MÅ være romslig — CS50 sender data raskt nok til at
+# standard 64-byte-buffer flommer over i løpet av sekunder.
+uart:
+  id: flexit_uart
+  tx_pin: GPIO26
+  rx_pin: GPIO32
+  baud_rate: 19200
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 2048
+
+flexit_sl4r:
+  id: flexit_sl4r_hub
+  uart_id: flexit_uart
+  # ATOM Tail485 er dokumentert med kun TX/RX/5V/GND eksponert (ingen egen
+  # DE/RE-pinne), som tyder på automatisk retningsstyring i modulen. La
+  # flow_control_pin stå UKONFIGURERT inntil dette er verifisert med
+  # maskinvare (multimeter/oscilloskop) — se research/protocol-notes.md
+  # punkt 1. Hvis det viser seg å trengs, legg til:
+  #   flow_control_pin: GPIOxx
+  #
+  # command_template er kopiert fra Vongravens eksempel og er KUN trygt å
+  # bruke for statuslytting (Fase 1). Fase 2 (faktisk sending av kommandoer)
+  # krever at malen verifiseres mot avlyttet CI50-trafikk på vårt eget
+  # anlegg først — se research/protocol-notes.md punkt 2.
+  # command_template: [195, 4, 0, 199, 81, 193, 4, 8, 32, 15, 0, 34, 0, 4, 0, 18, 52, 236]
+
+select:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    fan_level:
+      name: "Viftetrinn"
+
+switch:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    preheat:
+      name: "Forvarme"
+
+number:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    heat_exchanger_setpoint:
+      name: "Settpunkt varmeveksler"
+
+binary_sensor:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    preheat_active:
+      name: "Forvarme aktiv"
+    communication:
+      name: "Flexit-kommunikasjon OK"
