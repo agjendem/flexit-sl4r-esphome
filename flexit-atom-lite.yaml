@@ -37,8 +37,9 @@ external_components:
       type: local
       path: components
 
-# ATOM Tail485 (SP485EEN-L) kobles til ATOM Lites bakkontakt: G26=TX, G32=RX
-# (fast pinout på selve Tail485-modulen, se research/protocol-notes.md).
+# ATOM Tail485 (SP485EEN-L) kobles til ATOM Lites bakkontakt: G26=TX, G32=RX.
+# Verifisert mot M5Stacks PinMap for SKU T002 — se research/protocol-notes.md
+# → «Fysisk tilkobling».
 # rx_buffer_size MÅ være romslig — CS50 sender data raskt nok til at
 # standard 64-byte-buffer flommer over i løpet av sekunder.
 uart:
@@ -54,12 +55,11 @@ uart:
 flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
-  # ATOM Tail485 er dokumentert med kun TX/RX/5V/GND eksponert (ingen egen
-  # DE/RE-pinne), som tyder på automatisk retningsstyring i modulen. La
-  # flow_control_pin stå UKONFIGURERT inntil dette er verifisert med
-  # maskinvare (multimeter/oscilloskop) — se research/protocol-notes.md
-  # punkt 1. Hvis det viser seg å trengs, legg til:
-  #   flow_control_pin: GPIOxx
+  # Retningsstyring: blokkdiagrammet i M5Stacks datablad for Tail RS485 (SKU
+  # T002) viser kun fire signaler mellom modulen og ATOM-en — G/5V/TXD/RXD.
+  # Det finnes ingen DE/RE-linje ut av modulen, så retningen styres på kortet.
+  # flow_control_pin skal derfor stå UKONFIGURERT. Se
+  # research/protocol-notes.md punkt 1.
   #
   # command_template er kopiert fra Vongravens eksempel og er KUN trygt å
   # bruke for statuslytting (Fase 1). Fase 2 (faktisk sending av kommandoer)

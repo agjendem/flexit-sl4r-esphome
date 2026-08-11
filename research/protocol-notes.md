@@ -1,8 +1,9 @@
 # Flexit SL4R / CS50 RS485-protokoll — notater
 
 Kilde: reverse-engineering av `Flexit_master.ino` (Vongraven-repoet) + verifisert
-med Python mot README-eksemplene. Se `Flexit_master.ino` og `README.md` i denne
-mappen for original-kilden.
+med Python mot eksemplene i hans README. Se `Flexit_master.ino` og
+`vongraven-README.md` i denne mappen for original-kilden, og `README.md` for
+hva som er kopiert kontra vår egen utledning.
 
 ## Buss-parametere
 - UART 19200 baud, 8N1 (`Serial1.begin(19200, SERIAL_8N1)` i original)
@@ -10,6 +11,78 @@ mappen for original-kilden.
 - CS50 sender kontinuerlig 16 linjer med data i en løkke; kun linje 15 er
   interessant (status). CI50 (betjeningspanelet) sender kommandotelegrammer
   i "hullene" mellom CS50 sine linjer.
+
+## Fysisk tilkobling
+
+Kilde: Vongravens koblingsskjema (`images/vongraven-topology.png` i denne
+mappa), M5Stacks datablad for Tail RS485 (SKU T002), Flexits egne manualer for
+CI 50 og CI 66, og pinout-dokumentasjonen for søstergenerasjonen CS60 i
+[patstave/Node-FlexitCS60-RS485](https://github.com/patstave/Node-FlexitCS60-RS485).
+
+### Kontakttype
+
+CS50 bruker **4P4C** (den 4-polede telefonrør-kontakten, uformelt kalt RJ10 /
+RJ22 / RJ9 / RJH) — **ikke** RJ11/RJ12, som er 6-posisjons. Tidligere versjoner
+av disse notatene sa «RJ10/RJ11»; RJ11 er direkte feil og fører til feil
+kabelkjøp. Søstergenerasjonen CS60/CI60 bruker derimot 6-polet RJ12.
+
+Kortet har to like kontakter (CI50 i den ene, ledig i den andre). CI50-panelet
+har i tillegg en ledig kontakt på baksiden — Flexits CI 50-manual: «Ledningen
+klikkes i hvilken som helst av de 2 kontaktene bak på styrepanelet … Det er
+mulig å koble opp til 2 styrepanel til hvert aggregat.» Elektrisk samme buss,
+og panelet er som regel lettere å komme til enn innmaten i aggregatet.
+
+### Pinout (4P4C, standard fargekode)
+
+| Pinne | Farge | Funksjon | Tail485-klemme |
+|-------|-------|----------|----------------|
+| 1 | svart | GND / signalreferanse | **G** |
+| 2 | rød   | **B** (D1) | **B** |
+| 3 | grønn | **A** (D0) | **A** |
+| 4 | gul   | +V — se «Strømforsyning» | **V** (betinget) |
+
+Pinne 1–3 er verifisert to uavhengige veier: bildeanalyse av Vongravens
+topologiskjema (svart→GND, grønn→A, rød→B på MAX485-modulen) og hans egen
+beskrivelse i hjemmeautomasjon.no-tråden om CI60.
+
+Pinne 4 er **ikke** direkte verifisert — Vongraven lot den stå ubrukt og matet
+MAX485 fra Arduinoens 5 V. At den fører +V er likevel strukturelt nesten
+sikkert: CI50 er et rent veggpanel uten annen tilførsel, så bussen *må* mate
+det, og CS60/RJ12 har nøyaktig samme oppbygning med datapar i midten og
+GND/forsyning på ytterkantene (pinne 1–2 GND, 3 A+, 4 B−, 5–6 **+12 V**).
+
+**A/B-merkingen spriker mellom kilder** (M5s klemmemerking, MAX485-moduler,
+Flexits egen konvensjon). Er bussen helt stille ved første forsøk: bytt om A og
+B. Det er ufarlig og tar ti sekunder — gjør det før du mistenker koden.
+
+### Strømforsyning
+
+ATOM Tail485 har en AOZ1282CI-buck som tar **9–24 V** på klemme V/G og mater
+ATOM-ens 5 V-skinne. M5s egen produktbeskrivelse: «can directly convert the 12V
+voltage of RS485 to 5V to power the Type-C interface, eliminating the need for
+separate power supply.» Modulen er altså laget for akkurat dette bruksmønsteret.
+
+Mål pinne 4 mot pinne 1 før tilkobling:
+
+- **~12 V:** mat alt fra bussen. Én kabel, ingen egen strømforsyning.
+- **5 V:** under bucken sin nedre grense (9 V) — den starter ikke. Mat ATOM-en
+  via USB-C og la klemme V stå ukoblet; koble kun G, B og A.
+
+Last-test skinnen før du stoler på den: mål tomgangsspenning, heng så på en
+motstand som trekker omtrent det ESP-en vil trekke (100 Ω over 12 V ≈ 120 mA)
+og se om spenningen synker. CI50 selv er noen lysdioder og brytere, så skinnen
+er ikke nødvendigvis dimensjonert for en ESP32 med WiFi (100–200 mA snitt,
+topper mot 500 mA på 5 V-siden). Brownout her rammer ventilasjonen, ikke bare
+ESP-en.
+
+**Ikke ha USB-C og klemme-V tilkoblet samtidig** — DC/DC-utgangen mater rett inn
+på samme node som USB 5V-IN. Koble fra V ved flashing over USB.
+
+### Pinne-mapping ATOM Lite ↔ Tail485
+
+M5s PinMap: **G26 = TX, G32 = RX**, 5V, GND. Dette er det `flexit-atom-lite.yaml`
+allerede bruker. Kun disse fire signalene går mellom modulen og ATOM-en — det er
+ingen DE/RE-linje, se usikkerhet 1 under.
 
 ## Statustelegram (linje 15, sendt av CS50)
 
@@ -109,11 +182,15 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
 
 ## Usikkerheter som gjenstår (kun verifiserbart med maskinvare)
 
-1. Om ATOM Tail485 (SP485EEN-L-basert) trenger eksplisitt DE/RE-styring via
-   GPIO, eller om den auto-retningsstyrer (kun TX/RX/5V/GND er eksponert på
-   baksidekontakten ifølge M5Stack-dokumentasjonen — ingen egen retningspinne
-   er nevnt, noe som peker mot auto-retning). Komponenten støtter en valgfri
-   `direction_pin` i konfigurasjonen i tilfelle det viser seg å trenges.
+1. ~~Om ATOM Tail485 trenger eksplisitt DE/RE-styring via GPIO.~~
+   **AVKLART (dokumentasjon):** blokkdiagrammet i M5Stacks datablad for Tail
+   RS485 (SKU T002) viser at kun fire signaler går mellom modulen og ATOM-en —
+   G, 5V, TXD, RXD. Det finnes ingen DE/RE-linje ut av modulen, så SP485EEN-L
+   må retningsstyres av kretsen på kortet. La `flow_control_pin` stå
+   ukonfigurert. (Komponenten støtter den valgfritt — merk at konfignøkkelen
+   heter `flow_control_pin`, ikke `direction_pin` som disse notatene tidligere
+   påsto.) Bekreft med maskinvare at sending faktisk kommer ut på bussen i
+   Fase 2, men det er ikke lenger et åpent designspørsmål.
 2. HELE 18-byte kommandomalen (alle indekser UNNTATT de 3 variable feltene
    11/12/15 og sjekksumbytene 16/17) er kopiert fra Vongravens eksempel og
    MÅ bekreftes/korrigeres ved avlytting av ekte CI50→CS50-kommandoer på
@@ -121,5 +198,16 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
    også indeks 6, 8, 9, 10, 13 og 14 som i eksempelet har faste, ukjent
    betydede verdier (f.eks. indeks 13 = 4 i eksempelet).
 3. `gap_byte`s eksakte betydning i statustelegrammet (mulig sekvens/type-ID).
-4. Nøyaktig strøm-/spenningslevering på den ledige RJ10/RJ11-porten på CS50
-   (må måles med multimeter før tilkobling av Tail485).
+4. Faktisk spenning på pinne 4 (4P4C) og hvor mye strøm skinnen tåler. Se
+   «Fysisk tilkobling» → «Strømforsyning» for hva som forventes (~12 V) og
+   hvordan det måles/last-testes. Avgjør om oppsettet kan mates fra bussen
+   eller trenger USB-C.
+5. **Panel-adressering — mulig nøkkel til de ukjente headerbytene.** CI 50 har
+   en dipswitch 3 som velger PANEL 1 / PANEL 2 (Flexits CI 50-manual: «Ved bruk
+   av flere paneler må switch nr. 3 stilles på ulike verdier på hvert panel»).
+   Bussen har altså adressering, og de faste bytene på indeks 0–4 i
+   kommandotelegrammet — som vi i dag ikke vet betydningen av — kan godt kode
+   panelidentitet. Hypotese å teste i Fase 1: avlytt CI50 med dipswitch 3 i
+   begge stillinger og se hvilke byte som endrer seg. Det kan avklare flere
+   ukjente felt på én test, og det er verdt å vite om vi kolliderer med det
+   ekte panelet hvis vi injiserer som «panel 1» mens CI50 også er panel 1.
