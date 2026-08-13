@@ -6,15 +6,17 @@ Leser status (viftetrinn, forvarme, settpunkt varmeveksler) og — når Fase 2
 er verifisert med maskinvare — sender kommandoer tilbake.
 
 Maskinvare: M5Stack **ATOM Lite** (ESP32) + **ATOM Tail485** (TTL↔RS485,
-SKU T002), koblet i parallell med CI50 på en ledig **4P4C**-port på
-CS50-kortet. Pinout og strømforsyning: se
+SKU T002), koblet i parallell med CI50 i den ledige **4P4C**-kontakten bak på
+betjeningspanelet, og matet fra bussens egne 12 V (målt 11,8 V). Pinout og
+strømforsyning: se
 [`research/protocol-notes.md`](research/protocol-notes.md) → «Fysisk tilkobling».
 
 ## Status
 
 - **Fase 1 (lytting):** komponent skrevet og kompilert rent mot ESP32
-  (Arduino-rammeverk), men **ikke testet mot ekte maskinvare** — Tail485
-  ankommer om noen uker. All protokollkunnskap er reverse-engineered fra
+  (Arduino-rammeverk), men **ikke testet mot ekte maskinvare** ennå. ATOM Lite
+  og Tail485 er i hus, busspenningen er målt (11,8 V) og tilkoblingspunktet
+  valgt; selve påkoblingen gjenstår. All protokollkunnskap er reverse-engineered fra
   [Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
   (Arduino Mega, testet på ekte SL4R/CS50) og verifisert numerisk mot
   README-eksemplene der (sjekksumalgoritme stemmer eksakt). Se
@@ -49,19 +51,20 @@ cp secrets.yaml.example secrets.yaml   # fyll inn wifi + generer api-nøkkel/ota
 
 ## Videre plan
 
-1. Flash ATOM Lite når den ankommer (dag/to) — verifiser boot, wifi, API mot
-   HA uten RS485 tilkoblet ennå.
-2. Når Tail485 ankommer: **mål pinne 4 mot pinne 1 på CS50s ledige 4P4C-port
-   med multimeter FØR tilkobling**. Tail485 sin DC/DC krever 9–24 V inn;
-   ~12 V er forventet. Måler den 12 V kan hele oppsettet mates fra bussen
-   (én kabel, ingen egen strømforsyning); måler den 5 V er det for lavt for
-   omformeren, og da må ATOM-en mates via USB-C med klemme V ukoblet.
-   Se protocol-notes.md → «Fysisk tilkobling».
-3. Koble Tail485 i parallell med CI50 (enten i den ledige porten på kortet
-   eller i den ledige kontakten bak på selve CI50-panelet — elektrisk samme
-   buss, og panelet er ofte lettere tilgjengelig). Kjør Fase 1 (kun lytting):
-   verifiser at statustelegrammer synkroniseres og sjekksummer stemmer i
-   loggen. Er det helt stille: bytt om A og B før du mistenker koden.
+1. Flash ATOM Lite over USB-C **med 4P4C-pluggen frakoblet** — verifiser boot,
+   wifi og API mot HA før RS485 kobles til. (USB-C og klemme V må ikke være
+   tilkoblet samtidig.) Videre oppdateringer går over OTA.
+2. ~~Mål spenningen på bussen.~~ **Gjort 2026-08-13: 11,8 V** på den ledige
+   4P4C-kontakten bak på CI50-panelet, i enden av 12 m tilførsel. Innenfor
+   Tail485s 9–24 V → hele oppsettet mates fra bussen, alle fire klemmene
+   (B, A, V, G) i bruk. Kontroller polariteten med multimeter rett før
+   innplugging: V og G byttet om kan ødelegge modulen.
+3. Koble Tail485 i den ledige kontakten bak på CI50-panelet (parallellkoblet med
+   den som er i bruk — samme buss som på CS50-kortet, uten å åpne aggregatet).
+   Kjør Fase 1 (kun lytting): verifiser at statustelegrammer synkroniseres og
+   sjekksummer stemmer i loggen. Er det helt stille: bytt om A og B før du
+   mistenker koden. Se etter brownout-reset i loggen — det er symptomet på at
+   skinnen ikke tåler strømtrekket (kildeimpedansen er ikke målt).
 4. Avlytt et ekte CI50→CS50-kommandotelegram (endre f.eks. viftetrinn på
    selve panelet mens ESP-en logger rå bytes) og sammenlign mot
    `command_template` i `flexit-atom-lite.yaml` — korriger malen ved avvik.

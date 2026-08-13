@@ -32,6 +32,11 @@ klikkes i hvilken som helst av de 2 kontaktene bak på styrepanelet … Det er
 mulig å koble opp til 2 styrepanel til hvert aggregat.» Elektrisk samme buss,
 og panelet er som regel lettere å komme til enn innmaten i aggregatet.
 
+**Valgt tilkoblingspunkt: den ledige kontakten bak på CI50-panelet.** De to
+kontaktene på panelet er parallellkoblet (det er slik man kjeder to paneler),
+så en node her ser nøyaktig samme buss som en node på CS50-kortet — og målingen
+under bekrefter at forsyningen er med helt fram. Slipper å åpne aggregatet.
+
 ### Pinout (4P4C, standard fargekode)
 
 | Pinne | Farge | Funksjon | Tail485-klemme |
@@ -39,17 +44,22 @@ og panelet er som regel lettere å komme til enn innmaten i aggregatet.
 | 1 | svart | GND / signalreferanse | **G** |
 | 2 | rød   | **B** (D1) | **B** |
 | 3 | grønn | **A** (D0) | **A** |
-| 4 | gul   | +V — se «Strømforsyning» | **V** (betinget) |
+| 4 | gul   | **+V, målt 11,8 V** — se «Strømforsyning» | **V** |
 
 Pinne 1–3 er verifisert to uavhengige veier: bildeanalyse av Vongravens
 topologiskjema (svart→GND, grønn→A, rød→B på MAX485-modulen) og hans egen
 beskrivelse i hjemmeautomasjon.no-tråden om CI60.
 
-Pinne 4 er **ikke** direkte verifisert — Vongraven lot den stå ubrukt og matet
-MAX485 fra Arduinoens 5 V. At den fører +V er likevel strukturelt nesten
-sikkert: CI50 er et rent veggpanel uten annen tilførsel, så bussen *må* mate
-det, og CS60/RJ12 har nøyaktig samme oppbygning med datapar i midten og
-GND/forsyning på ytterkantene (pinne 1–2 GND, 3 A+, 4 B−, 5–6 **+12 V**).
+Pinne 4 er **målt 2026-08-13: 11,8 V** mot pinne 1, i enden av den ~12 m lange
+tilførselsledningen til CI50-panelet. Det bekrefter tolkningen som var utledet
+strukturelt her tidligere (CI50 er et rent veggpanel uten annen tilførsel, så
+bussen *må* mate det; CS60/RJ12 har samme oppbygning med datapar i midten og
+GND/forsyning på ytterkantene, pinne 1–2 GND, 3 A+, 4 B−, 5–6 **+12 V**).
+Vongraven lot pinne 4 stå ubrukt og matet MAX485 fra Arduinoens 5 V, så dette
+er ikke dokumentert noe annet sted enn her.
+
+11,8 V på 12 m kabel betyr også at spenningsfallet i tilførselen er neglisjerbart
+ved tomgang — men det sier ingenting om hvor mye strøm skinnen tåler, se under.
 
 **A/B-merkingen spriker mellom kilder** (M5s klemmemerking, MAX485-moduler,
 Flexits egen konvensjon). Er bussen helt stille ved første forsøk: bytt om A og
@@ -62,21 +72,34 @@ ATOM-ens 5 V-skinne. M5s egen produktbeskrivelse: «can directly convert the 12V
 voltage of RS485 to 5V to power the Type-C interface, eliminating the need for
 separate power supply.» Modulen er altså laget for akkurat dette bruksmønsteret.
 
-Mål pinne 4 mot pinne 1 før tilkobling:
+**AVKLART ved måling 2026-08-13: 11,8 V.** Godt innenfor 9–24 V, med ~2,8 V
+margin ned til nedre grense. Hele oppsettet mates fra bussen — alle fire
+klemmene (B, A, V, G) i bruk, ingen egen strømforsyning, én kabel.
 
-- **~12 V:** mat alt fra bussen. Én kabel, ingen egen strømforsyning.
-- **5 V:** under bucken sin nedre grense (9 V) — den starter ikke. Mat ATOM-en
-  via USB-C og la klemme V stå ukoblet; koble kun G, B og A.
-
-Last-test skinnen før du stoler på den: mål tomgangsspenning, heng så på en
-motstand som trekker omtrent det ESP-en vil trekke (100 Ω over 12 V ≈ 120 mA)
-og se om spenningen synker. CI50 selv er noen lysdioder og brytere, så skinnen
-er ikke nødvendigvis dimensjonert for en ESP32 med WiFi (100–200 mA snitt,
-topper mot 500 mA på 5 V-siden). Brownout her rammer ventilasjonen, ikke bare
+Det som **ikke** er avklart er hvor mye strøm skinnen tåler. Tomgangsspenning
+sier ingenting om kildeimpedansen. CI50 selv er noen lysdioder og brytere, så
+skinnen er ikke nødvendigvis dimensjonert for en ESP32 med WiFi (100–200 mA
+snitt på 5 V-siden, topper mot 500 mA ved sending → ca. 50–100 mA fra 12 V etter
+bucken, mer i toppene). Last-test før du stoler på den: heng på en motstand som
+trekker omtrent det samme (100 Ω over 12 V ≈ 120 mA) og se om spenningen synker.
+Faller den under ~9 V under last, kommer ESP-en i boot-loop — og et sagende
+buss-nivå kan i verste fall forstyrre CI50/CS50, altså ventilasjonen, ikke bare
 ESP-en.
 
+Uten motstand for hånd: koble til, og hold øye med to ting i loggen — brownout-
+reset fra ESP32 og at CI50-panelet fortsatt oppfører seg normalt. Ved tvil, mat
+fra USB-C i stedet (se under).
+
+**Polaritet:** kontroller med multimeter hvilken leder som er + rett før du
+plugger inn — buck-omformere av denne typen har normalt ingen
+reverspolaritetsbeskyttelse, så V og G byttet om kan ødelegge Tail485-modulen.
+Fargekoden i tabellen over gjelder standard 4P4C-kabel, men modulkabler finnes i
+både rett og speilvendt (telefonrør-)utførelse, hvor pinne 1↔4 og 2↔3 er byttet
+om i den ene enden. Stol på måleren, ikke på fargen.
+
 **Ikke ha USB-C og klemme-V tilkoblet samtidig** — DC/DC-utgangen mater rett inn
-på samme node som USB 5V-IN. Koble fra V ved flashing over USB.
+på samme node som USB 5V-IN. Ved flashing over USB: koble fra V (eller hele
+4P4C-pluggen).
 
 ### Pinne-mapping ATOM Lite ↔ Tail485
 
@@ -198,10 +221,11 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
    også indeks 6, 8, 9, 10, 13 og 14 som i eksempelet har faste, ukjent
    betydede verdier (f.eks. indeks 13 = 4 i eksempelet).
 3. `gap_byte`s eksakte betydning i statustelegrammet (mulig sekvens/type-ID).
-4. Faktisk spenning på pinne 4 (4P4C) og hvor mye strøm skinnen tåler. Se
-   «Fysisk tilkobling» → «Strømforsyning» for hva som forventes (~12 V) og
-   hvordan det måles/last-testes. Avgjør om oppsettet kan mates fra bussen
-   eller trenger USB-C.
+4. ~~Faktisk spenning på pinne 4 (4P4C).~~ **AVKLART (målt 2026-08-13): 11,8 V**
+   på CI50-panelets ledige kontakt, i enden av 12 m tilførsel. Innenfor
+   Tail485s 9–24 V → oppsettet mates fra bussen. Gjenstår: hvor mye **strøm**
+   skinnen tåler (kildeimpedans er ikke målt) — se «Fysisk tilkobling» →
+   «Strømforsyning» for last-testen og hva som er symptomet hvis den er for svak.
 5. **Panel-adressering — mulig nøkkel til de ukjente headerbytene.** CI 50 har
    en dipswitch 3 som velger PANEL 1 / PANEL 2 (Flexits CI 50-manual: «Ved bruk
    av flere paneler må switch nr. 3 stilles på ulike verdier på hvert panel»).
