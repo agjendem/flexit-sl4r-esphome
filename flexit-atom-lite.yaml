@@ -51,6 +51,21 @@ uart:
   parity: NONE
   stop_bits: 1
   rx_buffer_size: 2048
+  # FEILSØKING: fjern kommentaren under for å logge hver mottatte byte som hex.
+  # Dette er verktøyet som skiller de tre feilene fra hverandre når
+  # «Kommunikasjon OK» ikke blir `on`:
+  #   - helt tomt         → A/B byttet om, eller feil pinne i 4P4C-en
+  #   - hex strømmer inn  → ledningen er riktig, synkroniseringen treffer ikke
+  # Bruk også `logger: level: VERY_VERBOSE` sammen med denne ved behov.
+  # Skru AV igjen etterpå — den spammer loggen og stjeler CPU fra loop().
+  # debug:
+  #   direction: RX
+  #   dummy_receiver: false
+  #   after:
+  #     bytes: 32
+  #     timeout: 100ms
+  #   sequence:
+  #     - lambda: UARTDebug::log_hex(direction, bytes, ' ');
 
 flexit_sl4r:
   id: flexit_sl4r_hub
