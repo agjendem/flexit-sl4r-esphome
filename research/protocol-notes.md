@@ -481,3 +481,50 @@ Alle `0xC7`-verdier var identiske i to opptak et døgn fra hverandre:
 `0.01 ×4`, `0.3 ×6`, `2`, `1`, `30`, `25`, `-20`, `-30`, `0.1 ×2`.
 `15`/`25` og `-20`/`-30` ser ut som grenseverdier (settpunktspenn og
 frostgrenser), og `0.01`/`0.3` som regulatorparametere.
+
+## Skriving av viftetrinn og settpunkt — mekanismen (analysert 2026-08-14)
+
+**Panelets tilstandsramme sendes KUN ved endring, ikke periodisk.** Det var den
+avgjørende usikkerheten før Fase 2: ville CI50 overskrive en skriving fra oss
+noen sekunder senere? Nei.
+
+Målt på opptaket fra panelsekvensen:
+
+| Mål | Resultat |
+|---|---|
+| Tilstandsrammer (`C1`/`len=8`) fra panelet | 21 |
+| Av disse som ligger inntil en tilstandsendring | **21 av 21** |
+| Lengste opphold mellom to slike rammer | 533 rammer |
+| Observerte tilstandsendringer | 22 |
+
+CS50 holder altså tilstanden selv, og panelet melder bare fra ved brukerinngrep.
+Forseringen bekrefter det uavhengig: status sto på `0x31` i timevis mens
+panelets siste melding sa `0x11` — CS50 speiler ikke panelet, den har egen
+tilstand.
+
+### Rammen
+
+```
+C3 04 00 C7 51 C1 04 08 | 20 0F 02 <vifte> <?> 04 00 <settpunkt> | CK CK
+indeks                     8  9  10   11     12  13 14   15
+```
+
+- indeks 11 = viftetrinn, nibbel-kodet (`0x11`/`0x22`/`0x33`)
+- indeks 15 = settpunkt, `0x0F`–`0x19` = 15–25 °C (verifisert over hele spennet)
+- indeks 10 = `0x02` hos oss, `0x00` hos Vongraven — bruk VÅR verdi
+
+### ADVARSEL: indeks 12 er trolig ikke forvarme
+
+Koden vår skriver forvarme til indeks 12 (`data[4]`). Men i opptaket gikk det
+feltet fra `00` til `01` i rammen som ble sendt **fem rammer før
+forseringskommandoen** — altså ved trykk på «Max vifte», ikke ved noe som har
+med forvarme å gjøre:
+
+```
+#2303  20 0F 02 11 01 04 00 0F   <- data[4] = 01
+#2308  20 14 31 23               <- forseringskommandoen
+```
+
+Skriver vi forvarme dit, kan vi utløse noe helt annet enn vi tror.
+**Hold forvarme utenfor første skriverunde**, og avklar feltet ved å slå
+forvarmen av og på mens bussen logges.

@@ -68,11 +68,20 @@ fra `loop()`.
       sender panelet noe? Lytt gjennom en hel forseringsperiode.
 - [ ] **Avklar `data[2]` i kommandorammen**: `02` hos oss mot `00` hos
       Vongraven. Modellforskjell, konfigurasjon, eller noe som varierer?
-- [ ] **Blir vår skriving overskrevet?** Panelet sender sin ønskede tilstand
-      periodisk. Skriv et viftetrinn og se om CI50 trekker det tilbake noen
-      sekunder senere. **Dette avgjør om tilstandsskriving i det hele tatt er
-      brukbart** — ikke aktiver `command_template` før dette er besvart.
-- [ ] Test skriving av settpunkt og forvarme når spørsmålet over er avklart.
+- [x] ~~**Blir vår skriving overskrevet?**~~ **NEI — avklart 2026-08-14.**
+      Panelets tilstandsramme sendes KUN ved endring: 21 av 21 observerte lå
+      inntil en tilstandsendring, med opphold på opptil 533 rammer mellom.
+      CS50 holder tilstanden selv. Forseringen bekrefter det uavhengig — status
+      sto på `0x31` i timevis mens panelets siste melding sa `0x11`.
+- [x] ~~Avklar `data[2]`~~ — vi bruker nå VÅR egen målte ramme (`0x02`) i stedet
+      for Vongravens gjetning (`0x00`). Betydningen er fortsatt ukjent, men
+      irrelevant så lenge vi sender det anlegget selv sender.
+- [ ] **Skru på skriving av viftetrinn og settpunkt** (indeks 11 og 15) —
+      men FØRST etter at forseringsknappen er testet, se punktet over.
+- [ ] **Avklar indeks 12 før forvarme skrives.** Feltet gikk fra `00` til `01`
+      i rammen fem rammer før forseringskommandoen, altså ved «Max vifte» —
+      ikke ved noe forvarmerelatert. Slå forvarmen av og på mens bussen logges.
+      Til da: hold forvarme utenfor skriverunden.
 
 ## 2. Alarmer — fang ved neste filterbytte
 

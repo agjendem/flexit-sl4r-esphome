@@ -91,11 +91,25 @@ flexit_sl4r:
   # flow_control_pin skal derfor stå UKONFIGURERT. Se
   # research/protocol-notes.md punkt 1.
   #
-  # command_template er kopiert fra Vongravens eksempel og er KUN trygt å
-  # bruke for statuslytting (Fase 1). Fase 2 (faktisk sending av kommandoer)
-  # krever at malen verifiseres mot avlyttet CI50-trafikk på vårt eget
-  # anlegg først — se research/protocol-notes.md punkt 2.
-  # command_template: [195, 4, 0, 199, 81, 193, 4, 8, 32, 15, 0, 34, 0, 4, 0, 18, 52, 236]
+  # command_template: panelets egen tilstandsramme, MÅLT PÅ VÅRT ANLEGG
+  # 2026-08-13 (ikke lenger Vongravens gjetning — hans hadde data[2]=0x00,
+  # vår har 0x02). Rammen sendes av CI50 KUN ved endring, aldri periodisk
+  # (21 av 21 observerte lå ved en tilstandsendring), så en skriving blir
+  # ikke overskrevet av panelet noen sekunder senere.
+  #
+  #   C3 04 00 C7 51 C1 04 08 | 20 0F 02 <vifte> <?> 04 00 <settpunkt> | CK CK
+  #   indeks:                    8  9  10   11     12  13 14   15
+  #
+  #   indeks 11 = viftetrinn (nibbel-kodet, 0x11/0x22/0x33)
+  #   indeks 15 = settpunkt varmeveksler (15-25)
+  #   indeks 12 = ADVARSEL: koden vår skriver forvarme hit, men feltet gikk
+  #               fra 00 til 01 fem rammer FØR forseringskommandoen, ikke da
+  #               forvarmen ble rørt. Betydningen er uavklart — hold forvarme
+  #               utenfor første skriverunde. Se TODO.md.
+  #
+  # FORTSATT AVSLÅTT: test forseringsknappen først, den validerer hele
+  # sendeveien uten å endre varig tilstand.
+  # command_template: [0xC3, 0x04, 0x00, 0xC7, 0x51, 0xC1, 0x04, 0x08, 0x20, 0x0F, 0x02, 0x11, 0x00, 0x04, 0x00, 0x0F, 0x00, 0x00]
 
 select:
   - platform: flexit_sl4r
