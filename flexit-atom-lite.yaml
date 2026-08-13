@@ -67,6 +67,26 @@ uart:
   #   sequence:
   #     - lambda: UARTDebug::log_hex(direction, bytes, ' ');
 
+# Diagnostikk. `reset_reason` avgjør spørsmålet om bussens strømkapasitet:
+# viser den «Brownout», er skinnen for svak til ESP32-ens toppforbruk og
+# noden må mates fra USB-C i stedet (med klemme V frakoblet). Kortvarig blink
+# på styreenheten i det pluggen settes i er derimot normal innkoblingsstrøm
+# fra Tail485s inngangskondensator, og gir ingen reset.
+# Uptime avslører skjulte restarter: står den og teller opp fra null, er noden
+# i en boot-loop selv om HA rekker å vise den som tilkoblet.
+debug:
+  update_interval: 60s
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Resetårsak"
+
+sensor:
+  - platform: uptime
+    name: "Oppetid"
+    entity_category: diagnostic
+
 flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
