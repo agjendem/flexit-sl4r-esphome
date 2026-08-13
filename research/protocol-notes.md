@@ -175,6 +175,36 @@ payload: 20 0E 24 80 02 33 00 04 00 11 00 00 00 64 64 20 00 00 98 88 88 00
 Bekreftet mot HA etter fiksen: `Viftetrinn` = 3, `Settpunkt varmeveksler` =
 17,0 °C, `Forvarme aktiv` = av, `Kommunikasjon OK` = på.
 
+## Viftetrinn er to nibbler (MÅLT 2026-08-13)
+
+Vongraven beskrev `payload[5]` som 17/34/51 = trinn 1/2/3, altså `verdi/17`.
+Det er en tilfeldighet som holder for tre av verdiene. Ved å avlytte et styrt
+eksperiment (ned til trinn 1, hele temperaturspennet opp og ned, deretter
+«Max vifte») dukket det opp verdier den modellen ikke dekker:
+
+| Rå | Hex | Høy nibbel | Lav nibbel | Vifte-% (`p13`/`p14`) | Betydning |
+|----|-----|-----------|-----------|----------------------|-----------|
+| 17 | 0x11 | 1 | 1 | 49 | trinn 1 |
+| 34 | 0x22 | 2 | 2 | 74 | trinn 2 |
+| 51 | 0x33 | 3 | 3 | 100 | trinn 3 |
+| 49 | 0x31 | 3 | 1 | 100 | **forsering**: kjører 3, faller tilbake til 1 |
+| 33 | 0x21 | 2 | 1 | 74 | overgang |
+
+**Høy nibbel = trinnet aggregatet kjører på. Lav nibbel = trinnet det
+returnerer til.** Det stemmer med CI 50-manualen, som sier at et blinkende lys
+under forsering viser hastigheten aggregatet hadde før forseringen, og at
+aggregatet står på trinn 3 mens den varer.
+
+Uavhengig bekreftelse: `payload[13]` og `payload[14]` er viftepådrag i prosent
+for de to viftene, og de følger **høy** nibbel (49/74/100 %), ikke `verdi/17`.
+
+Konsekvens for koden: den gamle vakten godtok kun 17/34/51 og avviste dermed
+forsering helt, så entiteten frøs på forrige trinn — og `49/17 = 2` ville gitt
+feil trinn om den hadde sluppet gjennom. Rettet til `raw >> 4`.
+
+**Åpen mulighet:** lav nibbel ≠ høy nibbel er en presis forserings-indikator.
+Verdt å eksponere som egen `binary_sensor` («Forsering aktiv») senere.
+
 ## Statustelegram (linje 15, sendt av CS50)
 
 Byte-strøm (som observert på bussen), med offset relativt til en "sync-match":
@@ -304,7 +334,12 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
    av flere paneler må switch nr. 3 stilles på ulike verdier på hvert panel»).
    Bussen har altså adressering, og de faste bytene på indeks 0–4 i
    kommandotelegrammet — som vi i dag ikke vet betydningen av — kan godt kode
-   panelidentitet. Hypotese å teste i Fase 1: avlytt CI50 med dipswitch 3 i
+   panelidentitet. **Målt 2026-08-13:** bussen har fem avsendersignaturer i
+   byte 1–4 — `01 00 C4 4B` (x3558), `04 00 C7 51` (x912), og tre sjeldne:
+   `02 00 C5 4D`, `03 00 C6 4F`, `05 00 C8 53` (x10 hver). Byte 1 ser ut som en
+   node-ID, og byte 3–4 følger den. Fabrikkinnstillingen er dipswitch 3 = OFF
+   = PANEL 1 (bekreftet i manualens figur), så panelet vårt er panel 1.
+   Hypotese å teste i Fase 1: avlytt CI50 med dipswitch 3 i
    begge stillinger og se hvilke byte som endrer seg. Det kan avklare flere
    ukjente felt på én test, og det er verdt å vite om vi kolliderer med det
    ekte panelet hvis vi injiserer som «panel 1» mens CI50 også er panel 1.

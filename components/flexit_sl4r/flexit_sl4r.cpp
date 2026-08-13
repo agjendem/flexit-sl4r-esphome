@@ -138,11 +138,23 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   const uint8_t raw_preheat_threshold_1 = this->raw_status_[10];
   const uint8_t raw_preheat_threshold_2 = this->raw_status_[11];
 
-  if (raw_fan_level == 17 || raw_fan_level == 34 || raw_fan_level == 51) {
+  // Viftetrinn er TO NIBBLER, ikke ett tall (målt 2026-08-13, se
+  // research/protocol-notes.md → «Viftetrinn er to nibbler»):
+  //   høy nibbel = trinnet aggregatet faktisk kjører på
+  //   lav nibbel = trinnet det returnerer til når forseringen er over
+  // 0x11/0x22/0x33 = vanlig drift, 0x31 = forsering («Max vifte»): kjører
+  // trinn 3, faller tilbake til trinn 1.
+  //
+  // Den gamle koden godtok kun 17/34/51 og regnet raw/17. Det ga to feil:
+  // forsering (0x31) ble AVVIST, så entiteten frøs på forrige trinn, og
+  // hadde den sluppet gjennom ville 49/17=2 gitt feil trinn.
+  const uint8_t running_level = raw_fan_level >> 4;
+  const uint8_t return_level = raw_fan_level & 0x0F;
+  if (running_level >= 1 && running_level <= 3 && return_level >= 1 && return_level <= 3) {
     this->last_raw_fan_level_ = raw_fan_level;
 #ifdef USE_SELECT
     if (this->fan_level_select_ != nullptr) {
-      this->fan_level_select_->publish_state(std::to_string(raw_fan_level / 17));
+      this->fan_level_select_->publish_state(std::to_string(running_level));
     }
 #endif
   }
