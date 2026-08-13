@@ -35,11 +35,16 @@ strømforsyning: se
 ## Repo-struktur
 
 ```
-components/flexit_sl4r/   ESPHome external_component (C++ hub + select/switch/number/binary_sensor)
+components/flexit_sl4r/   ESPHome external_component (C++ hub + select/switch/number/binary_sensor/button)
 research/                 Kildemateriale + protokollutledning (se research/README.md)
+research/captures/        Rå bussopptak fra eget anlegg, med parse-oppskrift
+TODO.md                   Kartleggingsbacklog — hva som skal testes og dokumenteres
 flexit-atom-lite.yaml     Eksempel-/produksjonskonfig for ATOM Lite + Tail485
 secrets.yaml.example      Mal for secrets.yaml (wifi/api/ota)
 ```
+
+Målet framover er å teste alle varianter som lar seg teste og dokumentere så
+mye av protokollen som mulig — se [`TODO.md`](TODO.md).
 
 ## Kom i gang
 

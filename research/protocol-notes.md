@@ -406,3 +406,31 @@ viftetrinn (`8+3`), indeks 15 = settpunkt (`8+7`).
 **Gjenstår før tilstandsskriving aktiveres:** avklare `data[2]`, og teste at
 injeksjon ved siden av et levende CI50 ikke gir konflikt — panelet sender jo
 sin egen tilstand periodisk og vil kunne overskrive vår skriving igjen.
+
+## Flyttall-registre — UUTNYTTET (funnet 2026-08-13)
+
+Rammetypene `0xC2` og `0xC7` fra CS50 (`sig 01 00 C4 4B`) bærer **IEEE754
+float, little endian**, ikke byte-verdier. `payload[0]` er en bank (`0x20`
+observert) og `payload[1]` er en **registerindeks som teller i registre, ikke i
+byte** — den stepper 0, 7, 14, 21, fordi hver ramme bærer 7 floats (28 databyte).
+
+Dekodet fra opptaket:
+
+| Type | Reg | Verdier | Tolkning |
+|------|-----|---------|----------|
+| `0xC2` | 0 | `-55, 22.5…22.8, 0, 0, -55, 0, 0` | **levende temperaturmåling** i slot 1; `-55` er klassisk «føler ikke tilkoblet» |
+| `0xC2` | 7 | `0, 15.0…25.0` | **settpunktet som float** — fulgte brukerens sykling 15→25→15 eksakt |
+| `0xC7` | 0 | `0.01 ×4, 0.3 ×3` | regulatorparametere (P/I-ledd?) |
+| `0xC7` | 7 | `0.3, 0.3, 0.3, 2, 1, 30, 25` | parametere/grenser |
+| `0xC7` | 14 | `-20, -30, 2, 0, …` | grenseverdier, trolig temperaturgrenser |
+| `0xC7` | 21 | `0, 0.1, 0.1` | parametere |
+
+**Dette er den største uutnyttede muligheten i protokollen.** `0xC2` reg 0 slot 1
+er en ekte, driftende temperatur — hvilken føler den tilhører (tilluft, avtrekk,
+avkast, uteluft) er ikke bekreftet, men den kan eksponeres som `sensor` i HA så
+snart den er identifisert. At settpunktet finnes både som byte (status
+`payload[9]`) og som float (`0xC2` reg 7) gir en gratis kryssjekk.
+
+At `0xC2` reg 7 slot 1 fulgte settpunktet er samtidig **uavhengig bekreftelse på
+at hele bank/register-modellen er riktig** — vi forutså hvor verdien skulle
+ligge, og den lå der.
