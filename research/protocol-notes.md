@@ -32,10 +32,24 @@ klikkes i hvilken som helst av de 2 kontaktene bak på styrepanelet … Det er
 mulig å koble opp til 2 styrepanel til hvert aggregat.» Elektrisk samme buss,
 og panelet er som regel lettere å komme til enn innmaten i aggregatet.
 
-**Valgt tilkoblingspunkt: den ledige kontakten bak på CI50-panelet.** De to
-kontaktene på panelet er parallellkoblet (det er slik man kjeder to paneler),
-så en node her ser nøyaktig samme buss som en node på CS50-kortet — og målingen
-under bekrefter at forsyningen er med helt fram. Slipper å åpne aggregatet.
+**Valgt tilkoblingspunkt: den ledige kontakten bak på CI50-panelet.**
+
+RS485 er en **multi-drop-buss**: de to kontaktene er parallellkoblet — bare
+loddet sammen på samme fire ledere — ikke seriekoblet. Signalet går ikke
+*gjennom* panelet og videre ut; det er ett felles bussegment som alle noder
+henger på. Topologisk ser det ut som en kjede, elektrisk er det en stjerne av
+korte stubber på samme par. Det er nettopp derfor Flexit kan la deg henge på et
+panel nr. 2 (jf. dipswitch 3 = PANEL 1/2).
+
+Konsekvensen: en node i den ledige panelkontakten ser nøyaktig samme buss som
+en node på CS50-kortet inne i aggregatet. Ingenting tapt på å slippe å åpne
+aggregatet. Målingen bekrefter det empirisk — 11,8 V er til stede på
+panelkontakten, altså føres GND og +V helt fram, og at CI50 fungerer i den
+andre kontakten viser at A/B også er der.
+
+Terminering skal ikke legges til: 19200 baud over noen titalls meter har
+stigetider som er lange nok til at refleksjoner er uinteressante, og bussen har
+allerede det den trenger.
 
 ### Pinout (4P4C, standard fargekode)
 

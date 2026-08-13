@@ -13,10 +13,12 @@ strømforsyning: se
 
 ## Status
 
-- **Fase 1 (lytting):** komponent skrevet og kompilert rent mot ESP32
-  (Arduino-rammeverk), men **ikke testet mot ekte maskinvare** ennå. ATOM Lite
-  og Tail485 er i hus, busspenningen er målt (11,8 V) og tilkoblingspunktet
-  valgt; selve påkoblingen gjenstår. All protokollkunnskap er reverse-engineered fra
+- **Fase 1 (lytting):** komponent skrevet, kompilert og **flashet 3. august
+  2026**. Noden kjører på IoT-VLAN (`flexit-sl4r.local`) og svarer på
+  ESPHome-API, men er **ikke adoptert i Home Assistant** ennå, og **RS485 er
+  ikke koblet til** — protokollen er derfor fortsatt utestet mot ekte
+  maskinvare. Busspenningen er målt (11,8 V) og tilkoblingspunktet valgt.
+  All protokollkunnskap er reverse-engineered fra
   [Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
   (Arduino Mega, testet på ekte SL4R/CS50) og verifisert numerisk mot
   README-eksemplene der (sjekksumalgoritme stemmer eksakt). Se
@@ -51,9 +53,12 @@ cp secrets.yaml.example secrets.yaml   # fyll inn wifi + generer api-nøkkel/ota
 
 ## Videre plan
 
-1. Flash ATOM Lite over USB-C **med 4P4C-pluggen frakoblet** — verifiser boot,
-   wifi og API mot HA før RS485 kobles til. (USB-C og klemme V må ikke være
-   tilkoblet samtidig.) Videre oppdateringer går over OTA.
+1. ~~Flash ATOM Lite.~~ **Gjort 3. august 2026** — bygget og flashet fra
+   ESPHome-addonen på HA-verten, ikke fra dette repoet (se «Hvor koden kjører»).
+   Noden er oppe på IoT-VLAN og svarer på API. Gjenstår: **adopter den i Home
+   Assistant** (Innstillinger → Enheter → ESPHome oppdager `flexit-sl4r`;
+   API-nøkkelen ligger i `secrets.yaml`) slik at entitetene finnes før RS485
+   kobles til. Videre oppdateringer går over OTA.
 2. ~~Mål spenningen på bussen.~~ **Gjort 2026-08-13: 11,8 V** på den ledige
    4P4C-kontakten bak på CI50-panelet, i enden av 12 m tilførsel. Innenfor
    Tail485s 9–24 V → hele oppsettet mates fra bussen, alle fire klemmene
@@ -71,9 +76,24 @@ cp secrets.yaml.example secrets.yaml   # fyll inn wifi + generer api-nøkkel/ota
 5. Slå på Fase 2: legg til `select`/`switch`/`number`-entitetene og test
    sending, bekreft at CI50-panelet viser endringene og at ingen andre
    verdier endres utilsiktet.
-6. Når stabilt: kopier `components/` og `flexit-atom-lite.yaml` inn i
-   `/config/esphome/` på Home Assistant-verten (egen nested git der, se
-   `CLAUDE.md` i homeassistant-workspace).
+## Hvor koden kjører
+
+Firmwaren bygges **ikke** fra dette repoet i praksis. 3. august 2026 ble
+`components/flexit_sl4r/` og YAML-en kopiert til HA-vertens ESPHome-addon som
+`/config/esphome/flexit-sl4r.yaml` + `/config/esphome/components/flexit_sl4r/`,
+og flashet derfra. Det er den kopien som faktisk kjører på noden.
+
+Dette repoet er dermed **kilden/utviklingsstedet**, og `/config/esphome/` er
+**deploy-målet**. De kan drifte fra hverandre — per 13. august 2026 er
+HA-kopien én revisjon bak, men forskjellen er kun kommentarer. Ved endringer i
+komponenten: rediger her, kopier over, bygg der. Sjekk drift med:
+
+```bash
+ssh anders@192.168.1.205 'cat /config/esphome/flexit-sl4r.yaml' | diff -u flexit-atom-lite.yaml -
+```
+
+(`/config/esphome/` er en egen nested git fra ESPHome-addonen og er ekskludert
+fra HA-config-repoet — se `CLAUDE.md` i homeassistant-workspace.)
 
 ## Kilder og kreditering
 
