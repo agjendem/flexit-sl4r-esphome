@@ -214,6 +214,16 @@ void FlexitSL4RComponent::handle_command_slot_byte_(uint8_t byte) {
 }
 
 void FlexitSL4RComponent::queue_command_(uint8_t field_offset, uint8_t value) {
+  // Uten konfigurert command_template har vi ingenting å bygge telegrammet av.
+  // Å sende likevel ville lagt 18 udefinerte byte med GYLDIG sjekksum ut på
+  // bussen — se research/protocol-notes.md punkt 2. Er malen ikke satt, er
+  // Fase 2 ikke aktivert og skrive-entitetene er i praksis read-only.
+  if (this->command_template_.size() < COMMAND_LENGTH) {
+    ESP_LOGE(TAG,
+             "command_template er ikke konfigurert - kommandoen forkastes (Fase 2 ikke aktivert). "
+             "Entiteten faller tilbake til faktisk tilstand ved neste statustelegram.");
+    return;
+  }
   this->pending_field_offset_ = field_offset;
   this->pending_field_value_ = value;
   this->command_pending_ = true;
@@ -241,6 +251,13 @@ void FlexitSL4RComponent::build_and_send_command_() {
   if (!this->command_pending_)
     return;
   this->command_pending_ = false;
+
+  // Dobbel sikring: queue_command_ slipper ikke gjennom uten mal, men denne
+  // copy_n leser 18 byte og MÅ aldri kjøre mot en tom vector.
+  if (this->command_template_.size() < COMMAND_LENGTH) {
+    ESP_LOGE(TAG, "command_template mangler ved sending - avbryter, ingenting skrevet til bussen");
+    return;
+  }
 
   std::array<uint8_t, COMMAND_LENGTH> command{};
   std::copy_n(this->command_template_.begin(), COMMAND_LENGTH, command.begin());
