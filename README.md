@@ -13,12 +13,14 @@ strømforsyning: se
 
 ## Status
 
-- **Fase 1 (lytting):** komponent skrevet, kompilert og **flashet 3. august
-  2026**. Noden kjører på IoT-VLAN (`flexit-sl4r.local`) og svarer på
-  ESPHome-API, men er **ikke adoptert i Home Assistant** ennå, og **RS485 er
-  ikke koblet til** — protokollen er derfor fortsatt utestet mot ekte
-  maskinvare. Busspenningen er målt (11,8 V) og tilkoblingspunktet valgt.
-  All protokollkunnskap er reverse-engineered fra
+- **Fase 1 (lytting): VIRKER — verifisert mot ekte anlegg 13. august 2026.**
+  Noden er koblet på CI50-panelets ledige 4P4C-kontakt, matet fra bussens
+  11,8 V, adoptert i Home Assistant, og leser viftetrinn, forvarme og
+  settpunkt varmeveksler korrekt. Én reell feil ble avdekket underveis: en
+  off-by-one i synkroniseringsregelen (`195` ligger 7 byte foran lengdebyten,
+  ikke 8) gjorde at komponenten var helt stum selv med riktig kobling — se
+  «Rammestruktur (målt)» i protokollnotatene.
+  All protokollkunnskap er opprinnelig reverse-engineered fra
   [Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
   (Arduino Mega, testet på ekte SL4R/CS50) og verifisert numerisk mot
   README-eksemplene der (sjekksumalgoritme stemmer eksakt). Se

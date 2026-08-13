@@ -121,6 +121,60 @@ M5s PinMap: **G26 = TX, G32 = RX**, 5V, GND. Dette er det `flexit-atom-lite.yaml
 allerede bruker. Kun disse fire signalene går mellom modulen og ATOM-en — det er
 ingen DE/RE-linje, se usikkerhet 1 under.
 
+## Rammestruktur (MÅLT på eget anlegg 2026-08-13)
+
+Avlyttet 23 708 byte fra bussen med `uart: debug:` og analysert i Python.
+Dette er ikke lenger utledning — det er målt.
+
+```
+C3  b1 b2 b3 b4  TYPE  b6  LEN  [LEN databyte]  CK1 CK2
+^0  ^1 ^2 ^3 ^4  ^5    ^6  ^7   ^8 ...
+                 └──── sjekksumvindu: [5 .. 8+LEN) ────┘
+```
+
+**766 rammer parset, 0 forkastede.** Hver eneste `C3` i strømmen var starten
+på en ramme med korrekt sjekksum — ingen falske positive over 23 kB. Det gjør
+lengde+sjekksum til en trygg rammedetektor.
+
+- `TYPE` (offset 5) sett med verdiene `0xC0`–`0xC7`. `0xC1` med `LEN`=22 er
+  statustelegrammet vårt.
+- Minst to avsendere, skilt av byte 1–4: `C3 01 00 C4 4B …` og
+  `C3 04 00 C7 51 …`. Sannsynligvis CS50 og CI50 — se usikkerhet 5 om
+  panel-adressering, som nå kan testes direkte mot disse bytene.
+- Sjekksumalgoritmen fra Vongraven **stemmer eksakt** (Fletcher-lignende,
+  se under), med vindu fra offset 5 til og med siste databyte.
+
+### Off-by-one i synkroniseringsregelen — RETTET
+
+Vongravens notat sa: byte `22` der 2 tilbake er `193` og **8 tilbake** er `195`.
+På vårt anlegg ligger `195` **7 byte** foran lengdebyten, fordi headeren er
+8 byte og `LEN` står på offset 7.
+
+Målt over de samme 23 708 bytene:
+
+| Regel | Treff |
+|-------|-------|
+| `195` ved i−8 (Vongravens/vår opprinnelige) | **0** |
+| `195` ved i−7 (faktisk) | **41** |
+
+Det var hele grunnen til at Fase 1 var stum: bussen var riktig koblet og
+telegrammene kom inn hele tiden, men synkroniseringen traff aldri. Rettet i
+`handle_incoming_byte_()` (`sync_history_[1]` i stedet for `[0]`).
+
+**Payload-layouten fra Vongraven stemmer derimot uendret.** Første verifiserte
+statustelegram fra vårt anlegg:
+
+```
+header : C3 01 00 C4 4B C1 01 16
+payload: 20 0E 24 80 02 33 00 04 00 11 00 00 00 64 64 20 00 00 98 88 88 00
+         [5]=0x33=51 → viftetrinn 3
+         [6]=0x00    → forvarme av
+         [9]=0x11=17 → settpunkt varmeveksler 17 °C
+```
+
+Bekreftet mot HA etter fiksen: `Viftetrinn` = 3, `Settpunkt varmeveksler` =
+17,0 °C, `Forvarme aktiv` = av, `Kommunikasjon OK` = på.
+
 ## Statustelegram (linje 15, sendt av CS50)
 
 Byte-strøm (som observert på bussen), med offset relativt til en "sync-match":
@@ -238,8 +292,13 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
 4. ~~Faktisk spenning på pinne 4 (4P4C).~~ **AVKLART (målt 2026-08-13): 11,8 V**
    på CI50-panelets ledige kontakt, i enden av 12 m tilførsel. Innenfor
    Tail485s 9–24 V → oppsettet mates fra bussen. Gjenstår: hvor mye **strøm**
-   skinnen tåler (kildeimpedans er ikke målt) — se «Fysisk tilkobling» →
-   «Strømforsyning» for last-testen og hva som er symptomet hvis den er for svak.
+   skinnen tåler. **Delvis avklart 2026-08-13:** noden har kjørt på
+   bussforsyning gjennom flere OTA-runder uten problemer, og `Resetårsak`
+   rapporterer «Reboot request from esphome.ota» — ingen brownout. Et kort
+   blink på styreenheten i innpluggingsøyeblikket var innkoblingsstrøm fra
+   Tail485s inngangskondensator, ikke en sagende skinne. Sensorene
+   `Resetårsak` og `Oppetid` står permanent i konfigen og fanger opp en
+   eventuell svikt under vedvarende last.
 5. **Panel-adressering — mulig nøkkel til de ukjente headerbytene.** CI 50 har
    en dipswitch 3 som velger PANEL 1 / PANEL 2 (Flexits CI 50-manual: «Ved bruk
    av flere paneler må switch nr. 3 stilles på ulike verdier på hvert panel»).

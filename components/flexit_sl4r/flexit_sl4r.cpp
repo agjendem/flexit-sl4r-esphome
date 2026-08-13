@@ -76,9 +76,14 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
   }
   this->sync_history_.back() = byte;
 
-  // Statustelegram-synk: gjeldende byte==22 (lengde), 2 tilbake==193, 8 tilbake==195.
-  // Se research/protocol-notes.md for utledning.
-  if (byte == 22 && this->sync_history_[6] == 193 && this->sync_history_[0] == 195) {
+  // Statustelegram-synk: gjeldende byte==22 (lengde), 2 tilbake==193, 7 tilbake==195.
+  //
+  // MÅLT PÅ EGET ANLEGG 2026-08-13: rammene er C3 b1 b2 b3 b4 TYPE b6 LEN
+  // [LEN byte] CK1 CK2, altså ligger 195 (0xC3) SJU byte foran lengdebyten,
+  // ikke åtte. Vongravens notat sa i-8, og med den regelen ga 23 708 avlyttede
+  // byte NULL treff; med i-7 ga de 41. Se research/protocol-notes.md
+  // → «Rammestruktur (målt)».
+  if (byte == 22 && this->sync_history_[6] == 193 && this->sync_history_[1] == 195) {
     this->on_status_sync_matched_(this->sync_history_[6], this->sync_history_[7]);
     return;
   }
