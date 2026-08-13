@@ -1,5 +1,21 @@
 # TODO — kartlegging av protokollen
 
+
+Målet er å teste alle varianter som lar seg teste, og dokumentere så mye av
+CS50/CI50-protokollen som mulig. Utledningen ligger i
+[`research/protocol-notes.md`](research/protocol-notes.md); råopptakene i
+[`research/captures/`](research/captures/).
+
+**Arbeidsmåte som har fungert:** slå på `uart: debug:` i
+`flexit-atom-lite.yaml`, OTA, fang loggen til fil, parse med
+sjekksum-validatoren i `research/captures/README.md`, og *diff mot en kjent
+tilstand*. Alle funn så langt kom fra å endre én ting av gangen på panelet og
+se hvilke byte som fulgte etter. Skru av debug igjen etterpå — den spiser CPU
+fra `loop()`.
+
+---
+
+
 ## Hva vi kan forvente å finne på bussen
 
 Sammenstilt fra Flexits dokumentasjon for CS50/CI50, aggregattypen (SL4 R =
@@ -42,20 +58,6 @@ roterende gjenvinner), og det vi faktisk har målt.
   bussen i vår konfigurasjon — brukerens fire Z-Wave-følere er altså ikke
   overflødige, og virkningsgradregnestykket må fortsatt hvile på dem.
 
-
-Målet er å teste alle varianter som lar seg teste, og dokumentere så mye av
-CS50/CI50-protokollen som mulig. Utledningen ligger i
-[`research/protocol-notes.md`](research/protocol-notes.md); råopptakene i
-[`research/captures/`](research/captures/).
-
-**Arbeidsmåte som har fungert:** slå på `uart: debug:` i
-`flexit-atom-lite.yaml`, OTA, fang loggen til fil, parse med
-sjekksum-validatoren i `research/captures/README.md`, og *diff mot en kjent
-tilstand*. Alle funn så langt kom fra å endre én ting av gangen på panelet og
-se hvilke byte som fulgte etter. Skru av debug igjen etterpå — den spiser CPU
-fra `loop()`.
-
----
 
 ## 1. Sending — verifisere det vi allerede har bygget
 
@@ -102,13 +104,12 @@ fra `loop()`.
 
 Se «Flyttall-registre» i protokollnotatene. `0xC2`/`0xC7` bærer IEEE754 float.
 
-- [ ] **Identifiser temperaturføleren** i `0xC2` reg 0 slot 1 (driftet
-      22,5–22,8 °C). Tilluft, avtrekk, avkast eller uteluft? Metode: sammenlign
-      mot en kjent romtemperatur, eller lytt over et døgn og se hvilken kurve
-      den følger.
-- [ ] **Kartlegg de andre slottene i `0xC2` reg 0.** To står på `-55` =
-      sannsynligvis «føler ikke tilkoblet». Stemmer det med hvilke følere
-      anlegget faktisk har montert?
+- [x] ~~**Identifiser temperaturføleren** i `0xC2` reg 0 slot 1.~~
+      **TILLUFT** — Flexits B1, «tilluftføler ettervarme». Identifisert
+      2026-08-14 ved korrelasjon mot brukerens fire Z-Wave-følere i kanalen.
+- [x] ~~**Kartlegg de andre slottene i `0xC2` reg 0.**~~ To står på `-55` =
+      føler ikke tilkoblet; resten er `0`. Bussen har altså KUN én tilkoblet
+      temperaturføler.
 - [ ] **Kryssjekk registrene mot CS50-kortets fysiske klemmer.** CS50 har
       mange tilkoblingsmuligheter — ekstra temperaturfølere, ekstern
       forseringsbryter, og andre tilvalg — og de fleste er ikke i bruk hos
@@ -120,8 +121,11 @@ Se «Flyttall-registre» i protokollnotatene. `0xC2`/`0xC7` bærer IEEE754 float
       Det åpner samtidig en dør: en **ekstern forseringsbryter** på CS50 ville
       gitt en fysisk måte å utløse forsering på, som kan sammenlignes med
       rammen vi sender — en uavhengig kontroll på at vi gjør det riktig.
-- [ ] **Eksponer temperaturene som `sensor` i HA** når de er identifisert.
-      Dette er den klart største funksjonelle gevinsten som gjenstår.
+- [x] ~~**Eksponer temperaturene som `sensor` i HA.**~~ Gjort 2026-08-14:
+      Tilluft, viftepådrag ×2, viftetrinn kjørende/retur, settpunkt fra buss,
+      «Forsering aktiv», og begge ledige følerinnganger. I tillegg
+      `raw_status_bytes` og `float_registers` for å eksponere vilkårlige felt
+      fra YAML uten C++-endring.
 - [ ] Kartlegg `0xC7`-parameterne (`0.01`, `0.3`, `2`, `1`, `30`, `25`,
       `-20`, `-30`). Sannsynligvis regulatorparametere og grenseverdier — kan
       de leses mot noe i aggregatets servicemeny?
