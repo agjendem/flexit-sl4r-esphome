@@ -249,3 +249,23 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
    begge stillinger og se hvilke byte som endrer seg. Det kan avklare flere
    ukjente felt på én test, og det er verdt å vite om vi kolliderer med det
    ekte panelet hvis vi injiserer som «panel 1» mens CI50 også er panel 1.
+
+   **Må vi gjøre noe med dip 3 nå? Nei.** Dipswitchen sitter på et fysisk
+   CI50-panel, og vi legger ikke til et panel nr. 2 — vi henger en lyttende
+   node på bussen. I Fase 1 sender vi ingenting og trenger derfor ingen
+   adresse; det eksisterende panelet skal stå urørt som PANEL 1.
+
+   Det blir først relevant i **Fase 2**, hvor vi injiserer telegrammer med
+   header-byte vi ikke kjenner betydningen av. Rekkefølgen bør være:
+
+   1. Avlytt i Fase 1 med panelets dip 3 i stilling 1, så i stilling 2, og
+      diff headeren. **Sett den tilbake til utgangsstillingen etterpå.**
+   2. Endrer ingen byte seg: identiteten ligger ikke i headeren, og vi kan
+      injisere med malen som den er. (Vongraven gjorde nettopp det, ved siden
+      av et levende CI50, uten rapporterte problemer — indikasjon, ikke bevis.)
+   3. Endrer noe seg: sett vår injeksjon til den **motsatte** panel-ID-en av
+      det ekte panelet. CS50 støtter to paneler fra før, så vi opptrer da som
+      et legitimt panel 2 i stedet for å krangle med CI50 om samme adresse.
+
+   Uansett utfall er bussarbitreringen (sende i hullet etter CI50s eget
+   telegram) viktigere for å unngå kollisjon enn adressen er.
