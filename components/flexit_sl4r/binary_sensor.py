@@ -15,6 +15,7 @@ DEPENDENCIES = ["flexit_sl4r"]
 
 CONF_PREHEAT_ACTIVE = "preheat_active"
 CONF_COMMUNICATION = "communication"
+CONF_BOOST_ACTIVE = "boost_active"
 
 CONFIG_SCHEMA = {
     cv.GenerateID(CONF_ID): cv.declare_id(cg.EntityBase),
@@ -25,6 +26,11 @@ CONFIG_SCHEMA = {
     cv.Optional(CONF_COMMUNICATION): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_CONNECTIVITY,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
+    # Forsering: høy nibbel != lav nibbel i payload[5]. Presis indikator,
+    # gratis fra data vi allerede leser.
+    cv.Optional(CONF_BOOST_ACTIVE): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_RUNNING, icon="mdi:fan-plus"
     ),
 }
 
@@ -37,3 +43,6 @@ async def to_code(config):
     if communication_config := config.get(CONF_COMMUNICATION):
         sens = await binary_sensor.new_binary_sensor(communication_config)
         cg.add(flexit_sl4r_component.set_communication_binary_sensor(sens))
+    if boost_active_config := config.get(CONF_BOOST_ACTIVE):
+        sens = await binary_sensor.new_binary_sensor(boost_active_config)
+        cg.add(flexit_sl4r_component.set_boost_active_binary_sensor(sens))

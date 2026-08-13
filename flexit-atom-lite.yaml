@@ -82,11 +82,6 @@ text_sensor:
     reset_reason:
       name: "Resetårsak"
 
-sensor:
-  - platform: uptime
-    name: "Oppetid"
-    entity_category: diagnostic
-
 flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
@@ -131,6 +126,62 @@ number:
     heat_exchanger_setpoint:
       name: "Settpunkt varmeveksler"
 
+sensor:
+  - platform: uptime
+    name: "Oppetid"
+    entity_category: diagnostic
+
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    # Eneste tilkoblede temperaturføler på bussen — Flexits B1, «tilluftføler
+    # ettervarme». Identifisert 2026-08-14 ved korrelasjon mot Z-Wave-følerne
+    # i kanalen. Avtrekk/avkast/uteluft finnes IKKE på bussen.
+    supply_air_temperature:
+      name: "Tilluft"
+    # Samme settpunkt som number-entiteten, men som float rett fra bussen.
+    # Nyttig som kryssjekk på at byte- og float-representasjonen følges ad.
+    heat_exchanger_setpoint_raw:
+      name: "Settpunkt (buss)"
+    fan_duty_supply:
+      name: "Viftepådrag tilluft"
+      icon: "mdi:fan"
+    fan_duty_extract:
+      name: "Viftepådrag avtrekk"
+      icon: "mdi:fan"
+    fan_level_running:
+      name: "Viftetrinn kjørende"
+    fan_level_return:
+      name: "Viftetrinn retur"
+
+    # --- Utforskning ---
+    # Ukjente felt eksponert som diagnostikk, slik at HAs recorder bygger
+    # historikk vi kan korrelere mot senere. Da kan hypoteser prøves mot uker
+    # med data i stedet for et nytt uart-debug-opptak. Se TODO.md.
+    raw_status_bytes:
+      - index: 2
+        name: "Rå status[2]"
+      - index: 4
+        name: "Rå status[4]"
+      - index: 6
+        name: "Rå status[6] (forvarme?)"
+      - index: 10
+        name: "Rå status[10]"
+      - index: 11
+        name: "Rå status[11]"
+      - index: 15
+        name: "Rå status[15]"
+      - index: 20
+        name: "Rå status[20]"
+    # De to ledige følerinngangene: -55 betyr «ikke tilkoblet». Kobles det en
+    # føler til CS50 senere, dukker den opp her uten kodeendring.
+    float_registers:
+      - register: 0
+        slot: 0
+        name: "Ledig følerinngang 1"
+      - register: 0
+        slot: 4
+        name: "Ledig følerinngang 2"
+
 binary_sensor:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
@@ -138,3 +189,5 @@ binary_sensor:
       name: "Forvarme aktiv"
     communication:
       name: "Flexit-kommunikasjon OK"
+    boost_active:
+      name: "Forsering aktiv"

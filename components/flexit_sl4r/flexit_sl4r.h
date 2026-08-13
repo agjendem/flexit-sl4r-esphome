@@ -15,6 +15,9 @@
 #ifdef USE_BINARY_SENSOR
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #endif
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
 
 #include <array>
 #include <cstdint>
@@ -30,6 +33,23 @@ static constexpr uint8_t COMMAND_LENGTH = 18;        // total lengde på kommand
 static constexpr uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 static constexpr uint32_t COMMAND_INJECT_DELAY_MS = 10;
 
+// --- Generell rammestruktur (målt 2026-08-13, se research/protocol-notes.md) ---
+//   C3 b1 b2 b3 b4 TYPE b6 LEN [LEN databyte] CK1 CK2
+// Sjekksumvindu er [5 .. 8+LEN). Validert mot 23 708 avlyttede byte: 766 rammer,
+// null falske C3-treff. Lengde+sjekksum er derfor en trygg rammedetektor.
+static constexpr uint8_t FRAME_START = 0xC3;
+static constexpr uint8_t FRAME_HEADER_LENGTH = 8;   // C3 + 4 sig + TYPE + b6 + LEN
+static constexpr uint8_t FRAME_LEN_OFFSET = 7;
+static constexpr uint8_t FRAME_CHECKSUM_START = 5;  // sjekksummen dekker fra TYPE
+static constexpr uint8_t FRAME_MAX_PAYLOAD = 64;    // observert maks er 30
+
+static constexpr uint8_t TYPE_STATUS = 0xC1;   // med LEN=22 er dette statustelegrammet
+static constexpr uint8_t TYPE_FLOAT = 0xC2;    // IEEE754 float-registre (målinger)
+static constexpr uint8_t TYPE_PARAM = 0xC7;    // IEEE754 float-parametere/grenser
+
+// Verdi CS50 rapporterer for en følerinngang som ikke er tilkoblet.
+static constexpr float SENSOR_DISCONNECTED = -55.0f;
+
 class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
 #ifdef USE_SELECT
   SUB_SELECT(fan_level)
@@ -43,6 +63,15 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
 #ifdef USE_BINARY_SENSOR
   SUB_BINARY_SENSOR(preheat_active)
   SUB_BINARY_SENSOR(communication)
+  SUB_BINARY_SENSOR(boost_active)
+#endif
+#ifdef USE_SENSOR
+  SUB_SENSOR(supply_air_temperature)       // 0xC2 reg 0 slot 1 — Flexits B1
+  SUB_SENSOR(heat_exchanger_setpoint_raw)  // 0xC2 reg 7 slot 1 — settpunkt som float
+  SUB_SENSOR(fan_duty_supply)              // status payload[13], %
+  SUB_SENSOR(fan_duty_extract)             // status payload[14], %
+  SUB_SENSOR(fan_level_running)            // høy nibbel av payload[5]
+  SUB_SENSOR(fan_level_return)             // lav nibbel — trinnet forseringen faller tilbake til
 #endif
 
  public:
@@ -69,11 +98,24 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // tilbake til forrige trinn når perioden er over.
   void trigger_boost();
 
+#ifdef USE_SENSOR
+  // Generiske «utforsknings»-sensorer. Poenget er å kunne eksponere hvilken som
+  // helst byte eller flyttall-slot i HA UTEN å endre C++-koden, slik at
+  // recorder-en bygger historikk vi kan korrelere mot senere. Det er billigere
+  // enn å ta nye uart-debug-opptak hver gang en hypotese skal prøves.
+  void add_raw_status_sensor(uint8_t index, sensor::Sensor *sensor) {
+    this->raw_status_sensors_.emplace_back(index, sensor);
+  }
+  void add_float_register_sensor(uint8_t type, uint8_t reg, uint8_t slot, sensor::Sensor *sensor) {
+    this->float_register_sensors_.push_back({type, reg, slot, sensor});
+  }
+#endif
+
  protected:
-  // --- Mottak: ikke-blokkerende synk + parsing av CS50s statustelegram ---
+  // --- Mottak: generell rammeparser (erstatter den gamle snevre synk-regelen) ---
   void handle_incoming_byte_(uint8_t byte);
-  void on_status_sync_matched_(uint8_t sync_193, uint8_t sync_gap);
-  void handle_status_payload_byte_(uint8_t byte);
+  void dispatch_frame_();
+  void handle_float_frame_();
   void parse_and_publish_status_();
 
   // --- Sending: ikke-blokkerende deteksjon av CI50s kommandovindu + injeksjon ---
@@ -87,12 +129,18 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   static std::pair<uint8_t, uint8_t> checksum_(const uint8_t *data, size_t len);
 
   // Rullende historikk over de siste 9 rå byte (index 8 = nyeste), brukt til
-  // mønstergjenkjenning for BÅDE status-synk og CI50-kommandovindu-start.
+  // deteksjon av CI50-kommandovindu-start.
   std::array<uint8_t, 9> sync_history_{};
 
-  // Status-mottak
-  bool capturing_status_{false};
-  uint8_t status_bytes_received_{0};
+  // --- Rammeoppsamling ---
+  // Vi samler fra hver 0xC3 og validerer med lengde + sjekksum. Slår en ramme
+  // feil, forkastes den og vi leter etter neste 0xC3 — en 0xC3 inne i en payload
+  // gir da bare ett bortkastet forsøk, ikke varig desynkronisering.
+  bool collecting_frame_{false};
+  uint8_t frame_expected_{0};  // 0 = lengden er ikke lest ennå
+  std::vector<uint8_t> frame_;
+
+  // Status-mottak (fylles fra rammeparseren for TYPE_STATUS med LEN=22)
   std::array<uint8_t, STATUS_RAW_LENGTH> raw_status_{};
   uint8_t status_sync_193_{0};
   uint8_t status_sync_gap_{0};
@@ -123,6 +171,17 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
     SKIPPING_PAYLOAD,
   } cmd_slot_state_{CmdSlotState::IDLE};
   uint8_t cmd_slot_skip_remaining_{0};
+
+#ifdef USE_SENSOR
+  std::vector<std::pair<uint8_t, sensor::Sensor *>> raw_status_sensors_;
+  struct FloatRegisterSensor {
+    uint8_t type;
+    uint8_t reg;
+    uint8_t slot;
+    sensor::Sensor *sensor;
+  };
+  std::vector<FloatRegisterSensor> float_register_sensors_;
+#endif
 
   GPIOPin *flow_control_pin_{nullptr};
 };

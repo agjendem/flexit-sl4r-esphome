@@ -20,6 +20,9 @@ strømforsyning: se
   off-by-one i synkroniseringsregelen (`195` ligger 7 byte foran lengdebyten,
   ikke 8) gjorde at komponenten var helt stum selv med riktig kobling — se
   «Rammestruktur (målt)» i protokollnotatene.
+  Mottaket er siden bygget om til en **generell rammeparser** (lengde +
+  sjekksum), som i tillegg til statustelegrammet dekoder IEEE754-flyttall og
+  eksponerer tilluftstemperatur, viftepådrag og en rekke diagnostikk-entiteter.
   All protokollkunnskap er opprinnelig reverse-engineered fra
   [Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
   (Arduino Mega, testet på ekte SL4R/CS50) og verifisert numerisk mot
@@ -35,7 +38,7 @@ strømforsyning: se
 ## Repo-struktur
 
 ```
-components/flexit_sl4r/   ESPHome external_component (C++ hub + select/switch/number/binary_sensor/button)
+components/flexit_sl4r/   ESPHome external_component (C++ hub + sensor/select/switch/number/binary_sensor/button)
 research/                 Kildemateriale + protokollutledning (se research/README.md)
 research/captures/        Rå bussopptak fra eget anlegg, med parse-oppskrift
 TODO.md                   Kartleggingsbacklog — hva som skal testes og dokumenteres

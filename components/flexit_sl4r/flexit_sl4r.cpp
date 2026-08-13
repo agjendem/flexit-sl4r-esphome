@@ -3,6 +3,7 @@
 #include "esphome/core/hal.h"
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 
 namespace esphome::flexit_sl4r {
@@ -59,57 +60,113 @@ void FlexitSL4RComponent::loop() {
 }
 
 void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
-  // Et pågående kommandovindu- eller status-capture-forløp har alltid forrang;
-  // en byte kan aldri tolkes to ganger samtidig av begge tilstandsmaskinene.
-  if (this->capturing_status_) {
-    this->handle_status_payload_byte_(byte);
-    return;
-  }
+  // Kommandovindu-deteksjon har forrang: den er kun aktiv når vi faktisk har
+  // noe å sende, og da skal byten ikke også mates inn i rammeparseren.
   if (this->command_pending_ && this->cmd_slot_state_ != CmdSlotState::IDLE) {
     this->handle_command_slot_byte_(byte);
     return;
   }
 
-  // Skyv byten inn i den rullende synk-historikken (index 8 = nyeste).
+  // Rullende historikk brukes nå kun til kommandovindu-deteksjonen.
   for (size_t i = 0; i + 1 < this->sync_history_.size(); i++) {
     this->sync_history_[i] = this->sync_history_[i + 1];
   }
   this->sync_history_.back() = byte;
-
-  // Statustelegram-synk: gjeldende byte==22 (lengde), 2 tilbake==193, 7 tilbake==195.
-  //
-  // MÅLT PÅ EGET ANLEGG 2026-08-13: rammene er C3 b1 b2 b3 b4 TYPE b6 LEN
-  // [LEN byte] CK1 CK2, altså ligger 195 (0xC3) SJU byte foran lengdebyten,
-  // ikke åtte. Vongravens notat sa i-8, og med den regelen ga 23 708 avlyttede
-  // byte NULL treff; med i-7 ga de 41. Se research/protocol-notes.md
-  // → «Rammestruktur (målt)».
-  if (byte == 22 && this->sync_history_[6] == 193 && this->sync_history_[1] == 195) {
-    this->on_status_sync_matched_(this->sync_history_[6], this->sync_history_[7]);
+  if (this->command_pending_ && this->sync_history_[7] == FRAME_START && byte == 1) {
+    this->cmd_slot_state_ = CmdSlotState::SKIPPING_HEADER;
+    this->cmd_slot_skip_remaining_ = 6;
+    this->collecting_frame_ = false;
     return;
   }
 
-  // CI50 sender kommando: forrige byte==195, denne==1. Kun relevant å lete etter
-  // når vi faktisk har noe å sende (unngår å bruke sykluser på falske positiver ellers).
-  if (this->command_pending_ && this->sync_history_[7] == 195 && byte == 1) {
-    this->cmd_slot_state_ = CmdSlotState::SKIPPING_HEADER;
-    this->cmd_slot_skip_remaining_ = 6;
+  // --- Generell rammeoppsamling ---
+  if (!this->collecting_frame_) {
+    if (byte != FRAME_START)
+      return;
+    this->collecting_frame_ = true;
+    this->frame_expected_ = 0;
+    this->frame_.clear();
   }
+
+  this->frame_.push_back(byte);
+
+  // Lengdebyten kommer på offset 7 og bestemmer hvor mye mer vi skal samle.
+  if (this->frame_expected_ == 0 && this->frame_.size() == FRAME_HEADER_LENGTH) {
+    const uint8_t len = this->frame_[FRAME_LEN_OFFSET];
+    if (len > FRAME_MAX_PAYLOAD) {
+      // Urimelig lengde: dette var en 0xC3 inne i en payload, ikke en ramme.
+      this->collecting_frame_ = false;
+      return;
+    }
+    this->frame_expected_ = FRAME_HEADER_LENGTH + len + 2;  // + CK1 CK2
+  }
+
+  if (this->frame_expected_ == 0 || this->frame_.size() < this->frame_expected_)
+    return;
+
+  this->collecting_frame_ = false;
+
+  const size_t data_end = this->frame_.size() - 2;
+  const auto [sum1, sum2] = checksum_(this->frame_.data() + FRAME_CHECKSUM_START, data_end - FRAME_CHECKSUM_START);
+  if (sum1 != this->frame_[data_end] || sum2 != this->frame_[data_end + 1]) {
+    // Forkastes stille: en 0xC3 inne i en payload treffer denne grenen ofte, og
+    // det er normalt — ikke en feil verdt å logge på hver forekomst.
+    return;
+  }
+
+  this->dispatch_frame_();
 }
 
-void FlexitSL4RComponent::on_status_sync_matched_(uint8_t sync_193, uint8_t sync_gap) {
-  this->status_sync_193_ = sync_193;
-  this->status_sync_gap_ = sync_gap;
-  this->capturing_status_ = true;
-  this->status_bytes_received_ = 0;
-}
+void FlexitSL4RComponent::dispatch_frame_() {
+  const uint8_t type = this->frame_[FRAME_CHECKSUM_START];
+  const uint8_t len = this->frame_[FRAME_LEN_OFFSET];
 
-void FlexitSL4RComponent::handle_status_payload_byte_(uint8_t byte) {
-  this->raw_status_[this->status_bytes_received_] = byte;
-  this->status_bytes_received_++;
-  if (this->status_bytes_received_ >= this->raw_status_.size()) {
-    this->capturing_status_ = false;
+  if (type == TYPE_STATUS && len == STATUS_DATA_LENGTH) {
+    // Fyll raw_status_ slik parse_and_publish_status_() forventer den.
+    // Sjekksumvinduet der ([TYPE, b6, LEN] + 22 databyte = 25) er nøyaktig det
+    // samme som rammens eget, så den valideringen blir en billig dobbeltsjekk.
+    this->status_sync_193_ = type;
+    this->status_sync_gap_ = this->frame_[6];
+    for (size_t i = 0; i < STATUS_DATA_LENGTH; i++)
+      this->raw_status_[i] = this->frame_[FRAME_HEADER_LENGTH + i];
+    this->raw_status_[22] = this->frame_[this->frame_.size() - 2];
+    this->raw_status_[23] = this->frame_[this->frame_.size() - 1];
     this->parse_and_publish_status_();
+    return;
   }
+
+  if (type == TYPE_FLOAT || type == TYPE_PARAM)
+    this->handle_float_frame_();
+}
+
+void FlexitSL4RComponent::handle_float_frame_() {
+#ifdef USE_SENSOR
+  // payload[0] = bank, payload[1] = registerindeks. Indeksen teller i REGISTRE
+  // (4-byte floats), ikke i byte — den stepper 0, 7, 14, 21 fordi hver ramme
+  // bærer sju floats. Se research/protocol-notes.md → «Flyttall-registre».
+  const uint8_t type = this->frame_[FRAME_CHECKSUM_START];
+  const uint8_t reg_base = this->frame_[FRAME_HEADER_LENGTH + 1];
+  const uint8_t *data = this->frame_.data() + FRAME_HEADER_LENGTH + 2;
+  const size_t data_len = this->frame_[FRAME_LEN_OFFSET] - 2;
+  const size_t slots = data_len / 4;
+
+  for (size_t slot = 0; slot < slots; slot++) {
+    float value;
+    memcpy(&value, data + slot * 4, 4);
+
+    if (type == TYPE_FLOAT) {
+      if (reg_base == 0 && slot == 1 && this->supply_air_temperature_sensor_ != nullptr)
+        this->supply_air_temperature_sensor_->publish_state(value);
+      if (reg_base == 7 && slot == 1 && this->heat_exchanger_setpoint_raw_sensor_ != nullptr)
+        this->heat_exchanger_setpoint_raw_sensor_->publish_state(value);
+    }
+
+    for (const auto &frs : this->float_register_sensors_) {
+      if (frs.type == type && frs.reg == reg_base && frs.slot == slot)
+        frs.sensor->publish_state(value);
+    }
+  }
+#endif
 }
 
 void FlexitSL4RComponent::parse_and_publish_status_() {
@@ -157,7 +214,36 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
       this->fan_level_select_->publish_state(std::to_string(running_level));
     }
 #endif
+#ifdef USE_SENSOR
+    if (this->fan_level_running_sensor_ != nullptr)
+      this->fan_level_running_sensor_->publish_state(running_level);
+    if (this->fan_level_return_sensor_ != nullptr)
+      this->fan_level_return_sensor_->publish_state(return_level);
+#endif
+#ifdef USE_BINARY_SENSOR
+    // Forsering = aggregatet kjører på et annet trinn enn det skal falle
+    // tilbake til. Presis indikator, gratis fra dataene vi allerede har.
+    if (this->boost_active_binary_sensor_ != nullptr)
+      this->boost_active_binary_sensor_->publish_state(running_level != return_level);
+#endif
   }
+
+#ifdef USE_SENSOR
+  // Viftepådrag i prosent for de to viftene (49 / 74 / 100 % ved trinn 1/2/3).
+  // Bekreftet ved at de følger HØY nibbel av payload[5], ikke verdi/17.
+  if (this->fan_duty_supply_sensor_ != nullptr)
+    this->fan_duty_supply_sensor_->publish_state(this->raw_status_[13]);
+  if (this->fan_duty_extract_sensor_ != nullptr)
+    this->fan_duty_extract_sensor_->publish_state(this->raw_status_[14]);
+
+  // Utforsknings-sensorer: la HAs recorder bygge historikk på felt vi ennå
+  // ikke forstår, så hypoteser kan prøves mot uker med data i stedet for et
+  // nytt uart-debug-opptak.
+  for (const auto &entry : this->raw_status_sensors_) {
+    if (entry.first < STATUS_DATA_LENGTH)
+      entry.second->publish_state(this->raw_status_[entry.first]);
+  }
+#endif
 
   bool preheat_on = this->last_raw_preheat_ == 128;
   if (raw_preheat == 128 || raw_preheat == 0) {
