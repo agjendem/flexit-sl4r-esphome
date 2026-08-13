@@ -1,5 +1,48 @@
 # TODO — kartlegging av protokollen
 
+## Hva vi kan forvente å finne på bussen
+
+Sammenstilt fra Flexits dokumentasjon for CS50/CI50, aggregattypen (SL4 R =
+roterende gjenvinner), og det vi faktisk har målt.
+
+### Bekreftet funnet
+
+| Størrelse | Hvor | Notat |
+|---|---|---|
+| Viftetrinn (kjørende + retur) | status `payload[5]`, to nibbler | `0x31` = forsering |
+| Viftepådrag i prosent | status `payload[13]` og `[14]` | 49 / 74 / 100 % |
+| Settpunkt varmeveksler | status `payload[9]` (byte) **og** `0xC2` reg 7 (float) | 15–25 °C, to uavhengige representasjoner |
+| **Tilluft-temperatur** | `0xC2` reg 0 slot 1 (float) | = Flexits **B1, «tilluftføler ettervarme»** |
+| To ledige følerinnganger | `0xC2` reg 0 slot 0 og 4 = `-55` | ikke tilkoblet |
+| Forseringskommando | egen ramme `20 14 31 23` | implementert som knapp |
+| Regulatorparametere/grenser | `0xC7` reg 0/7/14/21 | konstante over et døgn |
+
+### Dokumentert for CS50 — bør kunne finnes
+
+- **Rotorpådrag.** Flexit oppgir utgang **EB1 (rotor, 0–10 V)**, og at CS50
+  regulerer rotoren for å treffe ønsket temperatur i spennet 15–25 °C. Vårt
+  «settpunkt varmeveksler» ER altså rotorens reguleringssettpunkt. Da må det
+  finnes en pådragsverdi (0–100 % eller 0–10 V) et sted — **ikke funnet ennå**.
+  Beste jaktmetode: endre settpunktet på panelet i et kaldt/varmt øyeblikk der
+  rotoren faktisk må jobbe, og se hvilken verdi som beveger seg med.
+- **Rotorvakt.** CS50 har rotorvakt-funksjon → forvent et alarm-/statusbit.
+- **Ettervarme.** B1 er ettervarmens føler, så ettervarmens pådrag eller
+  av/på-tilstand bør ligge på bussen.
+- **Forvarme.** Koden vår antar `payload[6]` = 0/128, men feltet veksler 0/1 i
+  praksis. Må avklares ved å slå forvarme av og på.
+- **Filtervakt-timer og alarmflagg**, samt **overhetingstermostat-alarm**.
+
+### Antakelser som må korrigeres
+
+- **Antall vifter: to, ikke fire.** SL4 R er et aggregat med tilluftsvifte og
+  avtrekksvifte, og målingene støtter det — det er nøyaktig to
+  prosentverdier (`payload[13]` og `[14]`) som følger viftetrinnet.
+  Finnes det fire pådrag et sted, er de ikke sett ennå.
+- **Kun tilluft måles av CS50.** Avtrekk, avkast og uteluft finnes ikke på
+  bussen i vår konfigurasjon — brukerens fire Z-Wave-følere er altså ikke
+  overflødige, og virkningsgradregnestykket må fortsatt hvile på dem.
+
+
 Målet er å teste alle varianter som lar seg teste, og dokumentere så mye av
 CS50/CI50-protokollen som mulig. Utledningen ligger i
 [`research/protocol-notes.md`](research/protocol-notes.md); råopptakene i

@@ -7,6 +7,7 @@ rå strømmen fra CS50/CI50, ikke ferdig oppdelte rammer.
 | Fil | Innhold |
 |-----|---------|
 | `2026-08-13-panelsekvens.hex.gz` | ~140 kB buss-trafikk mens brukeren styrte panelet: ned til viftetrinn 1, hele settpunktspennet 17→25→15, deretter «Max vifte» (forsering). Inneholder både CS50s statustelegram og CI50s kommandotelegram. |
+| `2026-08-14-tilluftkorrelasjon.hex.gz` | ~40 kB fanget samtidig med avlesning av fire Z-Wave-følere i kanalene. Brukt til å identifisere `0xC2` reg 0 slot 1 som tilluft (B1, ettervarmeføler) og til å vise at avtrekk/avkast/uteluft IKKE finnes på bussen. |
 
 Grunnlaget for «Rammestruktur (målt)» og «Viftetrinn er to nibbler» i
 [`../protocol-notes.md`](../protocol-notes.md).

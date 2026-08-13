@@ -434,3 +434,50 @@ snart den er identifisert. At settpunktet finnes både som byte (status
 At `0xC2` reg 7 slot 1 fulgte settpunktet er samtidig **uavhengig bekreftelse på
 at hele bank/register-modellen er riktig** — vi forutså hvor verdien skulle
 ligge, og den lå der.
+
+## Temperaturfølere — identifisert ved korrelasjon (2026-08-14)
+
+Metode: ferskt bussopptak samtidig med avlesning av fire uavhengige Z-Wave-
+følere brukeren allerede har montert i kanalene (`sensor.friskluftanlegg_
+sensorer_air_temperature_*`). De gir en fasit å måle bussverdiene mot.
+
+| Referanse (HA) | Verdi |
+|---|---|
+| Tilluft | 19,06 °C |
+| Avtrekk | 24,43 °C |
+| Avkast | 22,43 °C |
+| Uteluft | 16,06 °C |
+
+Resultat:
+
+| Register | Verdi | Konklusjon |
+|---|---|---|
+| `0xC2` reg 0 slot 1 | 19,7–19,9 | **TILLUFT** — avvik +0,64 °C mot HA-føleren |
+| `0xC2` reg 0 slot 0 og 4 | `-55` | **føler ikke tilkoblet** (to ledige innganger) |
+| `0xC2` reg 0 slot 2, 3, 5, 6 | `0` | ubrukt |
+| `0xC2` reg 7 slot 1 | 15,0 | **settpunkt** — ikke en måling |
+
+**Bussen har kun ÉN tilkoblet temperaturføler: tilluft.** Det stemmer med at
+Flexit dokumenterer **B1 = «tilluftføler ettervarme»** på CS50 — føleren sitter
+ved ettervarmebatteriet og er den regulatoren styrer etter. Avvikene på +0,64 °C
+forklares naturlig av at B1 sitter rett ved batteriet, mens Z-Wave-proben sitter
+lenger ute i kanalen.
+
+De to `-55`-slottene er ledige følerinnganger på CS50-kortet. Avtrekk, avkast og
+uteluft finnes **ikke** på bussen — de måles ikke av CS50 i vår konfigurasjon,
+og brukerens Z-Wave-følere er derfor ikke overflødige.
+
+### Falske treff — advarsel
+
+En naiv «nærmeste verdi»-matching ga to feilkoblinger som er verdt å notere:
+`0xC2` reg 7 slot 1 = 15 lignet på uteluft (16,06), men er settpunktet — bevist
+ved at den fulgte brukerens sykling 15→25→15 eksakt dagen før. Og `0xC7` reg 7
+slot 6 = 25 lignet på avtrekk (24,43), men er øvre settpunktgrense.
+**Korrelér alltid mot en verdi som ENDRER seg, ikke mot et øyeblikksbilde.**
+
+### `0xC7` er parametere, ikke målinger
+
+Alle `0xC7`-verdier var identiske i to opptak et døgn fra hverandre:
+`0.01 ×4`, `0.3 ×6`, `2`, `1`, `30`, `25`, `-20`, `-30`, `0.1 ×2`.
+`15`/`25` og `-20`/`-30` ser ut som grenseverdier (settpunktspenn og
+frostgrenser), og `0.01`/`0.3` som regulatorparametere.
