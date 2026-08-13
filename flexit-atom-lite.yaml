@@ -114,6 +114,17 @@ switch:
     preheat:
       name: "Forvarme"
 
+# Forsering («Max vifte» — dusj/matlaging). Dette er den ENESTE sendefunksjonen
+# som er aktivert, fordi den er den eneste vi har fanget og verifisert komplett
+# fra bussen (2026-08-13). Aggregatet går til trinn 3 og faller selv tilbake
+# til forrige trinn når perioden er over — vi trenger derfor ingen «av»-kommando.
+button:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    boost:
+      name: "Forsering"
+      icon: "mdi:fan-plus"
+
 number:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub

@@ -61,6 +61,14 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void set_preheat(bool on);
   void set_heat_exchanger_setpoint(uint8_t celsius);  // 15..25
 
+  // Forsering («Max vifte» — dusj/matlaging). I motsetning til feltene over er
+  // dette IKKE en tilstandsskriving, men en engangs-kommando: en egen kort
+  // ramme som CI50 sender én gang ved knappetrykk. Fanget og sjekksum-
+  // verifisert på eget anlegg 2026-08-13, se research/protocol-notes.md
+  // → «Forseringskommandoen». Aggregatet går til trinn 3 og faller selv
+  // tilbake til forrige trinn når perioden er over.
+  void trigger_boost();
+
  protected:
   // --- Mottak: ikke-blokkerende synk + parsing av CS50s statustelegram ---
   void handle_incoming_byte_(uint8_t byte);
@@ -71,6 +79,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // --- Sending: ikke-blokkerende deteksjon av CI50s kommandovindu + injeksjon ---
   void handle_command_slot_byte_(uint8_t byte);
   void queue_command_(uint8_t field_offset, uint8_t value);
+  // Køer en komplett, ferdig ramme (uten sjekksum — den beregnes ved sending).
+  // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
+  void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum);
   void build_and_send_command_();
 
   static std::pair<uint8_t, uint8_t> checksum_(const uint8_t *data, size_t len);
@@ -100,6 +111,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint8_t pending_field_offset_{0};
   uint8_t pending_field_value_{0};
   std::vector<uint8_t> command_template_;
+  // Ferdig ramme som skal sendes i stedet for command_template-varianten.
+  // Tom = bruk den vanlige feltskrivingen.
+  std::vector<uint8_t> pending_raw_frame_;
 
   // CI50-kommandovindu-deteksjon (kun aktiv når command_pending_ er satt).
   enum class CmdSlotState : uint8_t {

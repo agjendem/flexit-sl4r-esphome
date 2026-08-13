@@ -363,3 +363,46 @@ byte-for-byte-ankomst, med `set_timeout()` i stedet for `delay()` for
 
    Uansett utfall er bussarbitreringen (sende i hullet etter CI50s eget
    telegram) viktigere for å unngå kollisjon enn adressen er.
+
+## Forseringskommandoen (MÅLT og verifisert 2026-08-13)
+
+Fanget da brukeren trykket «Max vifte» på CI50 mens bussen ble avlyttet.
+Komplett ramme, sjekksum verifisert i Python:
+
+```
+C3 04 00 C7 51 C1 04 04 20 14 31 23 51 B4
+^  ^--sig--^  ^t ^b6 ^len ^--data--^ ^ck^
+```
+
+Den er en **engangs-kommando**, ikke en tilstandsskriving: den forekom nøyaktig
+én gang i 4500 rammer, tolv rammer før statusen slo om fra `0x11` til `0x31`.
+Aggregatet faller selv tilbake til forrige trinn når perioden er over, så det
+finnes ingen «av»-kommando å sende — og vi fanget da heller ingen, siden
+opptaket sluttet mens forseringen fortsatt løp.
+
+Implementert som `button` («Forsering») via `trigger_boost()`, som går utenom
+`command_template`-modellen fordi rammen ikke har felt som må speiles fra
+gjeldende tilstand.
+
+## command_template ER VERIFISERT (2026-08-13)
+
+Panelet sender periodisk sin ønskede tilstand som en `C1`/`len=8`-ramme. Den
+har nøyaktig samme form som malen vi har hatt liggende ubekreftet:
+
+| | sig | type | b6 | len | data |
+|---|---|---|---|---|---|
+| Vongravens mal | `04 00 C7 51` | C1 | 04 | 08 | `20 0F 00 22 00 04 00 12` |
+| Målt hos oss | `04 00 C7 51` | C1 | 04 | 08 | `20 0F 02 11 00 04 00 12` |
+
+- `data[3]` = viftetrinn (samme nibbel-koding som status: `0x11`/`0x22`/`0x32`)
+- `data[7]` = settpunkt varmeveksler — observert telle `0F`…`19` (15–25 °C) i
+  takt med at brukeren syklet hele spennet på panelet
+- `data[2]` er det ENESTE avviket: `02` hos oss mot `00` hos Vongraven.
+  Betydning ukjent — sannsynligvis en modell-/konfigurasjonsforskjell.
+
+Full-ramme-indeksene i Vongravens notat stemmer dermed også: indeks 11 =
+viftetrinn (`8+3`), indeks 15 = settpunkt (`8+7`).
+
+**Gjenstår før tilstandsskriving aktiveres:** avklare `data[2]`, og teste at
+injeksjon ved siden av et levende CI50 ikke gir konflikt — panelet sender jo
+sin egen tilstand periodisk og vil kunne overskrive vår skriving igjen.

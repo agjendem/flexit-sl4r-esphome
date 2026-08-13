@@ -256,6 +256,22 @@ void FlexitSL4RComponent::set_fan_level(uint8_t level) {
 
 void FlexitSL4RComponent::set_preheat(bool on) { this->queue_command_(12, on ? 128 : 0); }
 
+void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_checksum) {
+  this->pending_raw_frame_ = std::move(frame_without_checksum);
+  this->command_pending_ = true;
+}
+
+void FlexitSL4RComponent::trigger_boost() {
+  // Nøyaktig den rammen CI50 sender ved trykk på «Max vifte», fanget fra
+  // bussen 2026-08-13 og sjekksum-verifisert:
+  //   C3 04 00 C7 51 C1 04 04 20 14 31 23 51 B4
+  // De to siste byte er sjekksummen og beregnes ved sending, så de er ikke
+  // med her. Rammen er en engangs-kommando uten felt som må speiles fra
+  // gjeldende tilstand — derfor går den utenom command_template.
+  ESP_LOGI(TAG, "Køer forseringskommando (Max vifte)");
+  this->queue_raw_frame_({0xC3, 0x04, 0x00, 0xC7, 0x51, 0xC1, 0x04, 0x04, 0x20, 0x14, 0x31, 0x23});
+}
+
 void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
   if (celsius < 15 || celsius > 25) {
     ESP_LOGW(TAG, "Ugyldig settpunkt %u (gyldig: 15-25)", celsius);
@@ -268,6 +284,27 @@ void FlexitSL4RComponent::build_and_send_command_() {
   if (!this->command_pending_)
     return;
   this->command_pending_ = false;
+
+  // Engangs-kommando (f.eks. forsering): send den ferdige rammen som den er,
+  // kun med sjekksum påført. Går utenom command_template-modellen, som antar
+  // en fast 18-byte tilstandsskriving med felt som må speiles.
+  if (!this->pending_raw_frame_.empty()) {
+    std::vector<uint8_t> frame = std::move(this->pending_raw_frame_);
+    this->pending_raw_frame_.clear();
+    const auto [rsum1, rsum2] = checksum_(frame.data() + 5, frame.size() - 5);
+    frame.push_back(rsum1);
+    frame.push_back(rsum2);
+
+    if (this->flow_control_pin_ != nullptr)
+      this->flow_control_pin_->digital_write(true);
+    this->write_array(frame.data(), frame.size());
+    this->flush();
+    if (this->flow_control_pin_ != nullptr)
+      this->flow_control_pin_->digital_write(false);
+
+    ESP_LOGD(TAG, "Sendte engangsramme (%u byte)", static_cast<unsigned>(frame.size()));
+    return;
+  }
 
   // Dobbel sikring: queue_command_ slipper ikke gjennom uten mal, men denne
   // copy_n leser 18 byte og MÅ aldri kjøre mot en tom vector.
