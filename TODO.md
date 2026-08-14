@@ -189,7 +189,8 @@ merket «ikke CS 50»:
 | Hvordan slås forsering av? | Sett viftetrinn |
 | Hva er `payload[4]`? | Alarmbitfelt — bit1 = filteralarm |
 | Hva er `payload[6]`? | Bitfelt — bit0 = varmer nå, bit7 = deaktivert (invertert) |
-| Hvordan slås ettervarme av/på? | Hold − og trykk + på panelet |
+| Hvordan slås ettervarme av/på? | `switch` i HA (verifisert), eller hold − og trykk + på panelet |
+| Hvorfor gir panelbevegelsen filterreset? | Samme knappekombinasjon; varigheten skiller. Vår bryter unngår det |
 | Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |
 | Er filteralarmen trykkbasert? | Nei — timer («filtertid»), trykkvakt er ikke CS 50 |
 | Holder det å trykke begge temp-knappene for filterreset? | Nei — alarmen kom tilbake. Temperaturen må først til 20 grader |

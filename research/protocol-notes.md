@@ -1499,12 +1499,22 @@ ettervarme-toggel.** Holder man lenge nok, fyrer begge — først resetten, så
 toggelen. Det stemmer med brukerens beskrivelse «filter reset blink +
 ettervarme».
 
-### Konsekvens: vår bryter er bedre enn panelet
+### Konsekvens: vår bryter er bedre enn panelet — VERIFISERT
 
-`switch` «Ettervarme» skriver `data[4]` bit7 direkte, uten å sette knappebitene
-(bit6). Den skal derfor ikke kunne utløse filterreset som bieffekt — i motsetning
-til panelbevegelsen. Utestet, men det følger av at knappebiten er den som
-utløser resetten.
+`switch` «Ettervarme» skriver `data[4]` bit7 direkte, uten å sette knappebiten
+(bit6). Testet begge veier 2026-08-15, med panelets «+»-lampe som fasit:
+
+| Handling | Lampe | Filteralarm | Alarmfelt-anomalier | Settpunkt / viftetrinn |
+|---|---|---|---|---|
+| Bryter → AV | mørk ✓ | uendret `off` | 0 | uendret |
+| Bryter → PÅ | lyser ✓ | uendret `off` | 0 | uendret |
+
+**Ingen filterreset som bieffekt**, i motsetning til panelbevegelsen — og ingen
+andre felt rørt. Det er samme funksjon som panelet tilbyr, uten sidevirkningen.
+
+Merk at entiteten i seg selv ikke er et bevis: den rapporterer vår egen latchede
+verdi, og panelet sender kun når det selv endrer noe. Panelets lampe var derfor
+den eneste uavhengige kilden, og den bekreftet begge overganger.
 
 ### Bekreftelse av felttolkningen
 
