@@ -31,7 +31,17 @@ static constexpr uint8_t STATUS_DATA_LENGTH = 22;   // databyte i statustelegram
 static constexpr uint8_t STATUS_RAW_LENGTH = 25;    // total byte lest etter synk-treff (data + 2 checksum + 1 ubrukt)
 static constexpr uint8_t COMMAND_LENGTH = 18;        // total lengde på kommandotelegrammet til CS50
 static constexpr uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
-static constexpr uint32_t COMMAND_INJECT_DELAY_MS = 10;
+// Hvor lenge bussen må ha vært HELT stille før vi tør sende.
+//
+// Første ekte sendeforsøk 2026-08-14 kolliderte: vi sendte 10 ms etter at en
+// ramme var ferdig validert, men CS50 hadde da allerede begynt på neste
+// telegram. «Rett etter en ramme» er altså ikke et hull. Vi venter derfor på
+// målt stillhet i stedet. 5 ms ≈ 10 tegntider ved 19200 baud, og observerte
+// opphold mellom telegrammer er 20–55 ms, så det er god margin.
+static constexpr uint32_t BUS_IDLE_BEFORE_TX_MS = 5;
+// Gi opp en køet kommando som aldri finner et hull, i stedet for å la den
+// ligge og vente i det uendelige.
+static constexpr uint32_t COMMAND_GIVE_UP_MS = 5000;
 
 // --- Generell rammestruktur (målt 2026-08-13, se research/protocol-notes.md) ---
 //   C3 b1 b2 b3 b4 TYPE b6 LEN [LEN databyte] CK1 CK2
@@ -140,6 +150,8 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint8_t status_sync_193_{0};
   uint8_t status_sync_gap_{0};
   uint32_t last_valid_telegram_ms_{0};
+  uint32_t last_rx_byte_ms_{0};    // for deteksjon av stille buss før sending
+  uint32_t command_queued_ms_{0};  // for å gi opp en kommando som aldri får plass
   bool communication_ok_{false};
   bool preheat_active_state_{false};  // stateful latch, se protocol-notes.md
 

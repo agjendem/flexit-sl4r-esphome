@@ -573,3 +573,54 @@ utenom parseren.
 **Lærdom:** å teste den tryggeste sendingen først var riktig. Feilen ville
 oppstått like fullt ved skriving av viftetrinn, men da med en varig
 tilstandsendring i spill i tillegg.
+
+## Kollisjonen, og beviset på at vi ikke driver bussen (2026-08-14)
+
+Etter at arbitreringen var fikset gikk rammen ut byte-perfekt:
+
+```
+>>> C3 04 00 C7 51 C1 04 04 20 14 31 23 51 B4
+```
+
+Identisk med CI50s egen forseringskommando, sjekksum og alt. **CS50 reagerte
+likevel ikke** — verken ved kollisjon eller ved ren sending i et hull.
+
+### Første forsøk avslørte hvorfor
+
+Vi sendte midt i et pågående CS50-telegram:
+
+```
+[02:10:51.959] <<< C3 01 00 C4 4B
+[02:10:51.981] >>> C3 04 00 C7 51 C1 04 04 20 14 31 23 51 B4
+[02:10:52.014] <<< C6 01 16 20 1C 64 0F ...
+```
+
+Setter man de to RX-bolkene sammen får man `C3 01 00 C4 4B C6 01 16 20 1C …`,
+altså en **uskadd ramme med gyldig sjekksum**. To sendere som driver samme
+differensialpar samtidig ødelegger begge signalene. At CS50s telegram kom
+gjennom uberørt beviser at **vår sender aldri nådde tråden**.
+
+Mottak er altså bevist (vi leser bussen), sending er ikke.
+
+### To kandidater
+
+1. **`tx_pin: GPIO26` er feil eller ikke tilkoblet.** `rx_pin: GPIO32` er
+   *bevist* riktig — vi mottar. TX-pinnen er kun antatt fra M5s pinout og aldri
+   verifisert mot maskinvaren.
+2. **Retningsstyringen slår ikke inn.** Konklusjonen om at Tail485 har
+   automatisk retningsstyring uten DE/RE-linje er utledet fra blokkdiagrammet,
+   ikke målt. Slår ikke DE inn, driver senderen aldri bussen.
+
+### Decisiv test
+
+Send en lang byte-burst mens bussen er travel. Blir CS50s telegrammer ødelagt
+(sjekksumfeil i loggen), driver vi bussen og problemet er protokoll/timing.
+Skjer det ingenting, er problemet fysisk — og da er TX-pinnen eller
+retningsstyringen synderen.
+
+### Sidefunn: ingen poll/svar-struktur
+
+Hypotesen om at CI50 kun svarer på poll fra CS50 er avvist: panelets 912 rammer
+følger etter alle mulige CS50-rammetyper (26 % `C6`/30, 20 % `C7`/30, resten
+spredt). Panelet sender fritt når bussen er ledig — så en injeksjon fra oss
+skal i prinsippet være like gyldig.

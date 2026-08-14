@@ -41,7 +41,22 @@ void FlexitSL4RComponent::loop() {
     const int data = this->read();
     if (data < 0)
       break;
+    this->last_rx_byte_ms_ = millis();
     this->handle_incoming_byte_(static_cast<uint8_t>(data));
+  }
+
+  // Sending skjer KUN når bussen har vært målt stille. Å sende «rett etter en
+  // ferdig ramme» kolliderte i praksis, fordi CS50 begynner på neste telegram
+  // før det (se research/protocol-notes.md → «Kollisjonen»).
+  if (this->command_pending_ && !this->collecting_frame_) {
+    const uint32_t now = millis();
+    if (now - this->last_rx_byte_ms_ >= BUS_IDLE_BEFORE_TX_MS) {
+      this->build_and_send_command_();
+    } else if (now - this->command_queued_ms_ > COMMAND_GIVE_UP_MS) {
+      ESP_LOGW(TAG, "Fant aldri et stille vindu på bussen - forkaster kommandoen");
+      this->command_pending_ = false;
+      this->pending_raw_frame_.clear();
+    }
   }
 
   const bool now_ok =
@@ -102,13 +117,6 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
   }
 
   this->dispatch_frame_();
-
-  // Et telegram er nettopp avsluttet — dette ER hullet mellom rammer, og
-  // dermed riktig øyeblikk å injisere i. Kort guard-forsinkelse først, jf.
-  // original-implementasjonens delay(10), men ikke-blokkerende.
-  if (this->command_pending_) {
-    this->set_timeout("flexit_sl4r_cmd", COMMAND_INJECT_DELAY_MS, [this]() { this->build_and_send_command_(); });
-  }
 }
 
 void FlexitSL4RComponent::dispatch_frame_() {
@@ -291,6 +299,7 @@ void FlexitSL4RComponent::queue_command_(uint8_t field_offset, uint8_t value) {
   this->pending_field_offset_ = field_offset;
   this->pending_field_value_ = value;
   this->command_pending_ = true;
+  this->command_queued_ms_ = millis();
 }
 
 void FlexitSL4RComponent::set_fan_level(uint8_t level) {
@@ -306,6 +315,7 @@ void FlexitSL4RComponent::set_preheat(bool on) { this->queue_command_(12, on ? 1
 void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_checksum) {
   this->pending_raw_frame_ = std::move(frame_without_checksum);
   this->command_pending_ = true;
+  this->command_queued_ms_ = millis();
 }
 
 void FlexitSL4RComponent::trigger_boost() {
