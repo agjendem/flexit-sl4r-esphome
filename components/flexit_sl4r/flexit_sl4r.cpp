@@ -25,6 +25,13 @@ void FlexitSL4RComponent::dump_boot_capture() {
 
 void FlexitSL4RComponent::setup() {
   this->boot_capture_.reserve(BOOT_CAPTURE_MAX);
+  // Publiser en definert starttilstand. Uten dette blir entiteten stående på
+  // `unknown` helt til verdien SKIFTER — og siden loop() kun publiserer ved
+  // endring, betyr det i praksis at en frisk node aldri rapporterer «OK».
+#ifdef USE_BINARY_SENSOR
+  if (this->communication_binary_sensor_ != nullptr)
+    this->communication_binary_sensor_->publish_state(false);
+#endif
   if (this->flow_control_pin_ != nullptr) {
     this->flow_control_pin_->setup();
     this->flow_control_pin_->digital_write(false);

@@ -59,6 +59,23 @@ roterende gjenvinner), og det vi faktisk har målt.
   overflødige, og virkningsgradregnestykket må fortsatt hvile på dem.
 
 
+## 0. ÅPNE SAKER etter at styring kom på plass (2026-08-14)
+
+- [ ] **«Kommunikasjon OK» blir stående `off`.** Etter at vi ble node 5 med
+      poll-svar rapporterer den ikke lenger `on`, selv om lesing og skriving
+      beviselig virker og ingen rammer forkastes. Mest sannsynlig kommer
+      statustelegrammet (`C1`/`len=22`) sjeldnere enn `COMMUNICATION_TIMEOUT_MS`
+      (5 s). Mål faktisk intervall og juster timeouten — eller la sensoren hvile
+      på «har mottatt en gyldig ramme av hvilken som helst type».
+      (Starttilstand er fikset: den publiserer nå `off` ved oppstart i stedet
+      for å bli hengende på `unknown`.)
+- [ ] **Forsering av** er løst underveis: å SETTE viftetrinn avbryter
+      forseringen (verifisert — `Forsering aktiv` gikk av, pådrag 100 → 49 %).
+      Vurder en egen «avbryt forsering»-knapp som bare skriver gjeldende trinn.
+- [ ] **Forvarme-skriving** er fortsatt ikke aktivert. Flagg-byten i
+      tilstandsrammen (`data[4]`) er den vi sender som `0x00`; panelet satte den
+      til `0x01` rett før forseringskommandoen. Betydningen er uavklart.
+
 ## 1. Sending — verifisere det vi allerede har bygget
 
 - [x] ~~**Test forseringsknappen ende-til-ende.**~~ Gjort 2026-08-14. Rammen går
