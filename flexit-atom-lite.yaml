@@ -131,6 +131,11 @@ switch:
     name: "Ettervarme"
     id: afterheat_switch
     icon: "mdi:radiator"
+    # KRITISK: uten dette gjenoppretter ESPHome bryteren ved hver oppstart og
+    # kaller turn_off_action — altså slår den av ettervarmen i aggregatet hver
+    # gang noden booter. Tilstanden leses fra bussen, så det er ingenting å
+    # gjenopprette.
+    restore_mode: DISABLED
     lambda: 'return id(flexit_sl4r_hub)->get_afterheat_enabled();'
     turn_on_action:
       - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(true);'
@@ -143,6 +148,7 @@ switch:
   - platform: template
     name: "Rå rammelogging"
     id: raw_logging
+    restore_mode: DISABLED
     entity_category: diagnostic
     icon: "mdi:text-box-search-outline"
     lambda: 'return id(flexit_sl4r_hub)->get_raw_logging();'
@@ -154,6 +160,7 @@ switch:
   - platform: template
     name: "TX-test (feilsøking)"
     id: tx_test
+    restore_mode: DISABLED
     optimistic: true
     entity_category: diagnostic
     icon: "mdi:test-tube"

@@ -81,8 +81,9 @@ static constexpr uint8_t AFTERHEAT_HEATING = 0x01;
 // Målt: feltet gikk 0x02 -> 0x00 da brukeren slo ettervarmen av fra panelet, og
 // kom ikke tilbake. Status-`[6]` bit7 ble først antatt å være enable-flagget —
 // det var FEIL; den verdien opptrer også når ettervarmen er aktivert.
-static constexpr uint8_t AFTERHEAT_ENABLED_VALUE = 0x02;
-static constexpr uint8_t AFTERHEAT_DISABLED_VALUE = 0x00;
+// `data[4]` bit7 i panelets ramme. Bit6 er en kortvarig knappebit.
+static constexpr uint8_t AFTERHEAT_ENABLED_BIT = 0x80;
+static constexpr uint8_t PANEL_BUTTON_BIT = 0x40;
 
 // --- payload[4]: alarmbitfelt (MÅLT 2026-08-14) ---
 // Gikk fra 2 til 0 i det brukeren nullstilte filteralarmen på panelet, og ble
@@ -97,7 +98,6 @@ static constexpr uint8_t ALARM_FILTER = 0x02;
 //   0xC0  — begge temperaturknappene samtidig (= filterreset-bevegelsen)
 // Normalt 0x00.
 static constexpr uint8_t BUTTON_NONE = 0x00;
-static constexpr uint8_t BUTTON_FILTER_RESET = 0xC0;
 // Manualens påkrevde settpunkt under filterreset.
 static constexpr uint8_t FILTER_RESET_SETPOINT = 20;
 
@@ -169,7 +169,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void reset_filter_timer();
   // Slår ettervarmen av eller på ved å skrive feltet panelet selv bruker.
   void set_afterheat_enabled(bool on);
-  bool get_afterheat_enabled() const { return this->afterheat_enabled_ == AFTERHEAT_ENABLED_VALUE; }
+  bool get_afterheat_enabled() const { return this->afterheat_enabled_; }
 
   // Dumper oppstartsfangsten til loggen. Nødvendig fordi de mest interessante
   // bytene — CS50s registrering av paneler — kommer i løpet av de første
@@ -283,7 +283,12 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint8_t last_raw_afterheat_{0};
   // Speiles fra panelets tilstandsramme, og sendes i våre egne skrivinger så vi
   // ikke overstyrer brukerens valg utilsiktet.
-  uint8_t afterheat_enabled_{AFTERHEAT_ENABLED_VALUE};
+  bool afterheat_enabled_{false};
+  // PRINSIPP: alt vi ikke forstår speiles fra panelets siste ramme, slik at en
+  // skriving kun endrer det vi FAKTISK mener å endre. Vi hardkodet felt vi
+  // trodde var konstante, og slo dermed av ettervarmen ved hver skriving.
+  std::array<uint8_t, 8> panel_state_{{0x20, 0x0F, 0x00, 0x11, 0x00, 0x04, 0x00, 0x12}};
+  bool have_panel_state_{false};
   uint8_t last_raw_heat_exchanger_temp_{20};
 
   // Kommandokø: kun én utestående kommando av gangen, nyeste vinner.

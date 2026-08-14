@@ -320,18 +320,18 @@ void FlexitSL4RComponent::dispatch_frame_() {
 }
 
 void FlexitSL4RComponent::handle_panel_frame_() {
-  const uint8_t enabled = this->frame_[FRAME_HEADER_LENGTH + 2];
-  if (enabled != AFTERHEAT_ENABLED_VALUE && enabled != AFTERHEAT_DISABLED_VALUE)
-    return;
-  this->afterheat_enabled_ = enabled;
-#ifdef USE_BINARY_SENSOR
-  if (this->afterheat_enabled_binary_sensor_ != nullptr)
-    this->afterheat_enabled_binary_sensor_->publish_state(enabled == AFTERHEAT_ENABLED_VALUE);
-#endif
+  // Speil HELE panelets tilstand. Da kan en skriving fra oss gjenbruke alle
+  // felt vi ikke forstår, og bare endre det vi mener å endre.
+  std::copy_n(this->frame_.begin() + FRAME_HEADER_LENGTH, 8, this->panel_state_.begin());
+  this->have_panel_state_ = true;
+
+  // data[4] bit7 = ettervarme aktivert. Bit6 er en kortvarig knappebit og
+  // skal ikke tolkes som tilstand.
+  this->afterheat_enabled_ = (this->panel_state_[4] & AFTERHEAT_ENABLED_BIT) != 0;
 }
 
 void FlexitSL4RComponent::set_afterheat_enabled(bool on) {
-  this->afterheat_enabled_ = on ? AFTERHEAT_ENABLED_VALUE : AFTERHEAT_DISABLED_VALUE;
+  this->afterheat_enabled_ = on;
   ESP_LOGI(TAG, "Skriver ettervarme %s", on ? "PÅ" : "AV");
   this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, this->last_raw_heat_exchanger_temp_);
 }
@@ -476,8 +476,11 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   // Ettervarmens av/på-tilstand kommer fra panelets ramme, som kun sendes ved
   // ENDRING — den kan altså være timer unna. Publiser den latchede verdien
   // her, på hvert statustelegram, så entiteten alltid er fersk.
-  if (this->afterheat_enabled_binary_sensor_ != nullptr)
-    this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_ == AFTERHEAT_ENABLED_VALUE);
+  // Publiser KUN når vi faktisk har sett en panelramme. Panelet sender bare ved
+  // endring, så etter en omstart vet vi ingenting om ettervarmens tilstand —
+  // og da er «unknown» riktigere enn å gjette «av».
+  if (this->afterheat_enabled_binary_sensor_ != nullptr && this->have_panel_state_)
+    this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_);
   if (this->filter_alarm_binary_sensor_ != nullptr)
     this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
 #endif
@@ -489,8 +492,16 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 void FlexitSL4RComponent::queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint) {
   // data[2] er ettervarme av/på. Den MÅ speiles, ikke hardkodes — ellers ville
   // hver settpunkt- eller viftetrinn-skriving slått ettervarmen på igjen.
-  const std::array<uint8_t, 11> body{0xC1, this->source_node_,      0x08, 0x20, 0x0F, this->afterheat_enabled_,
-                                     fan,  flag,                    0x04, 0x00, setpoint};
+  // Start fra panelets siste kjente tilstand, og overstyr KUN det vi vil endre.
+  // Alt annet speiles — det er den eneste trygge måten når flere felt fortsatt
+  // er uforstått.
+  std::array<uint8_t, 8> data = this->panel_state_;
+  data[3] = fan;
+  data[4] = static_cast<uint8_t>((this->afterheat_enabled_ ? AFTERHEAT_ENABLED_BIT : 0x00) | flag);
+  data[7] = setpoint;
+
+  const std::array<uint8_t, 11> body{0xC1,    this->source_node_, 0x08,    data[0], data[1], data[2],
+                                     data[3], data[4],            data[5], data[6], data[7]};
   this->queue_raw_frame_(std::vector<uint8_t>(body.begin(), body.end()));
 }
 
@@ -549,7 +560,7 @@ void FlexitSL4RComponent::reset_filter_timer() {
   //    midlertidig kvittert mens timeren fortsetter å telle.
   this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, FILTER_RESET_SETPOINT);
   // 2) Selve resetten: begge temperaturknappene, med settpunktet fortsatt på 20.
-  this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_FILTER_RESET, FILTER_RESET_SETPOINT);
+  this->queue_state_frame_(this->last_raw_fan_level_, PANEL_BUTTON_BIT, FILTER_RESET_SETPOINT);
   // 3) Tilbake til settpunktet brukeren faktisk hadde.
   this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, restore);
 }

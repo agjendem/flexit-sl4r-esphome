@@ -1430,3 +1430,51 @@ Bit0 (`0x01`) i status-`[6]` står fortsatt: elementet varmer nå.
 
 At `switch`-en faktisk endrer tilstanden i aggregatet. Verifiseres ved at
 panelets «+»-lampe følger med — den er fasiten.
+
+# RETTELSE 2: ettervarme-flagget, og en bryter som slo det av ved hver boot
+
+To feil, oppdaget 2026-08-15 fordi brukeren meldte at ettervarmen «ble slått av
+for cirka et minutt siden, uten at jeg vet hvorfor». Det minuttet var en deploy.
+
+## Feil 1: `data[2]` var et blindspor
+
+Jeg konkluderte først at panelets `data[2]` (`0x02`/`0x00`) var ettervarmens
+av/på-flagg, fordi det endret seg samtidig med brukerens av-bevegelse. Neste
+opptak avviste det: `data[2]` sto `0x00` gjennom hele forsøket, også etter at
+brukeren hadde **aktivert** ettervarmen igjen.
+
+**Riktig felt er `data[4]` bit7 (`0x80`).** Det stemmer med begge opptakene:
+
+| Opptak | Siste `data[4]` | Brukerens observasjon |
+|---|---|---|
+| 1 | `0x00` | «+»-lampa mørk |
+| 2 | `0x80` | «+»-lampa lyser |
+
+Bit6 (`0x40`) er en kortvarig knappebit, ikke tilstand. `0xC0` er altså
+«aktivert + knapp trykket», ikke en egen kommando.
+
+## Feil 2 (den alvorlige): vi skrev `data[4] = 0x00`
+
+Siden vi hardkodet flagg-byten til `0x00` i hver utgående tilstandsramme, slo
+**hver eneste settpunkt- eller viftetrinn-skriving ettervarmen av**. Det er
+nesten sikkert grunnen til at brukerens første aktiveringsforsøk «ikke
+registrerte seg» — vi slo den av igjen like etter.
+
+Og verre: template-bryteren for ettervarme hadde ESPHomes standard
+`restore_mode: RESTORE_DEFAULT_OFF`, som **kaller `turn_off_action` ved hver
+oppstart**. Hver OTA-deploy slo dermed av ettervarmen i aggregatet.
+Rettet med `restore_mode: DISABLED` — tilstanden leses fra bussen, så det finnes
+ingenting å gjenopprette.
+
+## Prinsippet som følger av dette
+
+**Speil alt du ikke forstår.** En skriving skal starte fra panelets sist kjente
+ramme og kun endre feltet man faktisk mener å endre. Vi hardkodet felt vi trodde
+var konstante, og endret dermed tilstand vi ikke visste at vi rørte.
+
+Implementert: `panel_state_` speiler hele panelets 8 databyte, og
+`queue_state_frame_()` bygger på den.
+
+Og: entiteten publiseres nå **kun når vi faktisk har sett en panelramme**.
+Panelet sender bare ved endring, så etter en omstart vet vi ingenting — da er
+`unknown` riktigere enn å gjette «av».
