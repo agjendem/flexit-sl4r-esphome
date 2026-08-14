@@ -69,6 +69,7 @@ bygges om fra bunnen.
 | Viftetrinn | `select` | 1–3. Å sette trinn avbryter en pågående forsering |
 | Settpunkt varmeveksler | `number` | 15–25 °C |
 | Forsering | `button` | «Max vifte» — aggregatet faller selv tilbake |
+| Ettervarme | `switch` | Skriver flagget direkte — utløser ikke filterreset, slik panelbevegelsen gjør |
 | Nullstill filtervakt | `button` | Kjører hele manualens prosedyre automatisk |
 
 **Måling**

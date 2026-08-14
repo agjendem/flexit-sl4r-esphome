@@ -125,11 +125,11 @@ merket «ikke CS 50»:
       komponenten er omdøpt (`afterheat_active`), gammel entitet ryddet bort av
       ESPHome selv. Navnet forvarme var arvet fra Vongraven og er feil for et
       rotoraggregat.
-- [x] ~~Bekreft ettervarme-hypotesen.~~ **BEKREFTET 2026-08-14** ved å slå
-      ettervarmen av og på fra panelet. `payload[6]` er et bitfelt:
-      bit0 = elementet varmer nå, bit7 = DEAKTIVERT (invertert!). To entiteter
-      nå, som svarer til panelets to lysdioder. Vongravens terskellogikk var
-      unødvendig og er fjernet.
+- [x] ~~Bekreft ettervarme-hypotesen.~~ **AVKLART 2026-08-15**, etter tre
+      feiltolkninger. `payload[6]` bit0 = elementet varmer nå. Av/på-flagget
+      ligger derimot i **panelets** ramme, `data[4]` bit7 — verifisert begge
+      veier mot panelets «+»-lampe. Styres fra `switch` «Ettervarme», som til
+      forskjell fra panelbevegelsen ikke utløser filterreset.
 - [ ] **Egen «avbryt forsering»-knapp.** Å sette gjeldende viftetrinn avbryter
       forseringen (verifisert: pådrag 100 → 49 %). En knapp som bare skriver
       dagens trinn ville gjort det åpenbart.
@@ -188,7 +188,8 @@ merket «ikke CS 50»:
 | Hvor mange vifter? | To, ikke fire |
 | Hvordan slås forsering av? | Sett viftetrinn |
 | Hva er `payload[4]`? | Alarmbitfelt — bit1 = filteralarm |
-| Hva er `payload[6]`? | Bitfelt — bit0 = varmer nå, bit7 = deaktivert (invertert) |
+| Hva er `payload[6]`? | bit0 = elementet varmer nå. Bit7 er IKKE enable-flagget |
+| Hvor ligger ettervarme av/på? | Panelets `data[4]` bit7 — ikke i statustelegrammet |
 | Hvordan slås ettervarme av/på? | `switch` i HA (verifisert), eller hold − og trykk + på panelet |
 | Hvorfor gir panelbevegelsen filterreset? | Samme knappekombinasjon; varigheten skiller. Vår bryter unngår det |
 | Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |

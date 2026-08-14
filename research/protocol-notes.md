@@ -33,6 +33,8 @@
 > | «command_template ER VERIFISERT» | **Utdatert.** Malen inkluderte pollen. Skriving skjer nå som poll-svar. |
 > | «Arbitreringsfeilen», «Kollisjonen …», «Driver vi bussen …» | **Historikk.** To av konklusjonene der var feil og ble tilbakevist; se «RETTELSE» og «GJENNOMBRUDD». |
 > | «Sendeforsøk — status per 2026-08-14» | **Utdatert.** Alle fire variantene feilet fordi de var uoppfordret. |
+> | «`payload[6]` er et BITFELT» | **Delvis utdatert.** Bit0 står; bit7 er IKKE enable-flagget — se «RETTELSE 2». |
+> | «RETTELSE: ettervarmens av/på ligger i PANELETS ramme» (`data[2]`) | **Tilbakevist** av «RETTELSE 2». Riktig felt er `data[4]` bit7. |
 >
 > Fortsatt gyldig: fysisk tilkobling, sjekksumalgoritmen, flyttall-registrene og
 > temperaturfølerens identitet. **Statustelegrammets feltkart er oppdatert** —
@@ -267,7 +269,7 @@ Indeksene under er inn i **databytene** (det koden kaller `raw_status_`).
 | 3 | `0x80` | konstant |
 | 4 | **Alarmbitfelt** — bit1 (`0x02`) = **filteralarm** | målt |
 | 5 | **Viftetrinn**, to nibler: høy = trinnet som kjører, lav = returtrinn. `0x31` = forsering | målt |
-| 6 | **Ettervarme**, bitfelt: bit0 (`0x01`) = elementet varmer nå, bit7 (`0x80`) = **deaktivert** | målt |
+| 6 | **Ettervarme**, bit0 (`0x01`) = elementet varmer nå. **Bit7 er IKKE enable-flagget** — det ligger i panelets `data[4]` bit7 | delvis |
 | 7 | `0x04` | konstant |
 | 8 | `0x00` | konstant |
 | 9 | **Settpunkt varmeveksler**, °C (15–25) | målt |
@@ -1259,6 +1261,10 @@ for å slå av; av-varianten krever at man først har trykket ned til minimum).
 
 ## `payload[6]` er et BITFELT — og vi hadde det baklengs
 
+> **DELVIS UTDATERT:** bit0 (elementet varmer nå) står. Konklusjonen om at
+> bit7 er enable-flagget ble senere **tilbakevist** — se «RETTELSE 2» nederst.
+> Av/på ligger i panelets `data[4]` bit7, ikke her.
+
 Panelet har to lysdioder for ettervarme, og feltet har to bit som svarer til dem:
 
 | Bit | Verdi | Betydning | Panelets lampe |
@@ -1280,7 +1286,8 @@ Sluttilstand bekreftet mot panelet: «+» lyser gult (aktivert), «°C» mørk (
 ikke) — og våre entiteter viser nøyaktig det.
 
 Det forklarer også observasjonen fra 13. august, der `[6]` vekslet `0/1` omtrent
-50/50: ettervarmen var aktivert (bit7 = 0) og elementet slo av og på (bit0).
+50/50: elementet slo av og på (bit0). At bit7 samtidig var 0 er irrelevant —
+det viste seg ikke å være enable-flagget.
 Terskellogikken vi arvet fra Vongraven — som leste `[10]`/`[11]` — var unødvendig
 og feil; begge de feltene står konstant `0` hos oss. Fjernet.
 
