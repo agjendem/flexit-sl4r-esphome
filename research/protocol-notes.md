@@ -672,3 +672,58 @@ er konklusjonen at **senderen aldri driver differensialparet**.
 Gjentakelse var altså riktig å implementere, men den kan ikke redde en sending
 som ikke når tråden. Neste steg er fysisk: verifiser at ATOM-ens TX faktisk når
 Tail485s TXD-inngang, og at DE/RE-automatikken i modulen fungerer.
+
+## Driver vi bussen i det hele tatt? — designet test (2026-08-14)
+
+### Først: en feilslutning som måtte korrigeres
+
+Jeg konkluderte tidligere at vi ikke driver bussen, fordi en «kollisjon» ikke
+skadet CS50s telegram. **Den slutningen var ugyldig.** `uart_debug` tømmer
+RX-bufferet når retningen skifter — den logger ventende mottak FØR den logger en
+sending. Bolken `C3 01 00 C4 4B` ble altså flushet *fordi* vi sendte, ikke fordi
+CS50 var midt i en ramme. Det var aldri dokumentert noen kollisjon; jeg leste et
+artefakt fra loggeren som fysikk.
+
+### Den designede testen
+
+Midlertidig bygg med `BUS_IDLE_BEFORE_TX_MS = 0` og `COMMAND_REPEATS = 30`:
+send 30 rammer uten å vente på stille buss, altså med vilje oppå kontinuerlig
+trafikk.
+
+| Mål | Resultat |
+|---|---|
+| Sendinger avfyrt | 29 |
+| Sjekksumfeil på mottatte rammer | **0** |
+| Kommunikasjonsbrudd | **0** |
+
+Hadde senderen vår drevet differensialparet, ville 29 blinde sendinger inn i
+kontinuerlig trafikk uunngåelig ødelagt rammer. Ingenting skjedde.
+
+**Konklusjon: senderen driver ikke bussen.** Mottak er bevist, sending er ikke —
+og nå med et forsøk som er designet for å svare på spørsmålet, ikke tolket i
+etterkant.
+
+### Pinout er bekreftet riktig
+
+M5s egen PinMap for Tail RS485 (SKU T002):
+
+| ATOM Lite | Tail485 |
+|---|---|
+| G26 | TX |
+| G32 | RX |
+| 5V | 5V |
+| GND | GND |
+
+`tx_pin: GPIO26` / `rx_pin: GPIO32` er altså korrekt konfigurert. Feilen ligger
+ikke i pinnevalget.
+
+### Hva står igjen
+
+Retningsstyringen. M5s dokumentasjon sier ingenting om DE/RE — verken at det er
+automatikk eller at det finnes en enable-pinne. Antakelsen om automatikk kom fra
+blokkdiagrammet i databladet, og den er aldri verifisert. Vongraven, som fikk
+sending til å virke, styrte retningen eksplisitt.
+
+Neste steg: mål A/B mot GND med multimeter under en sendeburst (30 gjentakelser
+gir god tid), eller sett oscilloskop på paret. Er det ingen bevegelse, driver
+ikke SP485-en, og da er det DE som ikke asserteres.
