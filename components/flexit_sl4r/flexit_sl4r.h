@@ -75,7 +75,14 @@ static constexpr float SENSOR_DISCONNECTED = -55.0f;
 // Vongraven tolket 128 som «på». Det er motsatt: verifisert ved å slå
 // ettervarmen av og på fra panelet mens bussen ble logget.
 static constexpr uint8_t AFTERHEAT_HEATING = 0x01;
-static constexpr uint8_t AFTERHEAT_DISABLED = 0x80;
+
+// --- Ettervarme AV/PÅ ligger i PANELETS tilstandsramme, ikke i statusen ---
+// `data[2]` i node 4-rammen (`20 0F ...`): 0x02 = aktivert, 0x00 = deaktivert.
+// Målt: feltet gikk 0x02 -> 0x00 da brukeren slo ettervarmen av fra panelet, og
+// kom ikke tilbake. Status-`[6]` bit7 ble først antatt å være enable-flagget —
+// det var FEIL; den verdien opptrer også når ettervarmen er aktivert.
+static constexpr uint8_t AFTERHEAT_ENABLED_VALUE = 0x02;
+static constexpr uint8_t AFTERHEAT_DISABLED_VALUE = 0x00;
 
 // --- payload[4]: alarmbitfelt (MÅLT 2026-08-14) ---
 // Gikk fra 2 til 0 i det brukeren nullstilte filteralarmen på panelet, og ble
@@ -160,6 +167,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // seg å kvittere alarmen midlertidig UTEN å restarte timeren — den kom
   // tilbake av seg selv. Se research/protocol-notes.md.
   void reset_filter_timer();
+  // Slår ettervarmen av eller på ved å skrive feltet panelet selv bruker.
+  void set_afterheat_enabled(bool on);
+  bool get_afterheat_enabled() const { return this->afterheat_enabled_ == AFTERHEAT_ENABLED_VALUE; }
 
   // Dumper oppstartsfangsten til loggen. Nødvendig fordi de mest interessante
   // bytene — CS50s registrering av paneler — kommer i løpet av de første
@@ -205,6 +215,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Køer en komplett, ferdig ramme (uten sjekksum — den beregnes ved sending).
   // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
   void queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint);
+  void handle_panel_frame_();
   void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats = 1);
   void send_queued_frame_();
 
@@ -270,6 +281,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // (se protocol-notes.md: usendte felt overskrives ellers utilsiktet).
   uint8_t last_raw_fan_level_{17};
   uint8_t last_raw_afterheat_{0};
+  // Speiles fra panelets tilstandsramme, og sendes i våre egne skrivinger så vi
+  // ikke overstyrer brukerens valg utilsiktet.
+  uint8_t afterheat_enabled_{AFTERHEAT_ENABLED_VALUE};
   uint8_t last_raw_heat_exchanger_temp_{20};
 
   // Kommandokø: kun én utestående kommando av gangen, nyeste vinner.

@@ -124,6 +124,19 @@ switch:
   # Se research/protocol-notes.md → «Multimetermåling av sendeveien».
   # Slå AV igjen etterpå — den forstyrrer bussen HVIS senderen faktisk virker,
   # og det er nettopp det vi prøver å finne ut.
+  # Ettervarme av/på — samme funksjon som «hold − og trykk +» på panelet.
+  # Tilstanden speiles fra panelets egen ramme, så bryteren viser det panelets
+  # «+»-lampe viser.
+  - platform: template
+    name: "Ettervarme"
+    id: afterheat_switch
+    icon: "mdi:radiator"
+    lambda: 'return id(flexit_sl4r_hub)->get_afterheat_enabled();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(true);'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(false);'
+
   # Rå logging av HVER validerte ramme. Skrus av/på i drift uten reflash —
   # det gamle `uart: debug:` krevde ny firmware hver gang. Bruk denne når du
   # skal fange en hendelse i sin helhet. Slå AV igjen etterpå; den er ordrik.

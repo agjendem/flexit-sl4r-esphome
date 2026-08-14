@@ -1381,3 +1381,52 @@ arbitrering mellom seg — ingen egen forsinkelseshåndtering nødvendig.
 
 **Ikke verifisert ennå:** at timeren faktisk restarter. Det kan bare bekreftes
 ved at alarmen holder seg borte over tid, i motsetning til forrige gang.
+
+# RETTELSE: ettervarmens av/på ligger i PANELETS ramme (2026-08-15)
+
+Brukeren observerte at entiteten «Ettervarme aktivert» sto `on` mens panelets
+«+»-lampe var **mørk**. Det avslørte at tolkningen var feil.
+
+## Hva som faktisk skjedde
+
+Ved å se på **panelets egne tilstandsrammer** (node 4, `C1`/`len=8`) gjennom
+ettervarme-forsøket, ikke bare CS50s statustelegram:
+
+```
+#2189  20 0F 02 11 00 04 00 11    data[2] = 0x02
+#2446  20 0F 02 11 C0 04 00 0F    <- brukerens AV-bevegelse
+#2461  20 0F 00 11 40 04 00 10    data[2] = 0x00   <- ENDRET
+#3467  20 0F 00 11 00 04 00 0F    data[2] = 0x00   <- kom aldri tilbake
+```
+
+**`data[2]` i panelets ramme er ettervarme av/på:** `0x02` = aktivert,
+`0x00` = deaktivert.
+
+To ting følger av det:
+
+1. **Brukerens PÅ-bevegelse registrerte seg aldri.** Feltet gikk til `0x00` og
+   ble værende. Panelet hadde altså rett hele tiden — ettervarmen var av.
+2. **Status-`[6]` bit7 er IKKE enable-flagget.** Den antakelsen ble tatt fordi
+   verdien `128` dukket opp omtrent samtidig med av-bevegelsen, men `[6] = 0`
+   opptrer i BÅDE aktivert og deaktivert tilstand. Korrelasjon, ikke årsak —
+   nøyaktig den fellen jeg advarte mot i metodenotatet.
+
+Bit0 (`0x01`) i status-`[6]` står fortsatt: elementet varmer nå.
+
+## Konsekvenser i koden
+
+- Ettervarmens tilstand leses nå fra panelrammen og latches.
+- **`data[2]` MÅ speiles i våre egne skrivinger.** Vi hardkodet `0x02`, altså
+  «aktivert» — hver settpunkt- eller viftetrinn-skriving ville dermed slått
+  ettervarmen på igjen bak brukerens rygg.
+- Lagt inn som `switch` **«Ettervarme»**, som skriver feltet direkte. Det er
+  enklere enn å emulere panelets knappebevegelse, og bevegelsen er uansett
+  tvetydig: samme kombinasjon brukes til filterreset.
+- Tilstanden publiseres på hvert statustelegram, ikke bare når panelet sender.
+  Panelet sender kun ved endring, så entiteten ville ellers stått `unknown` i
+  timevis etter en omstart.
+
+## Fortsatt utestet
+
+At `switch`-en faktisk endrer tilstanden i aggregatet. Verifiseres ved at
+panelets «+»-lampe følger med — den er fasiten.

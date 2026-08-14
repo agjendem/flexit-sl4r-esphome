@@ -307,8 +307,33 @@ void FlexitSL4RComponent::dispatch_frame_() {
     return;
   }
 
+  // Panelets egen tilstandsramme. Vi leste den ikke før — men ettervarmens
+  // av/på-tilstand finnes KUN her, ikke i statustelegrammet.
+  if (type == TYPE_STATUS && len == 8 && this->frame_.size() > FRAME_HEADER_LENGTH + 2 &&
+      this->frame_[FRAME_HEADER_LENGTH] == 0x20 && this->frame_[FRAME_HEADER_LENGTH + 1] == 0x0F) {
+    this->handle_panel_frame_();
+    return;
+  }
+
   if (type == TYPE_FLOAT || type == TYPE_PARAM)
     this->handle_float_frame_();
+}
+
+void FlexitSL4RComponent::handle_panel_frame_() {
+  const uint8_t enabled = this->frame_[FRAME_HEADER_LENGTH + 2];
+  if (enabled != AFTERHEAT_ENABLED_VALUE && enabled != AFTERHEAT_DISABLED_VALUE)
+    return;
+  this->afterheat_enabled_ = enabled;
+#ifdef USE_BINARY_SENSOR
+  if (this->afterheat_enabled_binary_sensor_ != nullptr)
+    this->afterheat_enabled_binary_sensor_->publish_state(enabled == AFTERHEAT_ENABLED_VALUE);
+#endif
+}
+
+void FlexitSL4RComponent::set_afterheat_enabled(bool on) {
+  this->afterheat_enabled_ = on ? AFTERHEAT_ENABLED_VALUE : AFTERHEAT_DISABLED_VALUE;
+  ESP_LOGI(TAG, "Skriver ettervarme %s", on ? "PÅ" : "AV");
+  this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, this->last_raw_heat_exchanger_temp_);
 }
 
 void FlexitSL4RComponent::handle_float_frame_() {
@@ -443,14 +468,16 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 
   // payload[6] er et bitfelt, ikke en av/på-verdi. Se AFTERHEAT_* i headeren.
   const bool afterheat_heating = (raw_afterheat & AFTERHEAT_HEATING) != 0;
-  const bool afterheat_enabled = (raw_afterheat & AFTERHEAT_DISABLED) == 0;
   this->last_raw_afterheat_ = raw_afterheat;
 
 #ifdef USE_BINARY_SENSOR
   if (this->afterheat_active_binary_sensor_ != nullptr)
     this->afterheat_active_binary_sensor_->publish_state(afterheat_heating);
+  // Ettervarmens av/på-tilstand kommer fra panelets ramme, som kun sendes ved
+  // ENDRING — den kan altså være timer unna. Publiser den latchede verdien
+  // her, på hvert statustelegram, så entiteten alltid er fersk.
   if (this->afterheat_enabled_binary_sensor_ != nullptr)
-    this->afterheat_enabled_binary_sensor_->publish_state(afterheat_enabled);
+    this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_ == AFTERHEAT_ENABLED_VALUE);
   if (this->filter_alarm_binary_sensor_ != nullptr)
     this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
 #endif
@@ -460,8 +487,10 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 // tilstand, og kun det ønskede endres — usendte felt ville ellers overskrevet
 // virkeligheten. Se research/protocol-notes.md → «Polled buss».
 void FlexitSL4RComponent::queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint) {
-  const std::array<uint8_t, 11> body{0xC1, this->source_node_, 0x08, 0x20,     0x0F, 0x02,
-                                     fan,  flag,               0x04, 0x00,     setpoint};
+  // data[2] er ettervarme av/på. Den MÅ speiles, ikke hardkodes — ellers ville
+  // hver settpunkt- eller viftetrinn-skriving slått ettervarmen på igjen.
+  const std::array<uint8_t, 11> body{0xC1, this->source_node_,      0x08, 0x20, 0x0F, this->afterheat_enabled_,
+                                     fan,  flag,                    0x04, 0x00, setpoint};
   this->queue_raw_frame_(std::vector<uint8_t>(body.begin(), body.end()));
 }
 
