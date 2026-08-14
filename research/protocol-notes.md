@@ -1084,3 +1084,22 @@ Målingen ble gjort for å teste en hypotese som viste seg å være feil: at
 Verdt å merke seg som metode: hypotesen var plausibel og ville ført til en
 «fiks» (heve timeouten) som skjulte den virkelige feilen. Målingen kostet lite
 og pekte rett på at forklaringen måtte ligge et annet sted.
+
+## Enumerering er et stille feilmodus (2026-08-14)
+
+CS50 enumererer noder **kun ved egen oppstart**: node 2, 3 og 5 pollast fem
+ganger hver, og den som ikke svarer droppes resten av driftsperioden.
+
+Konsekvensen er verdt å forstå: er noden vår nede når aggregatet starter — eller
+blir den flashet/frakoblet i et vindu der aggregatet restarter — er vi ute av
+pollerunden. Og siden **all skriving skjer som poll-svar**, feiler den da
+*stille*. Entitetene ser normale ut, kommandoer kvitteres i HA, og ingenting
+skjer.
+
+Eksponert som `binary_sensor` **«Enumerert på bussen»** (`enumerated:`), som er
+`on` så lenge vi har blitt pollet innen `ENUMERATION_TIMEOUT_MS` (30 s;
+observert pollintervall til oss er ~0,2 s). Går den av, logges det også som
+advarsel. Eneste kjente vei tilbake er å strømsykle aggregatet.
+
+Noden overlever sine egne omstarter fint — verifisert med 91 poll-svar rett
+etter en OTA-reboot — fordi CS50 fortsetter å polle en node som først har svart.

@@ -16,6 +16,7 @@ DEPENDENCIES = ["flexit_sl4r"]
 CONF_PREHEAT_ACTIVE = "preheat_active"
 CONF_COMMUNICATION = "communication"
 CONF_BOOST_ACTIVE = "boost_active"
+CONF_ENUMERATED = "enumerated"
 
 CONFIG_SCHEMA = {
     cv.GenerateID(CONF_ID): cv.declare_id(cg.EntityBase),
@@ -32,6 +33,11 @@ CONFIG_SCHEMA = {
     cv.Optional(CONF_BOOST_ACTIVE): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_RUNNING, icon="mdi:fan-plus"
     ),
+    # Uten denne feiler skriving STILLE hvis vi er droppet fra pollerunden.
+    cv.Optional(CONF_ENUMERATED): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_CONNECTIVITY,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 }
 
 
@@ -46,3 +52,6 @@ async def to_code(config):
     if boost_active_config := config.get(CONF_BOOST_ACTIVE):
         sens = await binary_sensor.new_binary_sensor(boost_active_config)
         cg.add(flexit_sl4r_component.set_boost_active_binary_sensor(sens))
+    if enumerated_config := config.get(CONF_ENUMERATED):
+        sens = await binary_sensor.new_binary_sensor(enumerated_config)
+        cg.add(flexit_sl4r_component.set_enumerated_binary_sensor(sens))

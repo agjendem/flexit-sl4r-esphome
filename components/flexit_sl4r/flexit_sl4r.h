@@ -41,6 +41,9 @@ static constexpr uint32_t BUS_IDLE_BEFORE_TX_MS = 5;
 // Gi opp en køet kommando som aldri finner et hull, i stedet for å la den
 // ligge og vente i det uendelige.
 static constexpr uint32_t COMMAND_GIVE_UP_MS = 5000;
+// Hvor lenge vi kan være upollet før vi regner oss som droppet fra bussen.
+// Observert pollintervall til oss er ~0,2 s, så 30 s er svært romslig.
+static constexpr uint32_t ENUMERATION_TIMEOUT_MS = 30000;
 // Hvor mange ganger hver kommando sendes, hver gang i sitt eget stille vindu.
 //
 // Vongravens original gjør nøyaktig dette: `do { ... } while (repeats<5)`.
@@ -81,6 +84,11 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_BINARY_SENSOR(preheat_active)
   SUB_BINARY_SENSOR(communication)
   SUB_BINARY_SENSOR(boost_active)
+  // Blir vi faktisk pollet? Enumereringen skjer KUN når CS50 starter opp. Er
+  // noden vår nede da, droppes vi — og siden skriving skjer som poll-svar,
+  // feiler den da STILLE. Uten dette signalet ser alt normalt ut mens ingen
+  // kommandoer kommer fram.
+  SUB_BINARY_SENSOR(enumerated)
 #endif
 #ifdef USE_SENSOR
   SUB_SENSOR(supply_air_temperature)       // 0xC2 reg 0 slot 1 — Flexits B1
@@ -233,6 +241,8 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   }
   uint8_t source_node_{4};
   bool respond_to_polls_{false};
+  uint32_t last_poll_to_us_ms_{0};
+  bool enumerated_{false};
   std::array<uint8_t, 5> poll_window_{};
   void send_poll_response_();
 

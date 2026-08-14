@@ -31,6 +31,8 @@ void FlexitSL4RComponent::setup() {
 #ifdef USE_BINARY_SENSOR
   if (this->communication_binary_sensor_ != nullptr)
     this->communication_binary_sensor_->publish_state(false);
+  if (this->enumerated_binary_sensor_ != nullptr)
+    this->enumerated_binary_sensor_->publish_state(false);
 #endif
   if (this->flow_control_pin_ != nullptr) {
     this->flow_control_pin_->setup();
@@ -89,6 +91,22 @@ void FlexitSL4RComponent::loop() {
     }
   }
 
+  // Er vi fortsatt i CS50s pollerunde? Faller dette bort, feiler all skriving
+  // stille — da må aggregatet strømsykles for å re-enumerere oss.
+  if (this->respond_to_polls_) {
+    const bool enumerated =
+        this->last_poll_to_us_ms_ != 0 && (millis() - this->last_poll_to_us_ms_) < ENUMERATION_TIMEOUT_MS;
+    if (enumerated != this->enumerated_) {
+      this->enumerated_ = enumerated;
+#ifdef USE_BINARY_SENSOR
+      if (this->enumerated_binary_sensor_ != nullptr)
+        this->enumerated_binary_sensor_->publish_state(enumerated);
+#endif
+      if (!enumerated)
+        ESP_LOGW(TAG, "Ikke lenger pollet av CS50 - skriving vil feile stille til aggregatet restartes");
+    }
+  }
+
   const bool now_ok =
       this->last_valid_frame_ms_ != 0 && (millis() - this->last_valid_frame_ms_) < COMMUNICATION_TIMEOUT_MS;
   if (now_ok != this->communication_ok_) {
@@ -142,6 +160,7 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
     if (std::equal(hdr.begin(), hdr.end(), this->poll_window_.begin())) {
       this->poll_window_.fill(0);
       this->collecting_frame_ = false;
+      this->last_poll_to_us_ms_ = millis();
       this->send_poll_response_();
       return;
     }

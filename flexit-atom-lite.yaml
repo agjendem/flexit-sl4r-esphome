@@ -244,3 +244,8 @@ binary_sensor:
       name: "Flexit-kommunikasjon OK"
     boost_active:
       name: "Forsering aktiv"
+    # Blir vi fortsatt pollet av CS50? Enumereringen skjer KUN ved aggregatets
+    # oppstart. Er noden nede da, droppes vi — og skriving feiler STILLE.
+    # Går denne av, må aggregatet strømsykles for å slippe oss inn igjen.
+    enumerated:
+      name: "Enumerert på bussen"

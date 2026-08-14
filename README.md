@@ -23,6 +23,11 @@ strømforsyning: se
   Å sette viftetrinn avbryter samtidig en pågående forsering.
 - **Ikke aktivert:** forvarme. Flagg-byten i tilstandsrammen er uavklart, og vi
   gjetter ikke på et felt som kan utløse noe annet enn det står på.
+- **Driftsdiagnostikk:** `Enumerert på bussen` viser om CS50 fortsatt poller
+  oss. Går den av, feiler skriving *stille* — enumereringen skjer kun ved
+  aggregatets oppstart, så da må aggregatet strømsykles. `Kommunikasjon OK`
+  dekker mottakssiden, og `Statusintervall` viser hvor ofte statustelegrammet
+  kommer (~0,7–1,2 s).
 
 Noden er koblet på CI50-panelets ledige 4P4C-kontakt og matet fra bussens egne
 11,8 V.
