@@ -1232,3 +1232,60 @@ funksjonene som gjelder CS 50. OT-en er altså en alarmkilde på bussen — og d
 er **sikkerhetsrelevant**: løser den ut, er ettervarmen overopphetet og må
 resettes manuelt inne i aggregatet. Et varsel på den i HA er verdt mer enn de
 fleste andre feltene vi jakter på.
+
+# Ettervarme og filteralarm dekodet (2026-08-14)
+
+Brukeren slo ettervarmen av og på fra CI 50-panelet mens bussen ble logget — og
+nullstilte samtidig filteralarmen ved et uhell, siden knappekombinasjonene
+ligner. Det ga to funn i ett opptak.
+
+Prosedyre fra CI 50-manualen: **hold inne − og trykk samtidig +** (3 sekunder
+for å slå av; av-varianten krever at man først har trykket ned til minimum).
+
+## `payload[6]` er et BITFELT — og vi hadde det baklengs
+
+Panelet har to lysdioder for ettervarme, og feltet har to bit som svarer til dem:
+
+| Bit | Verdi | Betydning | Panelets lampe |
+|---|---|---|---|
+| 0 | `0x01` | elementet **varmer nå** | «°C» (gul) |
+| 7 | `0x80` | ettervarme **DEAKTIVERT** | «+» (grønn) — slukket |
+
+**Merk inverteringen:** `0x80` betyr *deaktivert*, ikke «på». Vongravens notat
+sa «0=av, 128=på», som er motsatt. Verifisert direkte:
+
+| Melding | `[4]` | `[6]` | Hendelse |
+|---|---|---|---|
+| 5 | 2 | 0 | utgangspunkt, ettervarme aktivert, filteralarm lyser |
+| 2404 | 2 | **128** | bruker slo ettervarme **AV** |
+| 2459 | **0** | 128 | filteralarm nullstilt |
+| 3350 | 0 | **0** | bruker slo ettervarme **PÅ** igjen |
+
+Sluttilstand bekreftet mot panelet: «+» lyser gult (aktivert), «°C» mørk (varmer
+ikke) — og våre entiteter viser nøyaktig det.
+
+Det forklarer også observasjonen fra 13. august, der `[6]` vekslet `0/1` omtrent
+50/50: ettervarmen var aktivert (bit7 = 0) og elementet slo av og på (bit0).
+Terskellogikken vi arvet fra Vongraven — som leste `[10]`/`[11]` — var unødvendig
+og feil; begge de feltene står konstant `0` hos oss. Fjernet.
+
+## `payload[4]` er filteralarmen
+
+Gikk fra `2` til `0` i det brukeren nullstilte alarmen, og ble værende `0`.
+
+Det forklarer retroaktivt hvorfor vår `[4]` sto konstant på `2` mens Vongravens
+eksempel hadde `0`: **hans filteralarm var ikke aktiv, vår var det.** En
+uforklart konstant viste seg å være et alarmflagg.
+
+Feltet er trolig et bitfelt for flere alarmer. Bit 1 (`0x02`) er filter;
+**rotoralarm** og **overhetingstermostat** er de nærliggende kandidatene for de
+øvrige bitene — begge er dokumentert som CS 50-overvåkingsfunksjoner.
+
+Filteralarmen er tidsbasert («filtertid»), siden CS 50 ikke har trykkvakter.
+
+## Sidefunn: 20-graders-forutsetningen håndheves ikke
+
+CI 50-manualen sier at filterreset krever at temperaturen først stilles til 20
+grader. Brukeren nullstilte den utilsiktet fra 15 grader. Forutsetningen ser
+altså ikke ut til å være implementert i fastvaren — verdt å vite, siden det gjør
+det lett å nullstille filtertimeren ved et uhell.

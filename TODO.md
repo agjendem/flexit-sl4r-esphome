@@ -38,7 +38,7 @@ hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 Korrelér mot noe som endrer seg — utetemperatur, viftetrinn, tid på døgnet.
 Bekreftet fra før: `[5]` viftetrinn, `[9]` settpunkt, `[13]`/`[14]` viftepådrag.
 
-### 2. Filteralarmen — kommer på TID, ikke ved filterbytte
+### 2. ~~Filteralarmen~~ — LØST 2026-08-14
 
 Klart størst praktisk nytte som gjenstår: et **filtervarsel i HA**.
 
@@ -46,10 +46,15 @@ Flexits CS 50-manual avklarer mekanismen: trykkvaktene («Filtervakt tilluft/
 avtrekk») er merket **ikke CS 50**. Vårt anlegg bruker **filtertid** — en timer.
 Alarmen fyrer altså av seg selv når tiden er ute, uten at noe fysisk skjer.
 
-- [ ] **Vent på at alarmen kommer**, og se hvilken statusbyte som endrer seg.
-      Kandidater: `[2]` (`0/36/72/144`) og `[4]`. Feltene ligger allerede
-      eksponert som diagnostikk, så recorderen fanger overgangen automatisk —
-      du trenger ikke gjøre noe.
+- [x] ~~Finn alarmbyten.~~ **`payload[4]` bit 1.** Fanget da brukeren
+      nullstilte alarmen ved et uhell under ettervarme-forsøket: `2` → `0`.
+      Eksponert som `binary_sensor` **«Filteralarm»**.
+      Retroaktiv forklaring: `[4]` sto konstant `2` hos oss og `0` hos
+      Vongraven — hans filteralarm var bare ikke aktiv.
+- [ ] **Kartlegg de øvrige bitene i `[4]`.** Trolig et alarmbitfelt.
+      **Rotoralarm** og **overhetingstermostat** er de nærliggende kandidatene,
+      og begge er dokumenterte CS 50-overvåkingsfunksjoner. Overhetingsalarmen
+      er sikkerhetsrelevant.
 - [ ] Fang **reset-kommandoen** når filteret faktisk byttes: still temperaturen
       til 20 grader og trykk begge temperaturknappene samtidig (CI 50-manualen).
       **Ikke nullstill uten at filteret byttes** — timeren starter på nytt.
@@ -114,11 +119,11 @@ merket «ikke CS 50»:
       komponenten er omdøpt (`afterheat_active`), gammel entitet ryddet bort av
       ESPHome selv. Navnet forvarme var arvet fra Vongraven og er feil for et
       rotoraggregat.
-- [ ] **Bekreft ettervarme-hypotesen mot historikk.** `payload[6]` (veksler
-      `0/1`) bør korrelere med stigende tilluftstemperatur og med utetemp.
-      **NB:** terskellogikken for «aktiv» er arvet fra Vongraven og leser
-      `[10]`/`[11]`, som står konstant `0` hos oss — så selve latchen er trolig
-      også feil, selv om av/på-feltet er riktig.
+- [x] ~~Bekreft ettervarme-hypotesen.~~ **BEKREFTET 2026-08-14** ved å slå
+      ettervarmen av og på fra panelet. `payload[6]` er et bitfelt:
+      bit0 = elementet varmer nå, bit7 = DEAKTIVERT (invertert!). To entiteter
+      nå, som svarer til panelets to lysdioder. Vongravens terskellogikk var
+      unødvendig og er fjernet.
 - [ ] **Egen «avbryt forsering»-knapp.** Å sette gjeldende viftetrinn avbryter
       forseringen (verifisert: pådrag 100 → 49 %). En knapp som bare skriver
       dagens trinn ville gjort det åpenbart.
@@ -176,6 +181,9 @@ merket «ikke CS 50»:
 | Hvilken temperaturføler er på bussen? | Kun tilluft (Flexits B1, ettervarmeføler) |
 | Hvor mange vifter? | To, ikke fire |
 | Hvordan slås forsering av? | Sett viftetrinn |
+| Hva er `payload[4]`? | Alarmbitfelt — bit1 = filteralarm |
+| Hva er `payload[6]`? | Bitfelt — bit0 = varmer nå, bit7 = deaktivert (invertert) |
+| Hvordan slås ettervarme av/på? | Hold − og trykk + på panelet |
 | Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |
 | Er filteralarmen trykkbasert? | Nei — timer («filtertid»), trykkvakt er ikke CS 50 |
 | Finnes rotorpådrag i det hele tatt? | Ja — J5 pin 11,12 (0–10 V), ikke merket «ikke CS 50» |

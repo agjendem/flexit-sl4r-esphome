@@ -14,6 +14,8 @@ from . import CONF_FLEXIT_SL4R_ID, FlexitSL4RComponent
 DEPENDENCIES = ["flexit_sl4r"]
 
 CONF_AFTERHEAT_ACTIVE = "afterheat_active"
+CONF_AFTERHEAT_ENABLED = "afterheat_enabled"
+CONF_FILTER_ALARM = "filter_alarm"
 CONF_COMMUNICATION = "communication"
 CONF_BOOST_ACTIVE = "boost_active"
 CONF_ENUMERATED = "enumerated"
@@ -34,6 +36,13 @@ CONFIG_SCHEMA = {
         device_class=DEVICE_CLASS_RUNNING, icon="mdi:fan-plus"
     ),
     # Uten denne feiler skriving STILLE hvis vi er droppet fra pollerunden.
+    cv.Optional(CONF_AFTERHEAT_ENABLED): binary_sensor.binary_sensor_schema(
+        icon="mdi:radiator", entity_category=ENTITY_CATEGORY_DIAGNOSTIC
+    ),
+    # Filtertid utlopt. CS 50 har ingen trykkvakt - alarmen er tidsbasert.
+    cv.Optional(CONF_FILTER_ALARM): binary_sensor.binary_sensor_schema(
+        device_class="problem", icon="mdi:air-filter"
+    ),
     cv.Optional(CONF_ENUMERATED): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_CONNECTIVITY,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -52,6 +61,12 @@ async def to_code(config):
     if boost_active_config := config.get(CONF_BOOST_ACTIVE):
         sens = await binary_sensor.new_binary_sensor(boost_active_config)
         cg.add(flexit_sl4r_component.set_boost_active_binary_sensor(sens))
+    if afterheat_enabled_config := config.get(CONF_AFTERHEAT_ENABLED):
+        sens = await binary_sensor.new_binary_sensor(afterheat_enabled_config)
+        cg.add(flexit_sl4r_component.set_afterheat_enabled_binary_sensor(sens))
+    if filter_alarm_config := config.get(CONF_FILTER_ALARM):
+        sens = await binary_sensor.new_binary_sensor(filter_alarm_config)
+        cg.add(flexit_sl4r_component.set_filter_alarm_binary_sensor(sens))
     if enumerated_config := config.get(CONF_ENUMERATED):
         sens = await binary_sensor.new_binary_sensor(enumerated_config)
         cg.add(flexit_sl4r_component.set_enumerated_binary_sensor(sens))

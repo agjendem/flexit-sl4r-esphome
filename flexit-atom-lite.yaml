@@ -239,8 +239,17 @@ binary_sensor:
     # Ettervarme = el-batteriet som varmer tillufta opp til settpunktet.
     # Het tidligere «Forvarme», som var arvet fra Vongraven og feil: forvarme
     # er en plateveksler-funksjon og finnes ikke på et rotoraggregat.
+    # payload[6] bit0 — elementet varmer akkurat nå (panelets «°C»-lampe)
     afterheat_active:
       name: "Ettervarme aktiv"
+    # payload[6] bit7 invertert — aktivert av bruker (panelets «+»-lampe).
+    # Slås av/på ved å holde inne − og trykke + på panelet.
+    afterheat_enabled:
+      name: "Ettervarme aktivert"
+    # payload[4] bit1 — filtertiden er utløpt. CS 50 har ingen trykkvakt;
+    # alarmen er tidsbasert og nullstilles på panelet.
+    filter_alarm:
+      name: "Filteralarm"
     communication:
       name: "Flexit-kommunikasjon OK"
     boost_active:

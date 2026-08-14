@@ -305,8 +305,6 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   const uint8_t raw_fan_level = this->raw_status_[5];
   const uint8_t raw_afterheat = this->raw_status_[6];
   const uint8_t raw_heat_exchanger_temp = this->raw_status_[9];
-  const uint8_t raw_afterheat_threshold_1 = this->raw_status_[10];
-  const uint8_t raw_afterheat_threshold_2 = this->raw_status_[11];
 
   // Viftetrinn er TO NIBBLER, ikke ett tall (målt 2026-08-13, se
   // research/protocol-notes.md → «Viftetrinn er to nibbler»):
@@ -358,41 +356,18 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   }
 #endif
 
-  bool afterheat_on = this->last_raw_afterheat_ == 128;
-  if (raw_afterheat == 128 || raw_afterheat == 0) {
-    this->last_raw_afterheat_ = raw_afterheat;
-    afterheat_on = raw_afterheat == 128;
-  }
+  // payload[6] er et bitfelt, ikke en av/på-verdi. Se AFTERHEAT_* i headeren.
+  const bool afterheat_heating = (raw_afterheat & AFTERHEAT_HEATING) != 0;
+  const bool afterheat_enabled = (raw_afterheat & AFTERHEAT_DISABLED) == 0;
+  this->last_raw_afterheat_ = raw_afterheat;
 
-  if (raw_heat_exchanger_temp > 14 && raw_heat_exchanger_temp < 26) {
-    this->last_raw_heat_exchanger_temp_ = raw_heat_exchanger_temp;
-#ifdef USE_NUMBER
-    if (this->heat_exchanger_setpoint_number_ != nullptr) {
-      this->heat_exchanger_setpoint_number_->publish_state(raw_heat_exchanger_temp);
-    }
-#endif
-  }
-
-  // Ettervarme-aktiv er en tilstandslås (ikke en ren funksjon av gjeldende
-  // telegram): aktiveres når threshold1 > 10, forblir aktiv til threshold2 < 100.
-  //
-  // NB: terskellogikken er arvet fra Vongraven og er IKKE verifisert mot vårt
-  // anlegg — feltene den leser (`[10]`/`[11]`) står konstant 0 hos oss. Selve
-  // av/på-feltet `[6]` veksler derimot jevnt, hvilket passer med et
-  // termostatstyrt el-batteri. Se protocol-notes.md.
-  if (afterheat_on) {
-    if (!this->afterheat_active_state_ && raw_afterheat_threshold_1 > 10) {
-      this->afterheat_active_state_ = true;
-    } else if (this->afterheat_active_state_ && raw_afterheat_threshold_2 < 100) {
-      this->afterheat_active_state_ = false;
-    }
-  } else {
-    this->afterheat_active_state_ = false;
-  }
 #ifdef USE_BINARY_SENSOR
-  if (this->afterheat_active_binary_sensor_ != nullptr) {
-    this->afterheat_active_binary_sensor_->publish_state(this->afterheat_active_state_);
-  }
+  if (this->afterheat_active_binary_sensor_ != nullptr)
+    this->afterheat_active_binary_sensor_->publish_state(afterheat_heating);
+  if (this->afterheat_enabled_binary_sensor_ != nullptr)
+    this->afterheat_enabled_binary_sensor_->publish_state(afterheat_enabled);
+  if (this->filter_alarm_binary_sensor_ != nullptr)
+    this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
 #endif
 }
 

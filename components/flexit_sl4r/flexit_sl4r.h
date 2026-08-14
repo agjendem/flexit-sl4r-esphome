@@ -67,6 +67,22 @@ static constexpr uint8_t TYPE_PARAM = 0xC7;    // IEEE754 float-parametere/grens
 // Verdi CS50 rapporterer for en følerinngang som ikke er tilkoblet.
 static constexpr float SENSOR_DISCONNECTED = -55.0f;
 
+// --- payload[6]: ettervarme, bitfelt (MÅLT 2026-08-14) ---
+// Panelet har to lysdioder for ettervarme, og feltet har to bit som svarer til
+// dem: «°C» = elementet varmer nå, «+» = ettervarme aktivert av bruker.
+//   bit0 (0x01) = elementet varmer NÅ
+//   bit7 (0x80) = ettervarme DEAKTIVERT  (merk: invertert!)
+// Vongraven tolket 128 som «på». Det er motsatt: verifisert ved å slå
+// ettervarmen av og på fra panelet mens bussen ble logget.
+static constexpr uint8_t AFTERHEAT_HEATING = 0x01;
+static constexpr uint8_t AFTERHEAT_DISABLED = 0x80;
+
+// --- payload[4]: alarmbitfelt (MÅLT 2026-08-14) ---
+// Gikk fra 2 til 0 i det brukeren nullstilte filteralarmen på panelet, og ble
+// værende 0. Andre bit er ikke observert — rotoralarm og overhetingstermostat
+// er sannsynlige kandidater.
+static constexpr uint8_t ALARM_FILTER = 0x02;
+
 class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
 #ifdef USE_SELECT
   SUB_SELECT(fan_level)
@@ -75,7 +91,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_NUMBER(heat_exchanger_setpoint)
 #endif
 #ifdef USE_BINARY_SENSOR
-  SUB_BINARY_SENSOR(afterheat_active)
+  SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — elementet varmer NÅ
+  SUB_BINARY_SENSOR(afterheat_enabled)   // payload[6] bit7 invertert — aktivert av bruker
+  SUB_BINARY_SENSOR(filter_alarm)        // payload[4] bit1 — filtertid utløpt
   SUB_BINARY_SENSOR(communication)
   SUB_BINARY_SENSOR(boost_active)
   // Blir vi faktisk pollet? Enumereringen skjer KUN når CS50 starter opp. Er
@@ -193,7 +211,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   static constexpr size_t BOOT_CAPTURE_MAX = 6144;
   std::vector<uint8_t> boot_capture_;
   bool communication_ok_{false};
-  bool afterheat_active_state_{false};  // tilstandslås, se protocol-notes.md
 
   // Sist kjente rå verdier fra CS50 — MÅ speiles inn i utgående kommandoer
   // (se protocol-notes.md: usendte felt overskrives ellers utilsiktet).
