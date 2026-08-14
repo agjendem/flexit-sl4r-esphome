@@ -52,7 +52,7 @@ void FlexitSL4RComponent::dump_config() {
   LOG_NUMBER("  ", "Settpunkt varmeveksler", this->heat_exchanger_setpoint_number_);
 #endif
 #ifdef USE_BINARY_SENSOR
-  LOG_BINARY_SENSOR("  ", "Forvarme aktiv", this->preheat_active_binary_sensor_);
+  LOG_BINARY_SENSOR("  ", "Forvarme aktiv", this->afterheat_active_binary_sensor_);
   LOG_BINARY_SENSOR("  ", "Kommunikasjon OK", this->communication_binary_sensor_);
 #endif
 }
@@ -303,10 +303,10 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   this->last_valid_telegram_ms_ = now_ms;
 
   const uint8_t raw_fan_level = this->raw_status_[5];
-  const uint8_t raw_preheat = this->raw_status_[6];
+  const uint8_t raw_afterheat = this->raw_status_[6];
   const uint8_t raw_heat_exchanger_temp = this->raw_status_[9];
-  const uint8_t raw_preheat_threshold_1 = this->raw_status_[10];
-  const uint8_t raw_preheat_threshold_2 = this->raw_status_[11];
+  const uint8_t raw_afterheat_threshold_1 = this->raw_status_[10];
+  const uint8_t raw_afterheat_threshold_2 = this->raw_status_[11];
 
   // Viftetrinn er TO NIBBLER, ikke ett tall (målt 2026-08-13, se
   // research/protocol-notes.md → «Viftetrinn er to nibbler»):
@@ -358,10 +358,10 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   }
 #endif
 
-  bool preheat_on = this->last_raw_preheat_ == 128;
-  if (raw_preheat == 128 || raw_preheat == 0) {
-    this->last_raw_preheat_ = raw_preheat;
-    preheat_on = raw_preheat == 128;
+  bool afterheat_on = this->last_raw_afterheat_ == 128;
+  if (raw_afterheat == 128 || raw_afterheat == 0) {
+    this->last_raw_afterheat_ = raw_afterheat;
+    afterheat_on = raw_afterheat == 128;
   }
 
   if (raw_heat_exchanger_temp > 14 && raw_heat_exchanger_temp < 26) {
@@ -373,20 +373,25 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 #endif
   }
 
-  // Forvarme-aktiv er en tilstandslås (ikke en ren funksjon av gjeldende telegram):
-  // aktiveres når threshold1 > 10, forblir aktiv til threshold2 < 100. Se protocol-notes.md.
-  if (preheat_on) {
-    if (!this->preheat_active_state_ && raw_preheat_threshold_1 > 10) {
-      this->preheat_active_state_ = true;
-    } else if (this->preheat_active_state_ && raw_preheat_threshold_2 < 100) {
-      this->preheat_active_state_ = false;
+  // Ettervarme-aktiv er en tilstandslås (ikke en ren funksjon av gjeldende
+  // telegram): aktiveres når threshold1 > 10, forblir aktiv til threshold2 < 100.
+  //
+  // NB: terskellogikken er arvet fra Vongraven og er IKKE verifisert mot vårt
+  // anlegg — feltene den leser (`[10]`/`[11]`) står konstant 0 hos oss. Selve
+  // av/på-feltet `[6]` veksler derimot jevnt, hvilket passer med et
+  // termostatstyrt el-batteri. Se protocol-notes.md.
+  if (afterheat_on) {
+    if (!this->afterheat_active_state_ && raw_afterheat_threshold_1 > 10) {
+      this->afterheat_active_state_ = true;
+    } else if (this->afterheat_active_state_ && raw_afterheat_threshold_2 < 100) {
+      this->afterheat_active_state_ = false;
     }
   } else {
-    this->preheat_active_state_ = false;
+    this->afterheat_active_state_ = false;
   }
 #ifdef USE_BINARY_SENSOR
-  if (this->preheat_active_binary_sensor_ != nullptr) {
-    this->preheat_active_binary_sensor_->publish_state(this->preheat_active_state_);
+  if (this->afterheat_active_binary_sensor_ != nullptr) {
+    this->afterheat_active_binary_sensor_->publish_state(this->afterheat_active_state_);
   }
 #endif
 }

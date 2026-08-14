@@ -80,11 +80,15 @@ et rotoraggregat som SL4 R kan en forvarme-bryter aldri virke. Den er derfor
 ikke med. Har du plateveksler, er dette et punkt som må implementeres — se
 [`TODO.md`](TODO.md).
 
-**Automatisk gjenkjenning er innen rekkevidde.** CS 50 vet selv hva den er
-utstyrt med; panelmenyen `Test → Informasjon → System` viser
-`Gjenvinner: Rotor/plate`, `Varme: Elbat/vannbat` og `Avfrosting: Forvarme/Bypass`
-— altså de tre mikrobryterne på kortet. Ligger de bitene på bussen, kan
-integrasjonen konfigurere seg selv. Å finne dem er et åpent punkt.
+**Automatisk gjenkjenning er trolig mulig.** CS 50 vet selv hva den er utstyrt
+med — det settes med tre mikrobrytere på kortet (veksler rotor/plate, varme
+el/vann, avfrosting forvarme/bypass). Ligger de bitene på bussen, kan
+integrasjonen konfigurere seg selv.
+
+Merk at menyen som viser dette (`Test → Informasjon → System`) hører til
+**CI 500**, ikke CI 50. Et CI 50-panel har bare lysdioder og knapper, så på et
+SL4R-anlegg finnes ingen enkel fasit å lese av — bitene må eventuelt finnes ved
+å sammenligne anlegg med ulik utrustning. Åpent punkt, se [`TODO.md`](TODO.md).
 
 ## Repo-struktur
 

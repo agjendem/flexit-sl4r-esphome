@@ -91,8 +91,10 @@ merket «ikke CS 50»:
       konfigurere seg selv i stedet for at hver bruker må vite hva de har.
       Gode kandidater blant de konstante statusbytene: `[4]` (`02` hos oss),
       `[2]`, og de vi ikke har sett variere.
-      Metode: sammenlign med en annen SL4R/CS 50 med annen utrustning — eller
-      les menyen på panelet og se hvilke byte som stemmer med den.
+      **NB:** menyen som viser dette (`Test → Informasjon → System`) hører til
+      **CI 500**. Et CI 50-panel har bare lysdioder og knapper — ingen fasit å
+      lese av. Metoden må derfor være å sammenligne med et annet SL4R/CS 50 med
+      annen utrustning, eller å utlede det fra hvilke felt som er konstante.
 - [x] ~~Følere for tilvalg som ikke er montert forvirrer brukeren.~~ **LØST:**
       `-55` oversettes til `NAN` → `unavailable` i HA. Entiteten skjuler seg
       selv, og dukker opp hvis føleren monteres senere.
@@ -108,12 +110,15 @@ merket «ikke CS 50»:
       avfrosting er enten «Forvarme/Bypass». SL4 R har **roterende** veksler, så
       avfrosting skjer med bypass. En bryter som ikke kan gjøre noe er verre enn
       ingen bryter.
-- [ ] **Døp om «Forvarme aktiv» til «Ettervarme aktiv»** — men NB, det endrer
-      entity_id og kan brekke dashbord/automasjoner, så gjør det bevisst.
-      **Hypotese med god støtte:** `payload[6]` (veksler `0/1` ~50/50) er
-      ettervarmens el-batteri som slår av og på mot settpunktet, ikke forvarme.
-      Vårt B1 heter jo nettopp «tilluftføler ettervarme». Testbart mot
-      recorder-historikk: bør korrelere med stigende tilluft og med utetemp.
+- [x] ~~Døp om «Forvarme aktiv» til «Ettervarme aktiv».~~ **GJORT.** Hele
+      komponenten er omdøpt (`afterheat_active`), gammel entitet ryddet bort av
+      ESPHome selv. Navnet forvarme var arvet fra Vongraven og er feil for et
+      rotoraggregat.
+- [ ] **Bekreft ettervarme-hypotesen mot historikk.** `payload[6]` (veksler
+      `0/1`) bør korrelere med stigende tilluftstemperatur og med utetemp.
+      **NB:** terskellogikken for «aktiv» er arvet fra Vongraven og leser
+      `[10]`/`[11]`, som står konstant `0` hos oss — så selve latchen er trolig
+      også feil, selv om av/på-feltet er riktig.
 - [ ] **Egen «avbryt forsering»-knapp.** Å sette gjeldende viftetrinn avbryter
       forseringen (verifisert: pådrag 100 → 49 %). En knapp som bare skriver
       dagens trinn ville gjort det åpenbart.

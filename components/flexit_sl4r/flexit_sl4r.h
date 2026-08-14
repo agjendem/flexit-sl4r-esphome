@@ -75,7 +75,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_NUMBER(heat_exchanger_setpoint)
 #endif
 #ifdef USE_BINARY_SENSOR
-  SUB_BINARY_SENSOR(preheat_active)
+  SUB_BINARY_SENSOR(afterheat_active)
   SUB_BINARY_SENSOR(communication)
   SUB_BINARY_SENSOR(boost_active)
   // Blir vi faktisk pollet? Enumereringen skjer KUN når CS50 starter opp. Er
@@ -193,12 +193,12 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   static constexpr size_t BOOT_CAPTURE_MAX = 6144;
   std::vector<uint8_t> boot_capture_;
   bool communication_ok_{false};
-  bool preheat_active_state_{false};  // stateful latch, se protocol-notes.md
+  bool afterheat_active_state_{false};  // tilstandslås, se protocol-notes.md
 
   // Sist kjente rå verdier fra CS50 — MÅ speiles inn i utgående kommandoer
   // (se protocol-notes.md: usendte felt overskrives ellers utilsiktet).
   uint8_t last_raw_fan_level_{17};
-  uint8_t last_raw_preheat_{0};
+  uint8_t last_raw_afterheat_{0};
   uint8_t last_raw_heat_exchanger_temp_{20};
 
   // Kommandokø: kun én utestående kommando av gangen, nyeste vinner.

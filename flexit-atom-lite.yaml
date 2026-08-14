@@ -214,7 +214,7 @@ sensor:
       - index: 4
         name: "Rå status[4]"
       - index: 6
-        name: "Rå status[6] (forvarme?)"
+        name: "Rå status[6] (ettervarme?)"
       - index: 10
         name: "Rå status[10]"
       - index: 11
@@ -236,8 +236,11 @@ sensor:
 binary_sensor:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
-    preheat_active:
-      name: "Forvarme aktiv"
+    # Ettervarme = el-batteriet som varmer tillufta opp til settpunktet.
+    # Het tidligere «Forvarme», som var arvet fra Vongraven og feil: forvarme
+    # er en plateveksler-funksjon og finnes ikke på et rotoraggregat.
+    afterheat_active:
+      name: "Ettervarme aktiv"
     communication:
       name: "Flexit-kommunikasjon OK"
     boost_active:
