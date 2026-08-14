@@ -1324,3 +1324,43 @@ må prosedyren følges fullt ut — temperatur til 20 grader først.
 
 **Metodepoeng:** dette er første gang anomalifangsten fanget en ekte hendelse på
 egen hånd, og den ga full ramme med tidsstempel uten at noen satt og lyttet.
+
+## `data[4]` er knappehendelser — og filterreset er dekodet (2026-08-14)
+
+Feltet vi lenge førte som «uavklart, ikke skriv dit» viser seg å rapportere
+**hvilke panelknapper som er trykket**. To verdier er observert:
+
+| Verdi | Betydning | Hvor observert |
+|---|---|---|
+| `0x01` | forseringsknappen | fem rammer før forseringskommandoen |
+| `0xC0` | begge temperaturknappene samtidig | rammen rett før filteralarmen forsvant |
+| `0x00` | ingen knapp | normalt |
+
+Reset-rammen, funnet i opptaket fra ettervarme-forsøket:
+
+```
+#2446   20 0F 02 11 C0 04 00 0F      <- data[4] = 0xC0
+#2459                                 <- alarmfeltet [4] gikk 2 -> 0
+```
+
+Bare én byte skiller den fra en helt vanlig tilstandsramme. Det forklarer
+samtidig hvorfor advarselen mot å skrive til feltet var berettiget: å sende
+`0x01` eller `0xC0` i en tilstandsramme utløser en panelhandling.
+
+### Implementert som knapp: «Nullstill filtervakt»
+
+Hele prosedyren fra CI 50-manualen kjøres automatisk, som tre poll-svar:
+
+1. settpunkt → **20 grader**, `data[4] = 0x00`
+2. samme settpunkt, `data[4] = 0xC0` — selve resetten
+3. settpunkt → **tilbake til det brukeren hadde**, `data[4] = 0x00`
+
+20-graders-steget er ikke pynt: da brukeren nullstilte fra 15 grader ble
+alarmen bare midlertidig kvittert, og kom tilbake av seg selv fordi timeren
+aldri ble restartet. Sekvensen her følger manualen fullt ut.
+
+Køen sender ett svar per poll, så de tre rammene går ut i rekkefølge med ekte
+arbitrering mellom seg — ingen egen forsinkelseshåndtering nødvendig.
+
+**Ikke verifisert ennå:** at timeren faktisk restarter. Det kan bare bekreftes
+ved at alarmen holder seg borte over tid, i motsetning til forrige gang.

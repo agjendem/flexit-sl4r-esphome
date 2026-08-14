@@ -17,3 +17,9 @@ namespace esphome::flexit_sl4r {
 void DumpAnomaliesButton::press_action() { this->parent_->dump_anomalies(); }
 
 }  // namespace esphome::flexit_sl4r
+
+namespace esphome::flexit_sl4r {
+
+void ResetFilterButton::press_action() { this->parent_->reset_filter_timer(); }
+
+}  // namespace esphome::flexit_sl4r

@@ -50,9 +50,15 @@ Mekanismen er tidsbasert («filtertid»); CS 50 har ingen trykkvakter.
       **Rotoralarm** og **overhetingstermostat** er de nærliggende kandidatene,
       og begge er dokumenterte CS 50-overvåkingsfunksjoner. Overhetingsalarmen
       er sikkerhetsrelevant.
-- [ ] Fang **reset-kommandoen** når filteret faktisk byttes: still temperaturen
-      til 20 grader og trykk begge temperaturknappene samtidig (CI 50-manualen).
-      **Ikke nullstill uten at filteret byttes** — timeren starter på nytt.
+- [x] ~~Fang reset-kommandoen.~~ **GJORT** — den lå allerede i opptaket fra
+      ettervarme-forsøket: `data[4] = 0xC0` i en ellers vanlig tilstandsramme.
+      Feltet rapporterer knappehendelser (`0x01` = forsering, `0xC0` = begge
+      temperaturknapper). Implementert som knappen **«Nullstill filtervakt»**,
+      som kjører hele manualens prosedyre automatisk: settpunkt til 20, reset,
+      og tilbake til opprinnelig settpunkt.
+- [ ] **Verifiser at timeren faktisk restarter.** Kan bare bekreftes ved at
+      alarmen holder seg borte over tid — forrige gang (uten 20-graders-steget)
+      kom den tilbake av seg selv. Trykk knappen når filteret faktisk byttes.
 - [ ] Sjekk om **filtertiden/tidstelleren** også ligger på bussen. Da kunne HA
       vist «dager til filterbytte» i stedet for bare en alarm.
 

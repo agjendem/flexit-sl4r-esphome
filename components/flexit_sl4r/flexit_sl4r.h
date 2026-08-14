@@ -83,6 +83,17 @@ static constexpr uint8_t AFTERHEAT_DISABLED = 0x80;
 // er sannsynlige kandidater.
 static constexpr uint8_t ALARM_FILTER = 0x02;
 
+// --- data[4] i tilstandsrammen: knappehendelser (MÅLT 2026-08-14) ---
+// Feltet vi lenge førte som «uavklart». Det ser ut til å rapportere hvilke
+// panelknapper som er trykket:
+//   0x01  — forseringsknappen (sett rett før en forseringskommando)
+//   0xC0  — begge temperaturknappene samtidig (= filterreset-bevegelsen)
+// Normalt 0x00.
+static constexpr uint8_t BUTTON_NONE = 0x00;
+static constexpr uint8_t BUTTON_FILTER_RESET = 0xC0;
+// Manualens påkrevde settpunkt under filterreset.
+static constexpr uint8_t FILTER_RESET_SETPOINT = 20;
+
 class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
 #ifdef USE_SELECT
   SUB_SELECT(fan_level)
@@ -142,6 +153,13 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // → «Forseringskommandoen». Aggregatet går til trinn 3 og faller selv
   // tilbake til forrige trinn når perioden er over.
   void trigger_boost();
+
+  // Nullstiller filtervakttimeren, med hele prosedyren fra CI 50-manualen:
+  // settpunkt til 20 grader, så reset-flagget, så tilbake til opprinnelig
+  // settpunkt. Manualen krever 20-graders-steget, og en reset uten det viste
+  // seg å kvittere alarmen midlertidig UTEN å restarte timeren — den kom
+  // tilbake av seg selv. Se research/protocol-notes.md.
+  void reset_filter_timer();
 
   // Dumper oppstartsfangsten til loggen. Nødvendig fordi de mest interessante
   // bytene — CS50s registrering av paneler — kommer i løpet av de første

@@ -509,6 +509,22 @@ void FlexitSL4RComponent::send_queued_frame_() {
     this->tx_queue_.erase(this->tx_queue_.begin());
 }
 
+void FlexitSL4RComponent::reset_filter_timer() {
+  // Hele sekvensen fra CI 50-manualen, i tre poll-svar. Køen sender ett svar
+  // per poll, så rammene går ut i rekkefølge med ekte arbitrering mellom seg.
+  const uint8_t restore = this->last_raw_heat_exchanger_temp_;
+  ESP_LOGW(TAG, "NULLSTILLER FILTERVAKTTIMEREN (settpunkt %u -> 20 -> %u)", static_cast<unsigned>(restore),
+           static_cast<unsigned>(restore));
+
+  // 1) Til 20 grader — manualen krever det, og uten steget blir alarmen bare
+  //    midlertidig kvittert mens timeren fortsetter å telle.
+  this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, FILTER_RESET_SETPOINT);
+  // 2) Selve resetten: begge temperaturknappene, med settpunktet fortsatt på 20.
+  this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_FILTER_RESET, FILTER_RESET_SETPOINT);
+  // 3) Tilbake til settpunktet brukeren faktisk hadde.
+  this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, restore);
+}
+
 void FlexitSL4RComponent::trigger_boost() {
   // Nøyaktig den rammen CI50 sender ved trykk på «Max vifte», fanget fra
   // bussen 2026-08-13 og sjekksum-verifisert:

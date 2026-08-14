@@ -178,6 +178,14 @@ button:
     # Skriver ut de siste 40 uventede hendelsene med full ramme. Trykk denne
     # etter at noe har skjedd — en alarm, en uforklarlig endring — og lim
     # loggen inn i en GitHub-issue.
+    # Nullstiller filtervakttimeren med hele prosedyren automatisk: settpunkt
+    # til 20 grader, reset-flagget, og deretter tilbake til settpunktet du
+    # hadde. Manualens 20-graders-steg er nødvendig — uten det blir alarmen
+    # bare midlertidig kvittert mens timeren fortsetter å telle.
+    # BRUK KUN NÅR FILTERET FAKTISK ER BYTTET.
+    reset_filter:
+      name: "Nullstill filtervakt"
+      icon: "mdi:air-filter"
     dump_anomalies:
       name: "Dump anomalier"
       icon: "mdi:bug-outline"
