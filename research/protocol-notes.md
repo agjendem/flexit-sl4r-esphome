@@ -1198,3 +1198,37 @@ Klemmelista viser at CS 50 har **både** reléutganger for hastighet 1/2/3 per
 vifte (J2) **og** analoge 0–10 V styresignaler (J6 pin 1,3 og 7,9). Det stemmer
 med at statustelegrammet både har et trinn-felt (`payload[5]`) og to
 prosentverdier (`payload[13]`/`[14]`).
+
+## Ettervarmesettet: to termostater, ingen ekstra måleføler (2026-08-14)
+
+Vårt aggregat har ettermontert elektrisk ettervarmeelement. Flexits
+monteringsveiledning for settet (**94283-01**) snakker om «følere» i flertall,
+noe som reiste spørsmålet om det egentlig er én eller to temperaturfølere på
+bussen.
+
+**Svaret er én.** Settet monterer to *termostater*:
+
+| Komponent | Type | Tilkobling |
+|---|---|---|
+| **OT** — overhetningstermostat («uten rød knapp»), manuell reset | digital bryter | `J5 (Pin 5,8)` «Termostat man. reset el.batteri» |
+| **BT** — branntermostat, montert ved å fjerne en lask | digital bryter i serie | sikkerhetssløyfe |
+
+«Følerne» som skal plasseres «inn mellom elementsprinklene» er
+**følerelementene (kapillærrørene) til disse to termostatene**, ikke NTC-er. De
+bryter en krets ved overtemperatur og gir ingen måleverdi.
+
+Den målende føleren er tilluftsføleren på `J5 (Pin 1,2)`, som aggregatet har
+uansett — rotoren reguleres etter den. Med ettervarme montert brukes samme
+føler til å styre både rotor og element mot settpunktet.
+
+Det forklarer hvorfor bussen viser nøyaktig én temperatur, og styrker samtidig
+hypotesen om at `payload[6]` er **ettervarme av/på**: brukeren HAR et elektrisk
+element som faktisk slår av og på.
+
+### Konsekvens: se etter overhetningsalarmen
+
+CS 50-manualen lister «Elektrisk batteri, termostat» blant overvåkings-
+funksjonene som gjelder CS 50. OT-en er altså en alarmkilde på bussen — og den
+er **sikkerhetsrelevant**: løser den ut, er ettervarmen overopphetet og må
+resettes manuelt inne i aggregatet. Et varsel på den i HA er verdt mer enn de
+fleste andre feltene vi jakter på.

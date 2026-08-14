@@ -73,6 +73,13 @@ merket «ikke CS 50»:
 - [ ] Let etter **ettervarmens** 0–10 V-pådrag på samme måte. Se hypotesen om
       `payload[6]` under.
 - [ ] **Rotoralarm** skal finnes som statusbit.
+- [ ] **Overhetningstermostat (OT) — sikkerhetsrelevant, prioriter denne.**
+      Aggregatet har ettermontert elektrisk ettervarme (sett 94283-01), og OT-en
+      er en alarmkilde CS 50 overvåker («Elektrisk batteri, termostat»). Løser
+      den ut, er elementet overopphetet og må resettes manuelt inne i
+      aggregatet. Et varsel i HA er verdt mer enn de fleste andre feltene.
+      Kan ikke fremprovoseres trygt — men finn kandidatbyten, så den fanges
+      hvis det først skjer.
 
 ## Åpne, men mindre
 
@@ -148,3 +155,4 @@ merket «ikke CS 50»:
 | Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |
 | Er filteralarmen trykkbasert? | Nei — timer («filtertid»), trykkvakt er ikke CS 50 |
 | Finnes rotorpådrag i det hele tatt? | Ja — J5 pin 11,12 (0–10 V), ikke merket «ikke CS 50» |
+| Én eller to temperaturfølere? | **Én.** Ettervarmesettet monterer to *termostater* (OT + BT), ikke måleførere |
