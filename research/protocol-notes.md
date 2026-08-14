@@ -1677,3 +1677,80 @@ For de gjenstående hullene:
   et `[4]`-bit, og anomalidetektoren fanger endringen automatisk hvis den skjer.
 - `[15]`/`[20]` bør korreleres mot **filterlampas blinking** — trykk noe som
   utløser blink, og se om de to følger blinketakten.
+
+# RAMMETYPER — systematisk oversikt
+
+Basert på 15 780 validerte meldinger fra fem opptak.
+
+## Meldingsformat
+
+```
+POLL  (fra master):  C3 <node> 00 <ck1> <ck2>
+SVAR  (fra noden):   <TYPE> <node> <LEN> <bank> <reg> <data...> <ck1> <ck2>
+```
+
+De to første databytene er alltid **bank** og **registerindeks**. `LEN` teller
+fra og med bank-byten, så nyttelasten er `LEN − 2` byte.
+
+## Typene
+
+| Type | Innhold | Datastørrelse | Vår bruk |
+|---|---|---|---|
+| `0xC0` | ingen data — kun bank/reg | 0 byte | ikke tolket; ser ut som «ingenting nytt» |
+| `0xC1` | byte-verdier | 1 byte per felt | **statustelegram** og **panelets tilstandsramme** |
+| `0xC2` | IEEE754 float, little endian | 4 byte | **målinger** (tilluft, settpunkt) |
+| `0xC6` | 16-bits heltall | 2 byte | parametere og ukeprogram — **ikke dekodet** |
+| `0xC7` | IEEE754 float | 4 byte | parametere og grenser — **ikke dekodet** |
+
+`C2` og `C7` bærer begge float. Forskjellen er ikke avklart; `C2` har vist seg å
+inneholde målinger som endrer seg, `C7` verdier som har stått konstante over
+døgn.
+
+## Bankene
+
+| Bank | Innhold |
+|---|---|
+| `0x20` | drift og parametere — det meste ligger her |
+| `0x21` | ukeprogram / tidskanaler (gjentakende `08 00 10 00 06 00 30 14`) |
+| `0x22` | enhetsidentitet — versjonsstrengen `"R1A 1.2"` |
+
+Registerindeksen teller i **blokker på 7 verdier**: `0x00`, `0x07`, `0x0E`,
+`0x15`, `0x1C`. Det stemmer med at float-rammene bærer nøyaktig sju verdier.
+
+## Hva CS50 (node 1) faktisk sender
+
+En fast runde på 15 blokker, hver gjentatt ~850 ganger i datasettet — altså en
+ren rundgang uten prioritering:
+
+| Type | LEN | Bank/reg | Status |
+|---|---|---|---|
+| `C1` | 22 | `20 0E` | **statustelegrammet** — hovedkilden vår |
+| `C1` | 30 | `20 00` | byte-blokk, inneholder versjonsstreng |
+| `C2` | 30 | `20 00` | float ×7 — **tilluft** i slot 1, to `-55` (ikke tilkoblet) |
+| `C2` | 10 | `20 07` | float ×2 — **settpunkt** i slot 1 |
+| `C6` | 30 | `20 00` / `20 0E` | 16-bits parametere — `0x0F`=15 og `0x19`=25 er settpunktgrensene |
+| `C6` | 22 | `20 1C` | 16-bits parametere |
+| `C6` | 30/26 | `21 00` / `21 0E` / `21 1C` | ukeprogram |
+| `C7` | 30 | `20 00` / `20 07` / `20 0E` | float-parametere, konstante over døgn |
+| `C7` | 14 | `20 15` | float-parametere |
+| `C0` | 2 | `20 00` | uten data |
+
+## Hva panelet (node 4) sender
+
+| Type | LEN | Bank/reg | Antall | Betydning |
+|---|---|---|---|---|
+| `C0` | 2 | `22 00` | 1469 | «ingenting å melde» — vekselvis med neste |
+| `C1` | 10 | `22 00` | 1470 | versjonsstrengen `"R1A 1.2"` |
+| `C1` | 8 | `20 0F` | **34** | **tilstandsrammen** — kun ved endring |
+
+Forholdet 1470 : 34 illustrerer poenget: panelet snakker nesten bare tomgang, og
+sier fra om tilstand kun når brukeren har gjort noe.
+
+## Avvist hypotese: `C0` som leseforespørsel
+
+Det var fristende å lese `C0` (bank+reg, ingen data) som «send meg dette
+registeret». **Testet og avvist:** av 27 `C0`-rammer ble **0** etterfulgt av et
+svar med samme bank/register. `C0` er altså ikke en forespørsel.
+
+Dermed har vi **ingen kjent måte å be om et bestemt register på**. CS50 sender
+sin faste runde, og vi leser det som kommer.

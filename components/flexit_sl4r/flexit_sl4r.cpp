@@ -299,6 +299,11 @@ void FlexitSL4RComponent::dispatch_frame_() {
       }
       if (this->raw_status_[4] != this->prev_status_[4])
         this->note_anomaly_("ALARMFELT endret");
+      // Bit1 i [2] er aldri sett satt. Skjer det, er det enten bypass på et
+      // aggregat vi ikke trodde hadde det, eller en tolkning som må revideres.
+      // Uansett vil vi ha rammen.
+      if ((this->raw_status_[2] & HEAT_RECOVERY_BYPASS) != (this->prev_status_[2] & HEAT_RECOVERY_BYPASS))
+        this->note_anomaly_("BYPASS-BIT endret (aldri sett for)");
     }
     std::copy_n(this->raw_status_.begin(), STATUS_DATA_LENGTH, this->prev_status_.begin());
     this->have_prev_status_ = true;
@@ -492,6 +497,8 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
   if (this->heat_recovery_active_binary_sensor_ != nullptr)
     this->heat_recovery_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_RUNNING) != 0);
+  if (this->bypass_active_binary_sensor_ != nullptr)
+    this->bypass_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_BYPASS) != 0);
 #endif
 }
 

@@ -312,6 +312,13 @@ binary_sensor:
     # pådraget starter først, biten kommer ved terskelen.
     heat_recovery_active:
       name: "Varmegjenvinner går"
+    # payload[2] bit1 — ANTATT bypass, aldri observert satt i 837 telegram.
+    # Flexit bruker samme utgang til «rotor eller bypass motor», så gruppa er
+    # trolig generisk: bit0 = rotor går, bit1 = bypass på plateveksleraggregat.
+    # Vi har rotor, så den skal stå `off` hos oss. Vippes den, logges den også
+    # som anomali med full ramme.
+    bypass_active:
+      name: "Bypass (antatt)"
     communication:
       name: "Flexit-kommunikasjon OK"
     boost_active:

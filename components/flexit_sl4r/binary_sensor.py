@@ -17,6 +17,7 @@ CONF_AFTERHEAT_ACTIVE = "afterheat_active"
 CONF_AFTERHEAT_ENABLED = "afterheat_enabled"
 CONF_FILTER_ALARM = "filter_alarm"
 CONF_HEAT_RECOVERY_ACTIVE = "heat_recovery_active"
+CONF_BYPASS_ACTIVE = "bypass_active"
 CONF_COMMUNICATION = "communication"
 CONF_BOOST_ACTIVE = "boost_active"
 CONF_ENUMERATED = "enumerated"
@@ -47,6 +48,10 @@ CONFIG_SCHEMA = {
     cv.Optional(CONF_HEAT_RECOVERY_ACTIVE): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_RUNNING, icon="mdi:autorenew"
     ),
+    # ANTATT bypass. Aldri observert satt - se protocol-notes.md.
+    cv.Optional(CONF_BYPASS_ACTIVE): binary_sensor.binary_sensor_schema(
+        icon="mdi:valve", entity_category=ENTITY_CATEGORY_DIAGNOSTIC
+    ),
     cv.Optional(CONF_ENUMERATED): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_CONNECTIVITY,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -74,6 +79,9 @@ async def to_code(config):
     if heat_recovery_config := config.get(CONF_HEAT_RECOVERY_ACTIVE):
         sens = await binary_sensor.new_binary_sensor(heat_recovery_config)
         cg.add(flexit_sl4r_component.set_heat_recovery_active_binary_sensor(sens))
+    if bypass_config := config.get(CONF_BYPASS_ACTIVE):
+        sens = await binary_sensor.new_binary_sensor(bypass_config)
+        cg.add(flexit_sl4r_component.set_bypass_active_binary_sensor(sens))
     if enumerated_config := config.get(CONF_ENUMERATED):
         sens = await binary_sensor.new_binary_sensor(enumerated_config)
         cg.add(flexit_sl4r_component.set_enumerated_binary_sensor(sens))

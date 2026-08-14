@@ -104,6 +104,26 @@ merket «ikke CS 50»:
       Kan ikke fremprovoseres trygt — men finn kandidatbyten, så den fanges
       hvis det først skjer.
 
+## Feature-frame: kan vi be om utstyrskonfigurasjonen?
+
+Målet er at integrasjonen skal kunne slå entiteter av og på selv, ut fra hva
+aggregatet faktisk har.
+
+- [x] ~~Er `C0` en leseforespørsel?~~ **NEI — testet og avvist.** Av 27 `C0`-rammer
+      (bank+reg, ingen data) ble **0** etterfulgt av svar med samme bank/reg.
+      Vi har dermed **ingen kjent måte å be om et bestemt register på**.
+- [ ] **Let i `0xC6`-parameterblokkene.** Aldri dekodet. Bank `0x20` reg `0x00`,
+      `0x0E`, `0x1C` inneholder 16-bits parametere — `0x0F`=15 og `0x19`=25 er
+      gjenkjennelige som settpunktgrensene, så blokka ER lesbar. De tre
+      mikrobryterne (veksler rotor/plate, varme el/vann, avfrosting) må stå
+      et sted, og dette er det mest sannsynlige stedet.
+- [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
+      gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
+- [ ] **Finnes det en skrivevei til parameterregistrene?** Vi kan skrive
+      panelets tilstandsramme (bank `0x20` reg `0x0F`). Om samme mekanisme
+      virker mot andre registre er uprøvd — og potensielt risikabelt, siden
+      `0xC6`-blokkene inneholder driftsparametere.
+
 ## For publisering
 
 ### Automatisk maskinvaregjenkjenning — viktigst for at andre kan bruke det
