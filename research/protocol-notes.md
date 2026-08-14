@@ -624,3 +624,51 @@ Hypotesen om at CI50 kun svarer på poll fra CS50 er avvist: panelets 912 rammer
 følger etter alle mulige CS50-rammetyper (26 % `C6`/30, 20 % `C7`/30, resten
 spredt). Panelet sender fritt når bussen er ledig — så en injeksjon fra oss
 skal i prinsippet være like gyldig.
+
+## Hva som er å hente fra Vongraven (gjennomgått 2026-08-14)
+
+To ting, hvorav den ene endrer diagnosen.
+
+### 1. Han sender hver kommando FEM ganger
+
+```c
+do { ...finn vindu...; Serial1.write(commandBuffer, 18); ++repeats; } while (repeats<5);
+```
+
+Grunnen er verdt å merke seg: **timingen hans var like gal som vår var.**
+Lengdesjekken `if (3 < Length <33)` evalueres i C som `(3 < Length) < 33`, altså
+`0 eller 1 < 33` — **alltid sann**, den gjør ingenting. Og han har samme
+off-by-one i header-hoppet som vi hadde (leser `195`, `1`, hopper 6, leser så
+første payload-byte som lengde).
+
+Han kompenserte med gjentakelse. Brute force, ikke presisjon — og det forklarer
+hvorfor det virket for ham. Implementert hos oss som `COMMAND_REPEATS = 5`,
+hver sending i sitt eget målte stille vindu.
+
+### 2. Han styrer retningen EKSPLISITT — og det gjør ikke vi
+
+```c
+digitalWrite(TXen, LOW);   // TX enable
+delay(10);
+Serial1.write(commandBuffer, 18);
+Serial1.flush();
+digitalWrite(TXen, HIGH);  // TX disable
+```
+
+Han hadde egne GPIO-er for `RXen`, `TXen` og til og med `COM_VCC` (MAX485
+strømsatt kun ved behov). Han stolte aldri på automatikk.
+
+**Det er den eneste arkitektoniske forskjellen som gjenstår.** Vår konklusjon om
+at ATOM Tail485 har automatisk retningsstyring uten DE/RE-linje er utledet fra
+M5s blokkdiagram — den er aldri målt.
+
+### Konklusjon etter fem gjentakelser
+
+Fem byte-perfekte sendinger i fem separate stille vinduer ga null reaksjon fra
+CS50, og forstyrret heller ikke CS50s egen trafikk (`Kommunikasjon OK` holdt
+seg på hele veien). Sammen med den tidligere kollisjonen som ikke skadet noe,
+er konklusjonen at **senderen aldri driver differensialparet**.
+
+Gjentakelse var altså riktig å implementere, men den kan ikke redde en sending
+som ikke når tråden. Neste steg er fysisk: verifiser at ATOM-ens TX faktisk når
+Tail485s TXD-inngang, og at DE/RE-automatikken i modulen fungerer.

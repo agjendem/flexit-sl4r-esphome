@@ -300,6 +300,7 @@ void FlexitSL4RComponent::queue_command_(uint8_t field_offset, uint8_t value) {
   this->pending_field_value_ = value;
   this->command_pending_ = true;
   this->command_queued_ms_ = millis();
+  this->command_repeats_left_ = COMMAND_REPEATS;
 }
 
 void FlexitSL4RComponent::set_fan_level(uint8_t level) {
@@ -316,6 +317,7 @@ void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_ch
   this->pending_raw_frame_ = std::move(frame_without_checksum);
   this->command_pending_ = true;
   this->command_queued_ms_ = millis();
+  this->command_repeats_left_ = COMMAND_REPEATS;
 }
 
 void FlexitSL4RComponent::trigger_boost() {
@@ -340,14 +342,20 @@ void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
 void FlexitSL4RComponent::build_and_send_command_() {
   if (!this->command_pending_)
     return;
-  this->command_pending_ = false;
+
+  // Hver kommando sendes COMMAND_REPEATS ganger, hver gang i sitt eget stille
+  // vindu — jf. Vongravens original, se COMMAND_REPEATS i headeren.
+  const bool last_repeat = this->command_repeats_left_ <= 1;
+  if (this->command_repeats_left_ > 0)
+    this->command_repeats_left_--;
+  if (last_repeat)
+    this->command_pending_ = false;
 
   // Engangs-kommando (f.eks. forsering): send den ferdige rammen som den er,
   // kun med sjekksum påført. Går utenom command_template-modellen, som antar
   // en fast 18-byte tilstandsskriving med felt som må speiles.
   if (!this->pending_raw_frame_.empty()) {
-    std::vector<uint8_t> frame = std::move(this->pending_raw_frame_);
-    this->pending_raw_frame_.clear();
+    std::vector<uint8_t> frame = this->pending_raw_frame_;  // kopi: rammen skal sendes flere ganger
     const auto [rsum1, rsum2] = checksum_(frame.data() + 5, frame.size() - 5);
     frame.push_back(rsum1);
     frame.push_back(rsum2);
@@ -359,7 +367,10 @@ void FlexitSL4RComponent::build_and_send_command_() {
     if (this->flow_control_pin_ != nullptr)
       this->flow_control_pin_->digital_write(false);
 
-    ESP_LOGD(TAG, "Sendte engangsramme (%u byte)", static_cast<unsigned>(frame.size()));
+    ESP_LOGD(TAG, "Sendte engangsramme (%u byte), gjentakelser igjen: %u", static_cast<unsigned>(frame.size()),
+             static_cast<unsigned>(this->command_repeats_left_));
+    if (last_repeat)
+      this->pending_raw_frame_.clear();
     return;
   }
 

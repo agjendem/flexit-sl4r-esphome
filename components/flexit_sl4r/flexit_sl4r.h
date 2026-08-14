@@ -42,6 +42,14 @@ static constexpr uint32_t BUS_IDLE_BEFORE_TX_MS = 5;
 // Gi opp en køet kommando som aldri finner et hull, i stedet for å la den
 // ligge og vente i det uendelige.
 static constexpr uint32_t COMMAND_GIVE_UP_MS = 5000;
+// Hvor mange ganger hver kommando sendes, hver gang i sitt eget stille vindu.
+//
+// Vongravens original gjør nøyaktig dette: `do { ... } while (repeats<5)`.
+// Grunnen er verdt å merke seg — lengdesjekken hans, `if (3 < Length <33)`,
+// evalueres i C som `(3 < Length) < 33` og er dermed ALLTID sann, og han har
+// samme off-by-one i header-hoppet som vi hadde. Timingen hans var altså like
+// gal som vår var; han kompenserte med gjentakelse. Brute force, ikke presisjon.
+static constexpr uint8_t COMMAND_REPEATS = 5;
 
 // --- Generell rammestruktur (målt 2026-08-13, se research/protocol-notes.md) ---
 //   C3 b1 b2 b3 b4 TYPE b6 LEN [LEN databyte] CK1 CK2
@@ -152,6 +160,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint32_t last_valid_telegram_ms_{0};
   uint32_t last_rx_byte_ms_{0};    // for deteksjon av stille buss før sending
   uint32_t command_queued_ms_{0};  // for å gi opp en kommando som aldri får plass
+  uint8_t command_repeats_left_{0};
   bool communication_ok_{false};
   bool preheat_active_state_{false};  // stateful latch, se protocol-notes.md
 
