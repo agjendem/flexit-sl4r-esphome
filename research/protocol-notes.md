@@ -1603,10 +1603,28 @@ tre-bits grupper**:
 
 | Bit | Betydning |
 |---|---|
-| 0 | varmegjenvinneren går |
-| 1 | **ukjent** |
+| 0, 1 | **gjenvinneren** — bit0 = går. Bit1 aldri observert satt |
 | 2, 3, 4 | vifte A på trinn 3 / 2 / 1 |
 | 5, 6, 7 | vifte B på trinn 3 / 2 / 1 |
+
+Feltet er altså **gruppert per delsystem**: to bit til gjenvinneren, tre til hver
+vifte. Observerte verdier: `0`, `1`, `36`, `72`, `144`, `145` — der `1` er
+rotoren i gang mens viftene er midt i et trinnskifte.
+
+### Hypotese om bit 1 — noe andre kan bekrefte
+
+Bit 1 har **aldri** vært satt, i 837 statustelegram fra alle opptak. Gitt at
+gruppa hører til gjenvinneren, og at Flexit bruker **samme utgang** til to
+formål — `J5 (Pin 11,12)`: «Rotor **eller bypass** motor», rotor på roterende
+aggregater, bypass-spjeld på plateveksleraggregater — er den nærliggende
+tolkningen at gruppa er generisk:
+
+- På et **rotoraggregat** (vårt): bit0 = rotoren går. Bit1 ubrukt.
+- På et **plateveksleraggregat**: samme gruppe koder trolig bypass-tilstand.
+
+Det lar seg ikke avgjøre på vårt anlegg — vi har rotor. **Et logguttrekk fra et
+SL4R/CS 50 med plateveksler ville avgjort det på minuttet**, og er derfor et
+konkret ønske i «Bidrag og logger ønskes».
 
 Verifisert mot **592 statustelegram fra alle opptak**: gruppa i bit 2–4 stemmer
 med `[5]` høy nibbel i 578 tilfeller og bommer 0 ganger. De to gruppene har

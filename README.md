@@ -226,6 +226,10 @@ Konkret er dette mest verdifullt:
   filteralarmen ble knekt.
 - **Hvilken utrustning aggregatet ditt har** — veksler, varmebatteri,
   ettervarme, avfrosting.
+- **Har du plateveksler i stedet for rotor?** Da er du særlig interessant. Ett
+  bit i statustelegrammet (`[2]` bit 1) har aldri vært satt hos oss, og
+  strukturen tyder på at det koder bypass-tilstand — noe bare et
+  plateveksleraggregat kan vise.
 
 Åpne en issue med loggen. Uenighet er også nyttig: flere av Vongravens
 opprinnelige tolkninger viste seg å være feil for vårt anlegg, og det er fullt
