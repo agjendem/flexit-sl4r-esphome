@@ -29,8 +29,6 @@ historikken bygger seg opp uten at du trenger å gjøre noe. Etter noen dager ka
 hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 
 - [ ] `[2]`: `0 / 36 / 72 / 144` — dobling, ser ut som bitfelt eller teller
-- [ ] `[6]`: veksler `0/1` ~50/50 — **beste kandidat: ETTERVARME av/på**
-      (el-batteriet som slår mot settpunktet). Se «Åpne, men mindre».
 - [ ] `[11]`: `0/1`
 - [ ] `[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?
 - [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå
@@ -38,13 +36,10 @@ hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 Korrelér mot noe som endrer seg — utetemperatur, viftetrinn, tid på døgnet.
 Bekreftet fra før: `[5]` viftetrinn, `[9]` settpunkt, `[13]`/`[14]` viftepådrag.
 
-### 2. ~~Filteralarmen~~ — LØST 2026-08-14
+### 2. Alarmbitfeltet — filteralarmen er løst, resten gjenstår
 
-Klart størst praktisk nytte som gjenstår: et **filtervarsel i HA**.
-
-Flexits CS 50-manual avklarer mekanismen: trykkvaktene («Filtervakt tilluft/
-avtrekk») er merket **ikke CS 50**. Vårt anlegg bruker **filtertid** — en timer.
-Alarmen fyrer altså av seg selv når tiden er ute, uten at noe fysisk skjer.
+Filteralarmen var det punktet med størst praktisk nytte, og den er i mål.
+Mekanismen er tidsbasert («filtertid»); CS 50 har ingen trykkvakter.
 
 - [x] ~~Finn alarmbyten.~~ **`payload[4]` bit 1.** Fanget da brukeren
       nullstilte alarmen ved et uhell under ettervarme-forsøket: `2` → `0`.
@@ -89,13 +84,12 @@ merket «ikke CS 50»:
 ## For publisering: automatisk maskinvaregjenkjenning
 
 - [ ] **Finn konfigurasjonsbitene på bussen.** CS 50 kjenner sin egen
-      utrustning — panelmenyen `Test → Informasjon → System` viser
-      `Gjenvinner: Rotor/plate`, `Varme: Elbat/vannbat`,
-      `Avfrosting: Forvarme/Bypass`. Det er de tre mikrobryterne på kortet
-      (bryter 1, 2 og 3), altså **tre bit**. Finner vi dem, kan integrasjonen
-      konfigurere seg selv i stedet for at hver bruker må vite hva de har.
-      Gode kandidater blant de konstante statusbytene: `[4]` (`02` hos oss),
-      `[2]`, og de vi ikke har sett variere.
+      utrustning — den settes med tre mikrobrytere på kortet: veksler
+      rotor/plate, varme el/vann, avfrosting forvarme/bypass. **Tre bit.**
+      Finner vi dem, kan integrasjonen konfigurere seg selv i stedet for at hver
+      bruker må vite hva de har.
+      Kandidater blant de konstante statusbytene: `[3]`, `[7]`, `[12]`,
+      `[16]`–`[19]`, `[21]`. NB: `[4]` er nå forklart som alarmbitfelt.
       **NB:** menyen som viser dette (`Test → Informasjon → System`) hører til
       **CI 500**. Et CI 50-panel har bare lysdioder og knapper — ingen fasit å
       lese av. Metoden må derfor være å sammenligne med et annet SL4R/CS 50 med
@@ -109,12 +103,9 @@ merket «ikke CS 50»:
 
 ## Åpne, men mindre
 
-- [ ] **FJERN forvarme-entiteten — den gjelder ikke vårt aggregat.**
-      CS 50-manualen er entydig: forvarme er en **plateveksler**-funksjon
-      (mikrobryter 3: «Aggregatet har forvarme (bare ved plateveksler)»), og
-      avfrosting er enten «Forvarme/Bypass». SL4 R har **roterende** veksler, så
-      avfrosting skjer med bypass. En bryter som ikke kan gjøre noe er verre enn
-      ingen bryter.
+- [x] ~~Fjern forvarme-entiteten.~~ **GJORT.** CS 50-manualen er entydig:
+      forvarme er en plateveksler-funksjon, og SL4 R har roterende veksler.
+      Hele switch-plattformen utgikk med den.
 - [x] ~~Døp om «Forvarme aktiv» til «Ettervarme aktiv».~~ **GJORT.** Hele
       komponenten er omdøpt (`afterheat_active`), gammel entitet ryddet bort av
       ESPHome selv. Navnet forvarme var arvet fra Vongraven og er feil for et
