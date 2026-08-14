@@ -64,6 +64,13 @@ void FlexitSL4RComponent::loop() {
   // Sending skjer KUN når bussen har vært målt stille. Å sende «rett etter en
   // ferdig ramme» kolliderte i praksis, fordi CS50 begynner på neste telegram
   // før det (se research/protocol-notes.md → «Kollisjonen»).
+  // NB: når vi svarer på poll, skal køen KUN tømmes av send_poll_response_().
+  // Den gamle «send når bussen er stille»-stien stjal ellers rammen og la den
+  // ut uoppfordret — og på en polled buss lytter ingen da. Det var årsaken til
+  // at viftetrinn ikke virket selv med byte-identisk innhold.
+  if (this->respond_to_polls_)
+    return;
+
   if ((!this->tx_queue_.empty() || this->command_pending_) && !this->collecting_frame_) {
     const uint32_t now = millis();
     if (now - this->last_rx_byte_ms_ >= BUS_IDLE_BEFORE_TX_MS) {

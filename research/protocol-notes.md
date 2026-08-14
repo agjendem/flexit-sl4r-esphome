@@ -958,3 +958,54 @@ kommandoverdier fra panelet: `0x32` ved overgangen 3→2, `0x21` ved 2→1, `0x1
 i ro — så kodingen er ikke åpenbar. Neste steg er å fange et viftetrinnskifte
 gjort på panelet MENS vi er enumerert som node 5, og se nøyaktig hva som skiller
 det fra vårt eget forsøk.
+
+## FULL STYRING OPPNÅDD (2026-08-14)
+
+Settpunkt, viftetrinn og forsering styres nå fra Home Assistant. Verifisert
+uavhengig ved at CS50s egne kringkastede verdier følger etter — ikke bare
+vår optimistiske UI-tilstand.
+
+### Viftetrinn: kommandobyten koder (fra, til)
+
+Fanget mens brukeren kjørte 1→2→3→2→1 på panelet:
+
+| Overgang | Byte |
+|---|---|
+| 1→2 | `0x12` |
+| 2→3 | `0x23` |
+| 3→2 | `0x32` |
+| 2→1 | `0x21` |
+
+Høy nibbel = trinnet man kommer fra, lav = trinnet man skal til. Merk at dette
+er **motsatt** av statusbyten, der høy nibbel er trinnet som kjører og lav er
+returtrinnet. Samme byteposisjon, to ulike betydninger avhengig av retning.
+
+### Den siste feilen: to konsumenter av samme kø
+
+Kommandobytene våre var byte-identiske med panelets hele tiden. Feilen var at
+rammen ble sendt **uoppfordret** i stedet for som poll-svar:
+
+```
+>>> C0 05 02 22 00 E9 1E                       <- poll-svar (tomt)
+>>> C1 05 08 20 0F 02 12 00 04 00 15 2D 87     <- tilstandsrammen, USPURT
+```
+
+Den gamle «send når bussen er stille»-stien var et levning fra før vi forsto
+pollingen, og den tømte køen før pollen rakk å komme. På en polled buss lytter
+ingen på uoppfordret trafikk, så rammen ble forkastet — selv om innholdet var
+perfekt.
+
+Fiks: når `respond_to_polls` er på, tømmes køen **kun** av
+`send_poll_response_()`.
+
+**Lærdom:** å verifisere innholdet er ikke nok — man må også verifisere at det
+gikk ut på riktig måte. Jeg sjekket resultatet av tre forsøk uten å se på TX-
+loggen, og bytene var riktige hver gang.
+
+### Verifisert virkning
+
+| Handling | Bekreftet av CS50 |
+|---|---|
+| Settpunkt 15 → 18 → 21 | float-register `0xC2` reg 7 fulgte |
+| Viftetrinn 1 → 2 | status `payload[5]` = 2, pådrag 49 % → **74 %** |
+| Forsering | `0x32` = kjører 3 / retur 2, pådrag **100 %** |
