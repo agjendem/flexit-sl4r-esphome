@@ -78,19 +78,14 @@ void FlexitSL4RComponent::loop() {
   if (this->respond_to_polls_)
     return;
 
-  if ((!this->tx_queue_.empty() || this->command_pending_) && !this->collecting_frame_) {
+  if (!this->tx_queue_.empty() && !this->collecting_frame_) {
     const uint32_t now = millis();
     if (now - this->last_rx_byte_ms_ >= BUS_IDLE_BEFORE_TX_MS) {
-      if (!this->tx_queue_.empty()) {
-        this->send_queued_frame_();
-      } else {
-        this->build_and_send_command_();
-      }
+      this->send_queued_frame_();
     } else if (now - this->command_queued_ms_ > COMMAND_GIVE_UP_MS) {
       ESP_LOGW(TAG, "Fant aldri et stille vindu pa bussen - forkaster %u koede ramme(r)",
                static_cast<unsigned>(this->tx_queue_.size()));
       this->tx_queue_.clear();
-      this->command_pending_ = false;
     }
   }
 
@@ -369,24 +364,6 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 #endif
 }
 
-void FlexitSL4RComponent::queue_command_(uint8_t field_offset, uint8_t value) {
-  // Uten konfigurert command_template har vi ingenting å bygge telegrammet av.
-  // Å sende likevel ville lagt 18 udefinerte byte med GYLDIG sjekksum ut på
-  // bussen — se research/protocol-notes.md punkt 2. Er malen ikke satt, er
-  // Fase 2 ikke aktivert og skrive-entitetene er i praksis read-only.
-  if (this->command_template_.size() < COMMAND_LENGTH) {
-    ESP_LOGE(TAG,
-             "command_template er ikke konfigurert - kommandoen forkastes (Fase 2 ikke aktivert). "
-             "Entiteten faller tilbake til faktisk tilstand ved neste statustelegram.");
-    return;
-  }
-  this->pending_field_offset_ = field_offset;
-  this->pending_field_value_ = value;
-  this->command_pending_ = true;
-  this->command_queued_ms_ = millis();
-  this->command_repeats_left_ = COMMAND_REPEATS;
-}
-
 // Panelets tilstandsramme, som poll-svar. Alle felt speiles fra sist kjente
 // tilstand, og kun det ønskede endres — usendte felt ville ellers overskrevet
 // virkeligheten. Se research/protocol-notes.md → «Polled buss».
@@ -413,7 +390,15 @@ void FlexitSL4RComponent::set_fan_level(uint8_t level) {
   this->queue_state_frame_(cmd, 0x00, this->last_raw_heat_exchanger_temp_);
 }
 
-void FlexitSL4RComponent::set_preheat(bool on) { this->queue_command_(12, on ? 128 : 0); }
+void FlexitSL4RComponent::set_preheat(bool on) {
+  // IKKE STØTTET. Forvarme ligger trolig i flagg-byten i tilstandsrammen
+  // (`data[4]`), men det feltet gikk fra 00 til 01 rett før panelet sendte en
+  // FORSERINGS-kommando — ikke ved noe forvarmerelatert. Å skrive dit kan
+  // dermed utløse noe helt annet enn det står på, så vi lar det være til
+  // betydningen er avklart. Se TODO.md.
+  ESP_LOGW(TAG, "Skriving av forvarme er ikke stottet enda (flagg-byten er uavklart) - ignorerer %s",
+           ONOFF(on));
+}
 
 void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats) {
   this->tx_queue_.push_back({std::move(frame_without_checksum), repeats});
@@ -476,54 +461,6 @@ void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
   }
   ESP_LOGI(TAG, "Skriver settpunkt %u grader", static_cast<unsigned>(celsius));
   this->queue_state_frame_(this->last_raw_fan_level_, 0x00, celsius);
-}
-
-void FlexitSL4RComponent::build_and_send_command_() {
-  if (!this->command_pending_)
-    return;
-
-  // Hver kommando sendes COMMAND_REPEATS ganger, hver gang i sitt eget stille
-  // vindu — jf. Vongravens original, se COMMAND_REPEATS i headeren.
-  const bool last_repeat = this->command_repeats_left_ <= 1;
-  if (this->command_repeats_left_ > 0)
-    this->command_repeats_left_--;
-  if (last_repeat)
-    this->command_pending_ = false;
-
-  // Dobbel sikring: queue_command_ slipper ikke gjennom uten mal, men denne
-  // copy_n leser 18 byte og MÅ aldri kjøre mot en tom vector.
-  if (this->command_template_.size() < COMMAND_LENGTH) {
-    ESP_LOGE(TAG, "command_template mangler ved sending - avbryter, ingenting skrevet til bussen");
-    return;
-  }
-
-  std::array<uint8_t, COMMAND_LENGTH> command{};
-  std::copy_n(this->command_template_.begin(), COMMAND_LENGTH, command.begin());
-
-  // Speil inn nåværende kjente tilstand (se protocol-notes.md: usendte felt
-  // overskrives ellers utilsiktet av CS50 når kommandoen mottas).
-  command[11] = this->last_raw_fan_level_;
-  command[12] = this->last_raw_preheat_;
-  command[15] = this->last_raw_heat_exchanger_temp_;
-
-  // Overstyr med det faktisk ønskede feltet.
-  command[this->pending_field_offset_] = this->pending_field_value_;
-
-  const auto [sum1, sum2] = checksum_(command.data() + 5, 11);
-  command[16] = sum1;
-  command[17] = sum2;
-
-  if (this->flow_control_pin_ != nullptr) {
-    this->flow_control_pin_->digital_write(true);
-  }
-  this->write_array(command);
-  this->flush();
-  if (this->flow_control_pin_ != nullptr) {
-    this->flow_control_pin_->digital_write(false);
-  }
-
-  ESP_LOGD(TAG, "Sendte Flexit-kommando (felt=%u, verdi=%u)", this->pending_field_offset_,
-           this->pending_field_value_);
 }
 
 std::pair<uint8_t, uint8_t> FlexitSL4RComponent::checksum_(const uint8_t *data, size_t len) {

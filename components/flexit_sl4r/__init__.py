@@ -15,22 +15,12 @@ FlexitSL4RComponent = flexit_sl4r_ns.class_("FlexitSL4RComponent", cg.Component,
 CONF_FLEXIT_SL4R_ID = "flexit_sl4r_id"
 CONF_SOURCE_NODE = "source_node"
 CONF_RESPOND_TO_POLLS = "respond_to_polls"
-CONF_COMMAND_TEMPLATE = "command_template"
 
-# Vongravens eksempel-kommando (verifisert sjekksum, se research/protocol-notes.md).
-# Byte 11/12/15 (viftetrinn/forvarme/settpunkt) og 16/17 (sjekksum) overskrives
-# alltid før sending, så verdiene her for dem er kosmetiske. ALLE ANDRE byte
-# MÅ verifiseres mot vårt eget anlegg (avlytting i Fase 1) før Fase 2 (sending)
-# tas i bruk.
-DEFAULT_COMMAND_TEMPLATE = [195, 4, 0, 199, 81, 193, 4, 8, 32, 15, 0, 34, 0, 4, 0, 18, 52, 236]
 
 CONFIG_SCHEMA = (
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(FlexitSL4RComponent),
-            cv.Optional(
-                CONF_COMMAND_TEMPLATE, default=DEFAULT_COMMAND_TEMPLATE
-            ): cv.All(cv.ensure_list(cv.uint8_t), cv.Length(min=18, max=18)),
             cv.Optional(CONF_SOURCE_NODE, default=4): cv.int_range(min=1, max=8),
             cv.Optional(CONF_RESPOND_TO_POLLS, default=False): cv.boolean,
             cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
@@ -65,7 +55,6 @@ async def to_code(config):
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
-    cg.add(var.set_command_template(config[CONF_COMMAND_TEMPLATE]))
 
     if flow_control_pin_config := config.get(CONF_FLOW_CONTROL_PIN):
         pin = await gpio_pin_expression(flow_control_pin_config)

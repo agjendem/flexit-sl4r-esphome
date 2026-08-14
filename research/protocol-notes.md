@@ -1,5 +1,43 @@
 # Flexit SL4R / CS50 RS485-protokoll — notater
 
+> ## LES DETTE FØRST
+>
+> **Dokumentet er kronologisk, og de tidlige avsnittene beskriver en modell som
+> viste seg å være feil.** De er beholdt med vilje — flere av blindveiene så
+> overbevisende riktige ut, og feilsporene er like lærerike som fasiten. Men de
+> må ikke leses som gjeldende sannhet.
+>
+> ### Gjeldende modell (2026-08-14)
+>
+> Bussen er **polled**. Masteren adresserer én node av gangen med en 5-byte
+> poll, og kun den noden svarer:
+>
+> ```
+> POLL  (fra master):  C3 <node> 00 <ck1> <ck2>
+>                      ck = Fletcher over [C3, node, 00]
+>
+> SVAR  (fra noden):   <TYPE> <node> <LEN> <data...> <ck1> <ck2>
+>                      ck = Fletcher over [TYPE, node, LEN, data...]
+>                      INGEN C3 — den tilhører pollen
+> ```
+>
+> Node 1 = CS50, node 4 = CI50 (panel 1), node 5 = panel 2 (oss).
+> Se «GJENNOMBRUDD: bussen er POLLED» nederst for utledningen.
+>
+> ### Hva som er utdatert
+>
+> | Avsnitt | Status |
+> |---|---|
+> | «Rammestruktur (MÅLT …)» | **Utdatert.** Beskriver poll + svar som ÉN ramme med 8-byte hode. Sjekksumvinduet og lengdefeltet stemmer, men modellen er feil. |
+> | «Kommandotelegram (sendt av CI50, 18 byte)» | **Utdatert.** De 18 bytene er poll (5) + svar (13). |
+> | «command_template ER VERIFISERT» | **Utdatert.** Malen inkluderte pollen. Skriving skjer nå som poll-svar. |
+> | «Arbitreringsfeilen», «Kollisjonen …», «Driver vi bussen …» | **Historikk.** To av konklusjonene der var feil og ble tilbakevist; se «RETTELSE» og «GJENNOMBRUDD». |
+> | «Sendeforsøk — status per 2026-08-14» | **Utdatert.** Alle fire variantene feilet fordi de var uoppfordret. |
+>
+> Fortsatt gyldig: fysisk tilkobling, sjekksumalgoritmen, statustelegrammets
+> feltkart, nibbel-kodingen av viftetrinn, flyttall-registrene og
+> temperaturfølerens identitet.
+
 Kilde: reverse-engineering av `Flexit_master.ino` (Vongraven-repoet) + verifisert
 med Python mot eksemplene i hans README. Se `Flexit_master.ino` og
 `vongraven-README.md` i denne mappen for original-kilden, og `README.md` for
@@ -122,6 +160,11 @@ allerede bruker. Kun disse fire signalene går mellom modulen og ATOM-en — det
 ingen DE/RE-linje, se usikkerhet 1 under.
 
 ## Rammestruktur (MÅLT på eget anlegg 2026-08-13)
+
+> **UTDATERT:** det som her kalles én ramme er i virkeligheten en 5-byte poll
+> pluss et svar. Lengde og sjekksumvindu stemmer likevel, fordi vinduet starter
+> nøyaktig der svaret begynner. Se «GJENNOMBRUDD: bussen er POLLED».
+
 
 Avlyttet 23 708 byte fra bussen med `uart: debug:` og analysert i Python.
 Dette er ikke lenger utledning — det er målt.
@@ -269,6 +312,9 @@ varierer.
 
 ## Kommandotelegram (sendt av CI50, 18 byte)
 
+> **UTDATERT:** de 18 bytene er poll (5) + svar (13), ikke ett telegram.
+
+
 Eksempel fra README (verifisert sjekksum i Python):
 ```
 195  4  0  199  81 | 193  4  8  32  15  0  34  0  4  0  18 | 52  236
@@ -385,6 +431,10 @@ Implementert som `button` («Forsering») via `trigger_boost()`, som går utenom
 gjeldende tilstand.
 
 ## command_template ER VERIFISERT (2026-08-13)
+
+> **UTDATERT:** malen inkluderte pollen, som tilhører masteren. Skriving skjer
+> nå som poll-svar via `queue_state_frame_()`.
+
 
 Panelet sender periodisk sin ønskede tilstand som en `C1`/`len=8`-ramme. Den
 har nøyaktig samme form som malen vi har hatt liggende ubekreftet:
@@ -576,6 +626,9 @@ tilstandsendring i spill i tillegg.
 
 ## Kollisjonen, og beviset på at vi ikke driver bussen (2026-08-14)
 
+> **TILBAKEVIST:** konklusjonen her var feil. Se «RETTELSE: vi driver bussen».
+
+
 Etter at arbitreringen var fikset gikk rammen ut byte-perfekt:
 
 ```
@@ -674,6 +727,10 @@ som ikke når tråden. Neste steg er fysisk: verifiser at ATOM-ens TX faktisk n�
 Tail485s TXD-inngang, og at DE/RE-automatikken i modulen fungerer.
 
 ## Driver vi bussen i det hele tatt? — designet test (2026-08-14)
+
+> **HISTORIKK:** testen var riktig utført, men konklusjonen ble tilbakevist av
+> en bedre test. Se «RETTELSE: vi driver bussen».
+
 
 ### Først: en feilslutning som måtte korrigeres
 
@@ -863,6 +920,10 @@ Lærdom: en rammedetektor basert på lengde + sjekksum er ikke idiotsikker for
 nullengde-rammer, fordi sjekksumvinduet da er så kort at det kan treffe tilfeldig.
 
 ## Sendeforsøk — status per 2026-08-14
+
+> **UTDATERT:** alle fire variantene feilet av samme grunn — de var
+> uoppfordret. Se «GJENNOMBRUDD» og «FULL STYRING OPPNÅDD».
+
 
 Alle fire variantene nedenfor gikk beviselig ut på bussen (verifisert med
 `direction: BOTH`, og `frames_discarded` steg ved kollisjon). **Ingen ga

@@ -29,7 +29,6 @@ namespace esphome::flexit_sl4r {
 // Se research/protocol-notes.md for utledning av alle offsets/lengder under.
 static constexpr uint8_t STATUS_DATA_LENGTH = 22;   // databyte i statustelegrammet (uten sync-header/checksum)
 static constexpr uint8_t STATUS_RAW_LENGTH = 25;    // total byte lest etter synk-treff (data + 2 checksum + 1 ubrukt)
-static constexpr uint8_t COMMAND_LENGTH = 18;        // total lengde på kommandotelegrammet til CS50
 static constexpr uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 // Hvor lenge bussen må ha vært HELT stille før vi tør sende.
 //
@@ -99,9 +98,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
-  void set_command_template(const std::vector<uint8_t> &command_template) {
-    this->command_template_ = command_template;
-  }
   void set_flow_control_pin(GPIOPin *pin) { this->flow_control_pin_ = pin; }
   // Hvilken node vi utgir oss for å være når vi sender. CI50 er node 4
   // (panel 1). Node 5 er panel 2 — jf. dipswitch 3 på panelet. Adressefeltet
@@ -154,13 +150,11 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void parse_and_publish_status_();
 
   // --- Sending: ikke-blokkerende deteksjon av CI50s kommandovindu + injeksjon ---
-  void queue_command_(uint8_t field_offset, uint8_t value);
   // Køer en komplett, ferdig ramme (uten sjekksum — den beregnes ved sending).
   // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
   void queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint);
   void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats = 1);
   void send_queued_frame_();
-  void build_and_send_command_();
 
   static std::pair<uint8_t, uint8_t> checksum_(const uint8_t *data, size_t len);
 
@@ -199,10 +193,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint8_t last_raw_heat_exchanger_temp_{20};
 
   // Kommandokø: kun én utestående kommando av gangen, nyeste vinner.
-  bool command_pending_{false};
-  uint8_t pending_field_offset_{0};
-  uint8_t pending_field_value_{0};
-  std::vector<uint8_t> command_template_;
   // FIFO-kø av ferdige rammer (uten sjekksum — den påføres ved sending).
   // Én ramme sendes per stille vindu, slik at en sekvens av rammer legges ut
   // på bussen i riktig rekkefølge med reell arbitrering mellom hver.

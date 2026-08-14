@@ -13,27 +13,45 @@ strømforsyning: se
 
 ## Status
 
-- **Fase 1 (lytting): VIRKER — verifisert mot ekte anlegg 13. august 2026.**
-  Noden er koblet på CI50-panelets ledige 4P4C-kontakt, matet fra bussens
-  11,8 V, adoptert i Home Assistant, og leser viftetrinn, forvarme og
-  settpunkt varmeveksler korrekt. Én reell feil ble avdekket underveis: en
-  off-by-one i synkroniseringsregelen (`195` ligger 7 byte foran lengdebyten,
-  ikke 8) gjorde at komponenten var helt stum selv med riktig kobling — se
-  «Rammestruktur (målt)» i protokollnotatene.
-  Mottaket er siden bygget om til en **generell rammeparser** (lengde +
-  sjekksum), som i tillegg til statustelegrammet dekoder IEEE754-flyttall og
-  eksponerer tilluftstemperatur, viftepådrag og en rekke diagnostikk-entiteter.
-  All protokollkunnskap er opprinnelig reverse-engineered fra
-  [Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
-  (Arduino Mega, testet på ekte SL4R/CS50) og verifisert numerisk mot
-  README-eksemplene der (sjekksumalgoritme stemmer eksakt). Se
-  [`research/protocol-notes.md`](research/protocol-notes.md) for full
-  utledning.
-- **Fase 2 (sending):** kode skrevet (ikke-blokkerende kommandovindu-
-  deteksjon + injeksjon), men kommandomalen inneholder foreløpig ukjente
-  byte kopiert fra Vongravens eksempel og MÅ verifiseres mot avlyttet
-  CI50-trafikk på vårt eget anlegg før den tas i bruk. Sending er derfor
-  IKKE koblet inn i `flexit-atom-lite.yaml` som standard.
+**Toveis styring virker mot ekte anlegg (14. august 2026).**
+
+- **Lesing:** tilluftstemperatur, viftetrinn (kjørende + retur), viftepådrag i
+  prosent for begge vifter, settpunkt varmeveksler, forsering aktiv, samt en
+  rekke diagnostikk-entiteter for felt vi ennå ikke har tydet.
+- **Skriving:** viftetrinn, settpunkt varmeveksler og forsering — alt verifisert
+  mot CS50s egne kringkastede verdier, ikke bare mot vår egen UI-tilstand.
+  Å sette viftetrinn avbryter samtidig en pågående forsering.
+- **Ikke aktivert:** forvarme. Flagg-byten i tilstandsrammen er uavklart, og vi
+  gjetter ikke på et felt som kan utløse noe annet enn det står på.
+
+Noden er koblet på CI50-panelets ledige 4P4C-kontakt og matet fra bussens egne
+11,8 V.
+
+### Hvordan det henger sammen
+
+Bussen er **polled**. Masteren sender en 5-byte poll til én node av gangen, og
+kun den adresserte noden svarer:
+
+```
+POLL  (fra master):  C3 <node> 00 <ck1> <ck2>
+SVAR  (fra noden):   <TYPE> <node> <LEN> <data...> <ck1> <ck2>
+```
+
+Ved oppstart pollast node 2, 3 og 5 fem ganger hver. Svarer de ikke, droppes de
+resten av driftsperioden. Vi melder oss derfor på som **node 5 = panel 2** —
+identiteten dipswitch 3 konfigurerer på et fysisk panel — og blir enumerert og
+pollet videre, også gjennom våre egne omstarter.
+
+Det tok lang tid å komme dit, fordi den opprinnelige modellen tolket poll og
+svar som ÉN ramme med et 8-byte hode. Se
+[`research/protocol-notes.md`](research/protocol-notes.md) for hele utledningen,
+inkludert blindveiene — de er dokumentert med vilje, siden flere av dem så
+overbevisende riktige ut.
+
+Protokollarbeidet startet fra
+[Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
+(MIT, 2018). Sjekksumalgoritmen derfra stemmer eksakt; rammemodellen måtte
+bygges om fra bunnen.
 
 ## Repo-struktur
 
@@ -63,29 +81,18 @@ cp secrets.yaml.example secrets.yaml   # fyll inn wifi + generer api-nøkkel/ota
 
 ## Videre plan
 
-1. ~~Flash ATOM Lite.~~ **Gjort 3. august 2026** — bygget og flashet fra
-   ESPHome-addonen på HA-verten, ikke fra dette repoet (se «Hvor koden kjører»).
-   Noden er oppe på IoT-VLAN og svarer på API. Gjenstår: **adopter den i Home
-   Assistant** (Innstillinger → Enheter → ESPHome oppdager `flexit-sl4r`;
-   API-nøkkelen ligger i `secrets.yaml`) slik at entitetene finnes før RS485
-   kobles til. Videre oppdateringer går over OTA.
-2. ~~Mål spenningen på bussen.~~ **Gjort 2026-08-13: 11,8 V** på den ledige
-   4P4C-kontakten bak på CI50-panelet, i enden av 12 m tilførsel. Innenfor
-   Tail485s 9–24 V → hele oppsettet mates fra bussen, alle fire klemmene
-   (B, A, V, G) i bruk. Kontroller polariteten med multimeter rett før
-   innplugging: V og G byttet om kan ødelegge modulen.
-3. Koble Tail485 i den ledige kontakten bak på CI50-panelet (parallellkoblet med
-   den som er i bruk — samme buss som på CS50-kortet, uten å åpne aggregatet).
-   Kjør Fase 1 (kun lytting): verifiser at statustelegrammer synkroniseres og
-   sjekksummer stemmer i loggen. Er det helt stille: bytt om A og B før du
-   mistenker koden. Se etter brownout-reset i loggen — det er symptomet på at
-   skinnen ikke tåler strømtrekket (kildeimpedansen er ikke målt).
-4. Avlytt et ekte CI50→CS50-kommandotelegram (endre f.eks. viftetrinn på
-   selve panelet mens ESP-en logger rå bytes) og sammenlign mot
-   `command_template` i `flexit-atom-lite.yaml` — korriger malen ved avvik.
-5. Slå på Fase 2: legg til `select`/`switch`/`number`-entitetene og test
-   sending, bekreft at CI50-panelet viser endringene og at ingen andre
-   verdier endres utilsiktet.
+Kartleggingen fortsetter i [`TODO.md`](TODO.md). De største åpne punktene:
+
+1. **Rotorpådraget.** Flexit oppgir utgang EB1 (rotor, 0–10 V), og settpunktet
+   vi nå styrer ER rotorens reguleringsmål — men pådragsverdien er ikke funnet.
+   Best jaktet når rotoren faktisk må jobbe, altså i fyringssesongen.
+2. **Filtervakt-alarmen.** Fanges ved neste filterbytte: opptak før og etter
+   reset gir både alarmbyten og reset-kommandoen. Alarmflagget er trolig mer
+   verdt enn resetknappen — et filtervarsel i HA er reell nytte.
+3. **Forvarme-skriving**, når flagg-byten er avklart.
+4. **De ukjente statusfeltene** ligger eksponert som diagnostikk, så HAs
+   recorder bygger historikk å korrelere mot uten nye bussopptak.
+
 ## Hvor koden kjører
 
 Firmwaren bygges **ikke** fra dette repoet i praksis. 3. august 2026 ble
