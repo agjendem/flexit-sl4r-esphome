@@ -1298,9 +1298,29 @@ Feltet er trolig et bitfelt for flere alarmer. Bit 1 (`0x02`) er filter;
 
 Filteralarmen er tidsbasert («filtertid»), siden CS 50 ikke har trykkvakter.
 
-## Sidefunn: 20-graders-forutsetningen håndheves ikke
+## 20-graders-forutsetningen ER reell — RETTELSE
 
-CI 50-manualen sier at filterreset krever at temperaturen først stilles til 20
-grader. Brukeren nullstilte den utilsiktet fra 15 grader. Forutsetningen ser
-altså ikke ut til å være implementert i fastvaren — verdt å vite, siden det gjør
-det lett å nullstille filtertimeren ved et uhell.
+Jeg skrev først at CI 50-manualens krav om å stille temperaturen til 20 grader
+før filterreset «ikke håndheves», fordi brukeren nullstilte alarmen fra 15
+grader og den forsvant.
+
+**Det var feil.** Noen timer senere slo alarmen seg på igjen av seg selv —
+fanget automatisk av anomalidetektoren:
+
+```
+[44185 ms] ALARMFELT endret
+C3 01 00 C4 4B C1 01 16  20 0E 90 80 02 11 00 04 00 12 ...  7C AA
+                                  ^^ [4] = 0x02, alarm satt igjen
+```
+
+Endringen kom uten at noe ble skrevet fra vår side. Den riktige tolkningen er
+altså at alarmen ble **midlertidig kvittert, men filtertimeren ikke nullstilt** —
+akkurat slik manualen antyder at 20-graders-steget er det som faktisk restarter
+timeren. Alarmen kommer da tilbake ved neste evaluering.
+
+Praktisk konsekvens, og en beroligende en: **vedlikeholdsvarselet gikk ikke tapt**
+selv om resetten ble utløst ved et uhell. Skal filtertimeren faktisk nullstilles,
+må prosedyren følges fullt ut — temperatur til 20 grader først.
+
+**Metodepoeng:** dette er første gang anomalifangsten fanget en ekte hendelse på
+egen hånd, og den ga full ramme med tidsstempel uten at noen satt og lyttet.

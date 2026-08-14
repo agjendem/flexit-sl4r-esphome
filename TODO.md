@@ -186,5 +186,6 @@ merket «ikke CS 50»:
 | Hvordan slås ettervarme av/på? | Hold − og trykk + på panelet |
 | Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |
 | Er filteralarmen trykkbasert? | Nei — timer («filtertid»), trykkvakt er ikke CS 50 |
+| Holder det å trykke begge temp-knappene for filterreset? | Nei — alarmen kom tilbake. Temperaturen må først til 20 grader |
 | Finnes rotorpådrag i det hele tatt? | Ja — J5 pin 11,12 (0–10 V), ikke merket «ikke CS 50» |
 | Én eller to temperaturfølere? | **Én.** Ettervarmesettet monterer to *termostater* (OT + BT), ikke måleførere |
