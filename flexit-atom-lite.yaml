@@ -124,6 +124,20 @@ switch:
   # Se research/protocol-notes.md → «Multimetermåling av sendeveien».
   # Slå AV igjen etterpå — den forstyrrer bussen HVIS senderen faktisk virker,
   # og det er nettopp det vi prøver å finne ut.
+  # Rå logging av HVER validerte ramme. Skrus av/på i drift uten reflash —
+  # det gamle `uart: debug:` krevde ny firmware hver gang. Bruk denne når du
+  # skal fange en hendelse i sin helhet. Slå AV igjen etterpå; den er ordrik.
+  - platform: template
+    name: "Rå rammelogging"
+    id: raw_logging
+    entity_category: diagnostic
+    icon: "mdi:text-box-search-outline"
+    lambda: 'return id(flexit_sl4r_hub)->get_raw_logging();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_raw_logging(true);'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_raw_logging(false);'
+
   - platform: template
     name: "TX-test (feilsøking)"
     id: tx_test
@@ -160,6 +174,13 @@ button:
     dump_boot_capture:
       name: "Dump oppstartsfangst"
       icon: "mdi:content-save-outline"
+      entity_category: diagnostic
+    # Skriver ut de siste 40 uventede hendelsene med full ramme. Trykk denne
+    # etter at noe har skjedd — en alarm, en uforklarlig endring — og lim
+    # loggen inn i en GitHub-issue.
+    dump_anomalies:
+      name: "Dump anomalier"
+      icon: "mdi:bug-outline"
       entity_category: diagnostic
 
 number:
@@ -203,6 +224,11 @@ sensor:
     # den telegramtypen.
     status_interval:
       name: "Statusintervall"
+    # Teller uventede hendelser: nye rammetyper, endringer i felt vi tror er
+    # konstante, og enhver endring i alarmfeltet. Stiger den, har aggregatet
+    # gjort noe vi ikke har sett før — og rammen ligger lagret.
+    anomalies:
+      name: "Anomalier"
 
     # --- Utforskning ---
     # Ukjente felt eksponert som diagnostikk, slik at HAs recorder bygger

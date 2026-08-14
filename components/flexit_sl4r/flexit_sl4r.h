@@ -111,6 +111,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_SENSOR(fan_level_return)             // lav nibbel — trinnet forseringen faller tilbake til
   SUB_SENSOR(frames_discarded)             // rammer forkastet på sjekksum — gjør busskorrupsjon målbar
   SUB_SENSOR(status_interval)              // sekunder mellom to statustelegram — se under
+  SUB_SENSOR(anomalies)                    // antall uventede hendelser siden oppstart
 #endif
 
  public:
@@ -148,6 +149,19 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // og vi kan lese loggen live. Komponenten mottar fra ~2 s, så vi bufrer
   // rått i RAM og henter det ut i etterkant.
   void dump_boot_capture();
+
+  // --- Anomalifangst ---
+  // Logger det UVENTEDE, ikke alt: nye rammetyper, endringer i felt vi tror er
+  // konstante, og enhver endring i alarmfeltet. Da koster det nesten ingenting
+  // å stå påslått permanent, og vi har full kontekst den dagen en alarm går
+  // eller noe annet uforutsett skjer.
+  void dump_anomalies();
+  // Rå hex-logging av hver validerte ramme, skrudd av/på i drift uten reflash.
+  void set_raw_logging(bool on) {
+    this->raw_logging_ = on;
+    ESP_LOGI("flexit_sl4r", "Rå rammelogging %s", on ? "PÅ" : "AV");
+  }
+  bool get_raw_logging() const { return this->raw_logging_; }
 
 #ifdef USE_SENSOR
   // Generiske «utforsknings»-sensorer. Poenget er å kunne eksponere hvilken som
@@ -210,6 +224,28 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Rå bytefangst fra oppstart. Fylles én gang, stopper når den er full.
   static constexpr size_t BOOT_CAPTURE_MAX = 6144;
   std::vector<uint8_t> boot_capture_;
+
+  // --- Anomalifangst ---
+  static constexpr size_t ANOMALY_MAX = 40;
+  // Læringsperiode: de første sekundene etter oppstart lærer noden anleggets
+  // normale repertoar av rammetyper uten å melde fra. Etterpå er enhver ny
+  // signatur en ekte hendelse. Bedre enn å telle et vilkårlig antall — hvor
+  // mange typer et anlegg sender varierer med utrustningen.
+  static constexpr uint32_t ANOMALY_LEARN_MS = 30000;
+  struct Anomaly {
+    uint32_t ms;
+    const char *reason;
+    std::vector<uint8_t> frame;
+  };
+  std::vector<Anomaly> anomalies_;
+  uint32_t anomaly_count_{0};
+  bool raw_logging_{false};
+  // Rammesignaturer vi har sett før: (TYPE<<16) | (LEN<<8) | bank.
+  std::vector<uint32_t> seen_signatures_;
+  // Forrige statustelegram, for å oppdage endringer i «konstante» felt.
+  std::array<uint8_t, STATUS_DATA_LENGTH> prev_status_{};
+  bool have_prev_status_{false};
+  void note_anomaly_(const char *reason);
   bool communication_ok_{false};
 
   // Sist kjente rå verdier fra CS50 — MÅ speiles inn i utgående kommandoer

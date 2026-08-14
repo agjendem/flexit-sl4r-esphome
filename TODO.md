@@ -81,7 +81,9 @@ merket «ikke CS 50»:
       Kan ikke fremprovoseres trygt — men finn kandidatbyten, så den fanges
       hvis det først skjer.
 
-## For publisering: automatisk maskinvaregjenkjenning
+## For publisering
+
+### Automatisk maskinvaregjenkjenning — viktigst for at andre kan bruke det
 
 - [ ] **Finn konfigurasjonsbitene på bussen.** CS 50 kjenner sin egen
       utrustning — den settes med tre mikrobrytere på kortet: veksler
@@ -100,6 +102,13 @@ merket «ikke CS 50»:
 - [ ] **Forvarme for plateveksler-aggregater.** Fjernet hos oss fordi SL4 R har
       rotor, men trengs for at integrasjonen skal dekke plateveksler-varianter.
       Krever noen med slikt aggregat til å avlytte feltet.
+- [x] ~~Rigg for å fange det uventede.~~ **GJORT:** anomalifangst med
+      læringsperiode, ringbuffer på 40 hendelser, `Anomalier`-teller og
+      «Dump anomalier»-knapp. I tillegg `Rå rammelogging` som kan slås av og på
+      i drift uten reflash. Dokumentert i README under «Feilsøking og
+      innsamling».
+- [x] ~~Be om bidrag fra andre.~~ **GJORT:** eget avsnitt i README om hvilke
+      logger som er mest verdifulle, og at uenighet er velkomment.
 
 ## Åpne, men mindre
 

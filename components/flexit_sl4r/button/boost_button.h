@@ -23,3 +23,12 @@ class DumpBootCaptureButton final : public button::Button, public Parented<Flexi
 };
 
 }  // namespace esphome::flexit_sl4r
+
+namespace esphome::flexit_sl4r {
+
+class DumpAnomaliesButton final : public button::Button, public Parented<FlexitSL4RComponent> {
+ protected:
+  void press_action() override;
+};
+
+}  // namespace esphome::flexit_sl4r

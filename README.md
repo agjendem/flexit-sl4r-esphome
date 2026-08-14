@@ -151,6 +151,62 @@ ssh anders@192.168.1.205 'cat /config/esphome/flexit-sl4r.yaml' | diff -u flexit
 (`/config/esphome/` er en egen nested git fra ESPHome-addonen og er ekskludert
 fra HA-config-repoet — se `CLAUDE.md` i homeassistant-workspace.)
 
+## Bidrag og logger ønskes
+
+Dette er reverse-engineering av en udokumentert protokoll, gjort på **ett**
+anlegg. Mye av det som står her gjelder sikkert bredere enn vi kan vite, og noe
+gjelder sikkert bare oss. Derfor: **logger fra andre SL4R/CS 50-anlegg er svært
+velkomne** — særlig fra aggregater med annen utrustning enn vårt (plateveksler,
+vannbatteri, forvarme, to paneler).
+
+Konkret er dette mest verdifullt:
+
+- **Et oppstartsopptak.** Trykk «Dump oppstartsfangst» etter at aggregatet har
+  vært strømsyklet. Det viser enumereringen og hvilke noder som finnes.
+- **Anomalier.** Integrasjonen fanger automatisk det uventede (se under).
+  Trykk «Dump anomalier» når noe har skjedd, og lim inn loggen.
+- **Hva panelet viser** i samme øyeblikk. Lysdiodene på CI 50 er fasiten vi
+  sammenligner bytene mot, og det var nettopp slik ettervarme-bitene og
+  filteralarmen ble knekt.
+- **Hvilken utrustning aggregatet ditt har** — veksler, varmebatteri,
+  ettervarme, avfrosting.
+
+Åpne en issue med loggen. Uenighet er også nyttig: flere av Vongravens
+opprinnelige tolkninger viste seg å være feil for vårt anlegg, og det er fullt
+mulig at noen av våre er feil for ditt.
+
+## Feilsøking og innsamling
+
+Integrasjonen er rigget for å samle bevis uten at du må sitte og vente.
+
+**Anomalifangst (alltid på).** Den logger *det uventede*, ikke alt: nye
+rammetyper, endringer i felt vi tror er konstante, og enhver endring i
+alarmfeltet. De siste 40 hendelsene lagres med full ramme og tidsstempel.
+Fordi den bare reagerer på avvik, koster den nesten ingenting å ha stående —
+i normal drift teller den null. Sensoren `Anomalier` viser antallet; knappen
+**«Dump anomalier»** skriver dem ut.
+
+De første 30 sekundene etter oppstart er en **læringsperiode** der noden lærer
+anleggets normale repertoar av rammetyper uten å melde fra. Etterpå er enhver
+ny signatur en ekte hendelse.
+
+**Rå rammelogging (av/på i drift).** Bryteren `Rå rammelogging` skriver hver
+validerte ramme som hex — uten reflash. Bruk den når du skal fange et helt
+hendelsesforløp. Slå av igjen etterpå; den er ordrik.
+
+**Oppstartsfangst.** De første 6 kB fra bussen bufres i RAM ved hver oppstart,
+fordi det mest interessante — enumereringen — skjer før WiFi er oppe. Hentes ut
+med «Dump oppstartsfangst».
+
+Slik får du loggen ut i en fil:
+
+```bash
+esphome logs flexit-atom-lite.yaml --device <ip> > flexit.log
+```
+
+Rammene kan parses med poll/svar-validatoren i
+[`research/captures/README.md`](research/captures/README.md).
+
 ## Kilder og kreditering
 
 Protokollkunnskapen her hviler på **[Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)**

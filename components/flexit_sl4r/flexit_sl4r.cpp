@@ -216,7 +216,64 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
   this->dispatch_frame_();
 }
 
+void FlexitSL4RComponent::note_anomaly_(const char *reason) {
+  this->anomaly_count_++;
+  if (this->anomalies_.size() >= ANOMALY_MAX)
+    this->anomalies_.erase(this->anomalies_.begin());
+  this->anomalies_.push_back({millis(), reason, this->frame_});
+#ifdef USE_SENSOR
+  if (this->anomalies_sensor_ != nullptr)
+    this->anomalies_sensor_->publish_state(this->anomaly_count_);
+#endif
+  // Logges også med en gang, så den fanges av en vanlig loggstrøm.
+  char line[3 * 40 + 1];
+  const size_t n = std::min<size_t>(40, this->frame_.size());
+  for (size_t k = 0; k < n; k++)
+    sprintf(line + 3 * k, "%02X ", this->frame_[k]);
+  line[3 * n] = '\0';
+  ESP_LOGW(TAG, "ANOMALI (%s): %s", reason, line);
+}
+
+void FlexitSL4RComponent::dump_anomalies() {
+  ESP_LOGI(TAG, "=== ANOMALIER: %u lagret, %u totalt siden oppstart ===",
+           static_cast<unsigned>(this->anomalies_.size()), static_cast<unsigned>(this->anomaly_count_));
+  char line[3 * 40 + 1];
+  for (const auto &a : this->anomalies_) {
+    const size_t n = std::min<size_t>(40, a.frame.size());
+    for (size_t k = 0; k < n; k++)
+      sprintf(line + 3 * k, "%02X ", a.frame[k]);
+    line[3 * n] = '\0';
+    ESP_LOGI(TAG, "  [%8u ms] %-22s %s", static_cast<unsigned>(a.ms), a.reason, line);
+  }
+  ESP_LOGI(TAG, "=== SLUTT ===");
+}
+
 void FlexitSL4RComponent::dispatch_frame_() {
+  // Rå logging av hver validerte ramme — skrus av/på i drift.
+  if (this->raw_logging_) {
+    char line[3 * 40 + 1];
+    const size_t n = std::min<size_t>(40, this->frame_.size());
+    for (size_t k = 0; k < n; k++)
+      sprintf(line + 3 * k, "%02X ", this->frame_[k]);
+    line[3 * n] = '\0';
+    ESP_LOGD(TAG, "RAMME: %s", line);
+  }
+
+  // Ny rammesignatur? Første gang en (TYPE, LEN, bank)-kombinasjon dukker opp
+  // er den verdt å fange — det er slik en ukjent meldingstype røper seg.
+  {
+    const uint8_t bank = this->frame_.size() > FRAME_HEADER_LENGTH ? this->frame_[FRAME_HEADER_LENGTH] : 0;
+    const uint32_t sig = (static_cast<uint32_t>(this->frame_[FRAME_CHECKSUM_START]) << 16) |
+                         (static_cast<uint32_t>(this->frame_[FRAME_LEN_OFFSET]) << 8) | bank;
+    if (std::find(this->seen_signatures_.begin(), this->seen_signatures_.end(), sig) ==
+        this->seen_signatures_.end()) {
+      this->seen_signatures_.push_back(sig);
+      // Ikke meld fra i læringsperioden — da ville hele oppstarten blitt støy.
+      if (millis() > ANOMALY_LEARN_MS)
+        this->note_anomaly_("ny rammetype");
+    }
+  }
+
   const uint8_t type = this->frame_[FRAME_CHECKSUM_START];
   const uint8_t len = this->frame_[FRAME_LEN_OFFSET];
 
@@ -230,6 +287,22 @@ void FlexitSL4RComponent::dispatch_frame_() {
       this->raw_status_[i] = this->frame_[FRAME_HEADER_LENGTH + i];
     this->raw_status_[22] = this->frame_[this->frame_.size() - 2];
     this->raw_status_[23] = this->frame_[this->frame_.size() - 1];
+    // Felt vi tror er konstante. Endrer ett av dem seg, er det nettopp den
+    // hendelsen vi vil ha full kontekst rundt — og alarmfeltet varsles alltid.
+    if (this->have_prev_status_) {
+      static const uint8_t CONSTANT_FIELDS[] = {0, 1, 3, 7, 8, 10, 12, 16, 17, 18, 19, 21};
+      for (uint8_t idx : CONSTANT_FIELDS) {
+        if (this->raw_status_[idx] != this->prev_status_[idx]) {
+          this->note_anomaly_("konstant felt endret");
+          break;
+        }
+      }
+      if (this->raw_status_[4] != this->prev_status_[4])
+        this->note_anomaly_("ALARMFELT endret");
+    }
+    std::copy_n(this->raw_status_.begin(), STATUS_DATA_LENGTH, this->prev_status_.begin());
+    this->have_prev_status_ = true;
+
     this->parse_and_publish_status_();
     return;
   }

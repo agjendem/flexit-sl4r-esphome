@@ -25,6 +25,7 @@ CONF_FAN_LEVEL_RUNNING = "fan_level_running"
 CONF_FAN_LEVEL_RETURN = "fan_level_return"
 CONF_FRAMES_DISCARDED = "frames_discarded"
 CONF_STATUS_INTERVAL = "status_interval"
+CONF_ANOMALIES = "anomalies"
 CONF_RAW_STATUS_BYTES = "raw_status_bytes"
 CONF_FLOAT_REGISTERS = "float_registers"
 CONF_REGISTER = "register"
@@ -87,6 +88,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_FAN_LEVEL_RUNNING): _diagnostic_schema(),
         cv.Optional(CONF_FAN_LEVEL_RETURN): _diagnostic_schema(),
         cv.Optional(CONF_FRAMES_DISCARDED): _diagnostic_schema(),
+        cv.Optional(CONF_ANOMALIES): _diagnostic_schema(),
         cv.Optional(CONF_STATUS_INTERVAL): sensor.sensor_schema(
             unit_of_measurement="s",
             accuracy_decimals=1,
@@ -107,6 +109,7 @@ _SIMPLE = {
     CONF_FAN_LEVEL_RETURN: "set_fan_level_return_sensor",
     CONF_FRAMES_DISCARDED: "set_frames_discarded_sensor",
     CONF_STATUS_INTERVAL: "set_status_interval_sensor",
+    CONF_ANOMALIES: "set_anomalies_sensor",
 }
 
 
