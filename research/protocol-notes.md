@@ -1478,3 +1478,37 @@ Implementert: `panel_state_` speiler hele panelets 8 databyte, og
 Og: entiteten publiseres nå **kun når vi faktisk har sett en panelramme**.
 Panelet sender bare ved endring, så etter en omstart vet vi ingenting — da er
 `unknown` riktigere enn å gjette «av».
+
+## Panelbevegelsen gjør TO ting — varigheten skiller dem
+
+Brukeren fikk gjentatte ganger filterreset som bieffekt når ettervarmen skulle
+slås av eller på, og spurte om det var vår feil.
+
+**Det er det ikke.** Under forsøkene sendte noden vår null rammer (verifisert i
+loggen). Forklaringen ligger i panelet:
+
+- Filterreset og ettervarme-toggel bruker **samme knappekombinasjon**
+  (hold `−`, trykk `+`).
+- Manualen oppgir **3 sekunder** for ettervarme-AV, men ingen varighet for
+  filterreset.
+- I opptakene fyrte filterresetten på settpunkt **15, 16 og 17** — altså gater
+  ikke manualens 20-graders-forutsetning den.
+
+Nærliggende tolkning: **kort trykk på begge = filterreset, holdt i 3 sekunder =
+ettervarme-toggel.** Holder man lenge nok, fyrer begge — først resetten, så
+toggelen. Det stemmer med brukerens beskrivelse «filter reset blink +
+ettervarme».
+
+### Konsekvens: vår bryter er bedre enn panelet
+
+`switch` «Ettervarme» skriver `data[4]` bit7 direkte, uten å sette knappebitene
+(bit6). Den skal derfor ikke kunne utløse filterreset som bieffekt — i motsetning
+til panelbevegelsen. Utestet, men det følger av at knappebiten er den som
+utløser resetten.
+
+### Bekreftelse av felttolkningen
+
+Etter at brukeren aktiverte ettervarmen fra panelet, viste både `switch` og
+`binary_sensor` **on** — i samsvar med at «+»-lampa lyste. `data[4]` bit7 er
+dermed bekreftet live, etter to tidligere feiltolkninger (`[6]` bit7, så
+`data[2]`).
