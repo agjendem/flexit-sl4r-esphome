@@ -89,6 +89,33 @@ mot dem direkte.
 Kommunikasjon OK · enumerert på bussen · anomalier · statusintervall · rammer
 forkastet · resetårsak · oppetid · rå statusbyte for felt som ennå ikke er tydet.
 
+## Hvordan skriving oppfører seg
+
+**En skriving endrer kun feltet du ba om. Alt annet speiles.**
+
+Panelets tilstandsramme inneholder flere felt i samme melding — viftetrinn,
+settpunkt, ettervarme og noen vi ennå ikke forstår. Endrer du settpunktet, må de
+øvrige feltene likevel fylles ut, og da er det fristende å skrive konstanter.
+
+Det gjør denne integrasjonen **ikke**. Hver skriving bygger på panelets sist
+kjente ramme, og kun det ene feltet du faktisk endrer blir overstyrt.
+
+Grunnen er erfaring, ikke prinsipprytteri. Vi hardkodet først to felt vi trodde
+var konstante, og oppdaget senere at det ene var ettervarmens av/på-flagg — så
+hver settpunkt- eller viftetrinn-endring slo av ettervarmen i aggregatet. Med
+speiling kan den feilen ikke gjenoppstå, heller ikke i felt vi ennå ikke har
+tydet.
+
+To følger er verdt å merke seg:
+
+- **Etter en omstart av noden vet vi ingenting** om panelets tilstand før
+  panelet sender neste ramme, og det gjør det kun ved endring. Entiteter som
+  hviler på panelets ramme viser derfor `unknown` inntil da, i stedet for å
+  gjette.
+- **Knappebitene settes aldri** med mindre en handling krever det. Derfor kan
+  for eksempel `switch` «Ettervarme» ikke utløse filterreset som bieffekt —
+  noe panelets egen knappebevegelse faktisk gjør.
+
 ## Ulike aggregatvarianter
 
 SL4R/CS 50 finnes i mange utstyrskombinasjoner — roterende eller plateveksler,

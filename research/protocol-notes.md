@@ -36,6 +36,14 @@
 > | «`payload[6]` er et BITFELT» | **Delvis utdatert.** Bit0 står; bit7 er IKKE enable-flagget — se «RETTELSE 2». |
 > | «RETTELSE: ettervarmens av/på ligger i PANELETS ramme» (`data[2]`) | **Tilbakevist** av «RETTELSE 2». Riktig felt er `data[4]` bit7. |
 >
+> ### Designprinsipp for skriving
+>
+> **Speil alt du ikke forstår.** En utgående tilstandsramme bygges fra panelets
+> sist kjente ramme, og kun feltet vi faktisk mener å endre overstyres.
+> Å hardkode felt man antar er konstante har allerede kostet oss to utilsiktede
+> tilstandsendringer i anlegget — se «RETTELSE 2» nederst. Prinsippet beskytter
+> også mot felt vi ennå ikke har tydet.
+>
 > Fortsatt gyldig: fysisk tilkobling, sjekksumalgoritmen, flyttall-registrene og
 > temperaturfølerens identitet. **Statustelegrammets feltkart er oppdatert** —
 > se «Statustelegram — GJELDENDE feltkart», som også lister avvikene fra
