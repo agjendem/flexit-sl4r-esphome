@@ -1325,6 +1325,23 @@ må prosedyren følges fullt ut — temperatur til 20 grader først.
 **Metodepoeng:** dette er første gang anomalifangsten fanget en ekte hendelse på
 egen hånd, og den ga full ramme med tidsstempel uten at noen satt og lyttet.
 
+## FELLE: indeks `[4]` betyr to ulike ting
+
+To rammer med samme bank, ulik offset — og samme indeks brukt til helt
+forskjellige formål. Dette har jeg selv rotet med, så det er verdt å slå fast:
+
+| Ramme | Fra | Bank/offset | `[4]` betyr |
+|---|---|---|---|
+| **Statustelegram** `C1`/`len=22` | CS50 (node 1) | `20 0E` | **alarmbitfelt** — bit1 = filteralarm |
+| **Tilstandsramme** `C1`/`len=8` | panelet (node 4) | `20 0F` | **knappehendelser** — `0x01` forsering, `0xC0` begge temp-knapper |
+
+Det er altså to forskjellige registerblokker (`0x0E` = driftsstatus fra
+aggregatet, `0x0F` = panelets tilstand og handlinger), ikke to tolkninger av
+samme felt. Leser man `[4]` uten å vite hvilken ramme man har, får man tull.
+
+Samme forsiktighet gjelder `[6]`: i statustelegrammet er det ettervarmens
+bitfelt, i tilstandsrammen er posisjonen noe annet.
+
 ## `data[4]` er knappehendelser — og filterreset er dekodet (2026-08-14)
 
 Feltet vi lenge førte som «uavklart, ikke skriv dit» viser seg å rapportere

@@ -60,6 +60,34 @@ Protokollarbeidet startet fra
 (MIT, 2018). Sjekksumalgoritmen derfra stemmer eksakt; rammemodellen måtte
 bygges om fra bunnen.
 
+## Entiteter
+
+**Styring**
+
+| Entitet | Type | Merknad |
+|---|---|---|
+| Viftetrinn | `select` | 1–3. Å sette trinn avbryter en pågående forsering |
+| Settpunkt varmeveksler | `number` | 15–25 °C |
+| Forsering | `button` | «Max vifte» — aggregatet faller selv tilbake |
+| Nullstill filtervakt | `button` | Kjører hele manualens prosedyre automatisk |
+
+**Måling**
+
+Tilluftstemperatur · viftepådrag tilluft/avtrekk (%) · viftetrinn kjørende og
+retur · settpunkt lest fra bussen · ledige følerinnganger (skjuler seg selv når
+de ikke er tilkoblet).
+
+**Tilstand og alarm**
+
+Filteralarm · ettervarme aktivert · ettervarme varmer nå · forsering aktiv.
+De to ettervarme-entitetene svarer til panelets to lysdioder, og kan verifiseres
+mot dem direkte.
+
+**Diagnostikk**
+
+Kommunikasjon OK · enumerert på bussen · anomalier · statusintervall · rammer
+forkastet · resetårsak · oppetid · rå statusbyte for felt som ennå ikke er tydet.
+
 ## Ulike aggregatvarianter
 
 SL4R/CS 50 finnes i mange utstyrskombinasjoner — roterende eller plateveksler,
