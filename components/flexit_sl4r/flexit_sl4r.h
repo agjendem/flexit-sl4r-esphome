@@ -129,6 +129,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_SENSOR(fan_level_return)             // lav nibbel — trinnet forseringen faller tilbake til
   SUB_SENSOR(frames_discarded)             // rammer forkastet på sjekksum — gjør busskorrupsjon målbar
   SUB_SENSOR(status_interval)              // sekunder mellom to statustelegram — se under
+  SUB_SENSOR(heat_demand)                  // payload[11] — varmepådrag, driver rotoren
   SUB_SENSOR(anomalies)                    // antall uventede hendelser siden oppstart
 #endif
 

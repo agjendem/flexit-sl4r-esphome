@@ -1537,3 +1537,79 @@ Etter at brukeren aktiverte ettervarmen fra panelet, viste både `switch` og
 `binary_sensor` **on** — i samsvar med at «+»-lampa lyste. `data[4]` bit7 er
 dermed bekreftet live, etter to tidligere feiltolkninger (`[6]` bit7, så
 `data[2]`).
+
+# GJENSTÅR Å DEKODE
+
+Oppdatert 2026-08-15. Sortert etter hva som ville gitt mest nytte.
+
+## Panelets indikatorer som fasit
+
+CI 50 har 13 posisjoner, og **ingen av dem er flerfargede** — hver indikator har
+én farge og én betydning. Det gjør panelet til en presis fasit: hver lampe
+tilsvarer én tilstand vi bør kunne finne på bussen.
+
+| Pos | Symbol | Farge | Betydning | Vår status |
+|---|---|---|---|---|
+| 1 | △ | **rød** | Indikering alarm | **IKKE DEKODET** |
+| 2–4 | I / II / III | grønn | viftehastighet | ✓ `[5]` høy nibbel |
+| 5 | 🔔 | gul | filterbytte | ✓ `[4]` bit1 |
+| 6 | °C | gul | ettervarme aktiv (element varmer) | ✓ `[6]` bit0 |
+| 7 | ⊕ | grønn | ettervarme AV/PÅ | ✓ panelets `data[4]` bit7 |
+| 13 | 6-segment | rød | innstilt temperatur | ✓ `[9]` |
+
+**Alt på panelet er dekket unntatt den røde alarmen (pos 1).**
+
+## De fem hullene
+
+### 1. Den røde alarmen — `[4]`, øvrige bit
+
+Vi har bit1 (filter, gul lampe). Den **røde** lampa (pos 1) har egne kilder, og
+manualen navngir dem for CS 50:
+
+- **Overhetingstermostat el.batteri** — løser ut ved 80 °C, må resettes manuelt
+  med knapp på batteriet. Symbolet i alarmavsnittet (`⚪——△`) er nettopp pos 1.
+- **Rotoralarm** — rotasjonsvakten gir B-alarm ved stopp.
+- Frostalarm vannbatteri — gjelder ikke oss (vi har elektrisk).
+
+Sannsynligvis flere bit i `[4]`. **Sikkerhetsrelevant** — overheting merkes
+ellers først når noen undrer seg over at det er kaldt.
+
+### 2. `[2]` — status/modusfelt
+
+Observert: `0`, `36`, `72`, `144`, `145`. Bit0 settes ved varmebehov (144→145,
+samtidig som `[11]` begynte å rampe). De øvrige mønstrene (`0x24`, `0x48`,
+`0x90`) ser ut som et felt med flere tilstander, ikke uavhengige bit.
+
+### 3. `[15]` og `[20]` — veksler sammen?
+
+`[15]`: `32 / 35 / 51`. `[20]`: `68 / 136`. Begge veksler, tilsynelatende i takt
+med hverandre. Kandidat: sekvensteller eller blinkefase for panelets lysdioder —
+filterlampa *blinker* jo, ifølge manualen.
+
+### 4. `[10]`, `[12]`, `[16]`–`[19]`, `[21]` — aldri sett variere
+
+Konstant `0` i alle opptak. Kan være tilvalg vi ikke har (kjøling, vannbatteri,
+ekstra følere), eller felt som kun brukes på CS 500. Klemmelista viser at flere
+slike funksjoner er merket «ikke CS 50».
+
+### 5. Panelrammens `data[2]`, `data[5]`, `data[6]`
+
+`data[2]` var lenge mistenkt for å være ettervarme-flagget, men ble avkreftet.
+`data[5]` er konstant `0x04`, `data[6]` konstant `0x00`. Ukjent betydning —
+speiles derfor uendret i alle våre skrivinger.
+
+## Metode som fungerer
+
+Alle gjennombrudd har kommet fra å **provosere fram en tilstand og se hva som
+beveger seg**. `[11]` sto konstant `0` i alle opptak til vi satte settpunktet
+til maks; da rampet den `0 → 68` og avslørte seg som varmepådraget.
+
+For de gjenstående hullene:
+
+- **Rotoralarmen** kan ikke fremprovoseres trygt, men rotoren har en **innebygd
+  driftstest som kjører ett minutt hver dag** (manualen, J5 pin 11,12). Logg
+  over et døgn og se hva som beveger seg.
+- **Overhetingstermostaten** kan ikke testes. Men den er en åpenbar kandidat for
+  et `[4]`-bit, og anomalidetektoren fanger endringen automatisk hvis den skjer.
+- `[15]`/`[20]` bør korreleres mot **filterlampas blinking** — trykk noe som
+  utløser blink, og se om de to følger blinketakten.

@@ -62,7 +62,16 @@ Mekanismen er tidsbasert («filtertid»); CS 50 har ingen trykkvakter.
 - [ ] Sjekk om **filtertiden/tidstelleren** også ligger på bussen. Da kunne HA
       vist «dager til filterbytte» i stedet for bare en alarm.
 
-### 3. Rotorpådrag og ettervarme — fyringssesongen
+### 3. ~~Rotorpådrag~~ — FUNNET 2026-08-15
+
+`payload[11]` er varmepådraget som regulerer rotoren. Sto konstant `0` i alle
+opptak til settpunktet ble satt til maks; da rampet den monotont `0 → 68`.
+Eksponert som **«Varmepådrag»**. Trengte ikke høsten — bare et provosert
+varmebehov.
+
+Se «GJENSTÅR Å DEKODE» i protokollnotatene for de fem hullene som er igjen.
+
+### 3b. Ettervarmens eget pådrag — fyringssesongen
 
 CS 50-manualens klemmeliste bekrefter at begge finnes, og ingen av dem er
 merket «ikke CS 50»:

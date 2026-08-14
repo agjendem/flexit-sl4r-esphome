@@ -445,6 +445,13 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   if (this->fan_duty_extract_sensor_ != nullptr)
     this->fan_duty_extract_sensor_->publish_state(this->raw_status_[14]);
 
+  // payload[11] — varmepådrag. Sto konstant 0 i alle tidligere opptak, og
+  // rampet monotont 0 → 68 da settpunktet ble satt til maks. Flexit oppgir
+  // J5 (Pin 11,12) som «styresignal til gjenvinner, 0-10 V, 10 V ved maks
+  // varmebehov», som regulerer rotorens hastighet. Skalaen er antatt 0-100.
+  if (this->heat_demand_sensor_ != nullptr)
+    this->heat_demand_sensor_->publish_state(this->raw_status_[11]);
+
   // Utforsknings-sensorer: la HAs recorder bygge historikk på felt vi ennå
   // ikke forstår, så hypoteser kan prøves mot uker med data i stedet for et
   // nytt uart-debug-opptak.

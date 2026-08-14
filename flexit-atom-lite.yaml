@@ -239,6 +239,13 @@ sensor:
     fan_duty_extract:
       name: "Viftepådrag avtrekk"
       icon: "mdi:fan"
+    # payload[11] — varmepådrag som regulerer rotorens hastighet (Flexit:
+    # J5 pin 11,12, «0-10 V, 10 V ved maks varmebehov»). Sto konstant 0 til vi
+    # provoserte fram varmebehov ved å sette settpunktet til maks; da rampet
+    # den monotont oppover. Skala antatt 0-100.
+    heat_demand:
+      name: "Varmepådrag"
+      icon: "mdi:heat-wave"
     fan_level_running:
       name: "Viftetrinn kjørende"
     fan_level_return:
@@ -271,8 +278,6 @@ sensor:
         name: "Rå status[6] (ettervarme?)"
       - index: 10
         name: "Rå status[10]"
-      - index: 11
-        name: "Rå status[11]"
       - index: 15
         name: "Rå status[15]"
       - index: 20
