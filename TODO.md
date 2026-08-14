@@ -37,35 +37,56 @@ hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 Korrelér mot noe som endrer seg — utetemperatur, viftetrinn, tid på døgnet.
 Bekreftet fra før: `[5]` viftetrinn, `[9]` settpunkt, `[13]`/`[14]` viftepådrag.
 
-### 2. Filtervakt-alarmen — ved neste filterbytte
+### 2. Filteralarmen — kommer på TID, ikke ved filterbytte
 
 Klart størst praktisk nytte som gjenstår: et **filtervarsel i HA**.
 
-- [ ] Ta opp bussen **før og etter** en filterreset. Det gir to ting på én gang:
-      hvilken byte som bærer alarmflagget, og selve reset-kommandoen.
-- [ ] Prosedyre (CI 50-manualen): still temperaturen til 20 grader, trykk begge
-      temperaturknappene samtidig.
-      **Ikke nullstill uten at filteret faktisk byttes** — timeren starter på
-      nytt og det ekte vedlikeholdsvarselet går tapt.
-- [ ] Kandidatbyte for alarmflagget: `[2]` og `[4]`.
+Flexits CS 50-manual avklarer mekanismen: trykkvaktene («Filtervakt tilluft/
+avtrekk») er merket **ikke CS 50**. Vårt anlegg bruker **filtertid** — en timer.
+Alarmen fyrer altså av seg selv når tiden er ute, uten at noe fysisk skjer.
 
-### 3. Rotorpådraget — fyringssesongen
+- [ ] **Vent på at alarmen kommer**, og se hvilken statusbyte som endrer seg.
+      Kandidater: `[2]` (`0/36/72/144`) og `[4]`. Feltene ligger allerede
+      eksponert som diagnostikk, så recorderen fanger overgangen automatisk —
+      du trenger ikke gjøre noe.
+- [ ] Fang **reset-kommandoen** når filteret faktisk byttes: still temperaturen
+      til 20 grader og trykk begge temperaturknappene samtidig (CI 50-manualen).
+      **Ikke nullstill uten at filteret byttes** — timeren starter på nytt.
+- [ ] Sjekk om **filtertiden/tidstelleren** også ligger på bussen. Da kunne HA
+      vist «dager til filterbytte» i stedet for bare en alarm.
 
-Flexit oppgir utgang **EB1 (rotor, 0–10 V)**, og settpunktet vi nå styrer ER
-rotorens reguleringsmål. Da må pådraget ligge et sted, men det er ikke funnet.
+### 3. Rotorpådrag og ettervarme — fyringssesongen
+
+CS 50-manualens klemmeliste bekrefter at begge finnes, og ingen av dem er
+merket «ikke CS 50»:
+
+| Klemme | Funksjon |
+|---|---|
+| J5 (Pin 11,12) | Styresignal til gjenvinner (rotor), 0–10 V |
+| J5 (Pin 9,10) | Styresignal til ettervarme, 0–10 V |
+| J5 (Pin 13,14) | Rotoralarm |
 
 - [ ] Endre settpunktet når rotoren faktisk må jobbe, og se hvilken verdi som
       følger med. Nå i august er differansen ute/inne for liten til å skille et
-      pådrag fra en konstant — dette er et **høstforsøk**.
-- [ ] Sjekk samtidig etter **rotorvakt**-status; CS50 har den funksjonen.
+      pådrag fra en konstant — **høstforsøk**.
+- [ ] Let etter **ettervarmens** 0–10 V-pådrag på samme måte. Se hypotesen om
+      `payload[6]` under.
+- [ ] **Rotoralarm** skal finnes som statusbit.
 
 ## Åpne, men mindre
 
-- [ ] **Forvarme-skriving.** Flagg-byten (`data[4]`) er uavklart: panelet satte
-      den `00`→`01` rett før en FORSERINGS-kommando, ikke ved noe
-      forvarmerelatert. `set_preheat()` avviser derfor med en advarsel.
-      **Vurder samtidig om entiteten skal fjernes helt** — CI 50-panelet har
-      ingen forvarmeknapp, så feltet er kanskje ikke brukerstyrt i det hele tatt.
+- [ ] **FJERN forvarme-entiteten — den gjelder ikke vårt aggregat.**
+      CS 50-manualen er entydig: forvarme er en **plateveksler**-funksjon
+      (mikrobryter 3: «Aggregatet har forvarme (bare ved plateveksler)»), og
+      avfrosting er enten «Forvarme/Bypass». SL4 R har **roterende** veksler, så
+      avfrosting skjer med bypass. En bryter som ikke kan gjøre noe er verre enn
+      ingen bryter.
+- [ ] **Døp om «Forvarme aktiv» til «Ettervarme aktiv»** — men NB, det endrer
+      entity_id og kan brekke dashbord/automasjoner, så gjør det bevisst.
+      **Hypotese med god støtte:** `payload[6]` (veksler `0/1` ~50/50) er
+      ettervarmens el-batteri som slår av og på mot settpunktet, ikke forvarme.
+      Vårt B1 heter jo nettopp «tilluftføler ettervarme». Testbart mot
+      recorder-historikk: bør korrelere med stigende tilluft og med utetemp.
 - [ ] **Egen «avbryt forsering»-knapp.** Å sette gjeldende viftetrinn avbryter
       forseringen (verifisert: pådrag 100 → 49 %). En knapp som bare skriver
       dagens trinn ville gjort det åpenbart.
@@ -121,3 +142,6 @@ rotorens reguleringsmål. Da må pådraget ligge et sted, men det er ikke funnet
 | Hvilken temperaturføler er på bussen? | Kun tilluft (Flexits B1, ettervarmeføler) |
 | Hvor mange vifter? | To, ikke fire |
 | Hvordan slås forsering av? | Sett viftetrinn |
+| Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |
+| Er filteralarmen trykkbasert? | Nei — timer («filtertid»), trykkvakt er ikke CS 50 |
+| Finnes rotorpådrag i det hele tatt? | Ja — J5 pin 11,12 (0–10 V), ikke merket «ikke CS 50» |

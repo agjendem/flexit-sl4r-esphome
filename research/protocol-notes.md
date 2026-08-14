@@ -1103,3 +1103,98 @@ advarsel. Eneste kjente vei tilbake er å strømsykle aggregatet.
 
 Noden overlever sine egne omstarter fint — verifisert med 91 poll-svar rett
 etter en OTA-reboot — fordi CS50 fortsetter å polle en node som først har svart.
+
+# Flexits egen CS 50-dokumentasjon (94269N-02) — 2026-08-14
+
+Brukerveiledningen for **CS 50/CS 500** (dok. 94269N-02, 68 sider) avklarer
+flere åpne punkter. Den er skrevet for CS 500, men merker eksplisitt hver
+funksjon som **«(ikke CS 50)»** der den ikke gjelder oss — og det er nettopp de
+markeringene som er nyttige.
+
+Manualene er ikke lagt i repoet (Flexits opphavsrett). Dokumentnumre:
+**94269N-02** (CS 50/CS 500 styringsautomatikk) og **110191N-07** (CI 50 panel).
+
+## Uavhengig bekreftelse: kun tilluft måles
+
+Sensortabellen (side 29) markerer med X = ikke CS 50:
+
+| Sensor | CS 50 |
+|---|---|
+| Tilluft | **ja** |
+| Avtrekk | ikke CS 50 |
+| Utetemp | ikke CS 50 |
+| Termofuktvakt, Returvann | (vannbatteri) |
+
+Det bekrefter målingen vår fullstendig: **bussen har kun tilluftsføleren.**
+Alarmlista (side 22) navngir den dessuten **«Signal B1 — Tilluftsensor»**,
+altså samme betegnelse vi utledet fra en helt annen kilde.
+
+Samme liste forklarer trolig våre `-55`-slots: «Frost sensor utenfor området,
+Signal B6 … Feil på sensor eller så er den ikke innkoblet.» B6 er
+platevekslerens frostføler — vi har roterende veksler, så den er ikke montert.
+
+## Forvarme gjelder ikke vårt aggregat
+
+Mikrobryter 3 på kortet (side 12):
+
+> PÅ: «Aggregatet har veksler med bypass»
+> AV: «Aggregatet har **forvarme (bare ved plateveksler)**»
+
+og komponentoversikten (side 28/57): «Avfrosting: **Forvarme/Bypass**».
+
+SL4 R er et aggregat med **roterende** veksler. Avfrosting skjer da med bypass,
+ikke forvarme. **Forvarme er en plateveksler-funksjon og finnes ikke hos oss.**
+
+Det forklarer hvorfor forvarme-skriving aldri ga mening — og gir samtidig en ny,
+langt mer sannsynlig tolkning av statusfeltet:
+
+> **HYPOTESE:** `payload[6]` (som veksler `0/1` omtrent 50/50) er ikke forvarme,
+> men **ETTERVARME** — el-batteriet som varmer tillufta opp til settpunktet.
+> Et termostatstyrt varmebatteri som slår av og på passer nøyaktig med et felt
+> som veksler jevnt. Testbart mot recorder-historikk: det bør korrelere med at
+> tilluftstemperaturen stiger, og med utetemperatur.
+
+Merk skillet: **ettervarme** (etter veksleren, mot settpunkt) har vi — B1 er
+nettopp «tilluftføler ettervarme». **Forvarme** (før veksleren, mot ising) har
+vi ikke.
+
+## Filteralarmen er en TIMER, ikke en vakt
+
+Klemmelista markerer «Filtervakt tilluft» og «Filtervakt avtrekk» som
+**(ikke CS 50)** — vi har altså ingen trykkvakter. Men menyen har «Tidsteller →
+**Filtertid**», og alarmlista presiserer (side 22):
+
+> «B-alarm: kvitterer seg selv (bortsett fra om det er brukt **filtertid** (ikke
+> filtervakt) — denne må manuelt nullstilles).»
+
+Praktisk konsekvens: filteralarmen kommer på **tid**, ikke på trykkfall. Den vil
+altså fyre av seg selv når timeren utløper, uten at noe fysisk må skje — og den
+kan derfor fanges uten å vente på et filterbytte.
+
+## Rotorpådraget finnes på CS 50
+
+Klemmelista, J5:
+
+| Klemme | Funksjon |
+|---|---|
+| J5 (Pin 9,10) | Styresignal til **ettervarme**, 0–10 V |
+| J5 (Pin 11,12) | Styresignal til **gjenvinner** (rotor/bypass), 0–10 V |
+| J5 (Pin 13,14) | **Rotoralarm** |
+| J5 (Pin 1,2) | Tilluftstemperatursensor NTC |
+| J5 (Pin 3,4) | Frost/is-sensor vannbatteri (ikke montert hos oss) |
+| J5 (Pin 5,8) | Termostat manuell reset, el.batteri |
+
+Ingen av disse er merket «ikke CS 50». Både **rotorpådrag** og **rotoralarm**
+skal altså finnes — og med ettervarmens styresignal som 0–10 V er det
+sannsynlig at begge ligger som verdier på bussen, ikke bare som av/på.
+
+Overvåkingsfunksjoner oppgitt for CS 50 (side 6): frostalarm vannbatteri,
+el-batteri termostat, **filteralarm**, **rotoralarm**. Ikke CS 50: fellesalarm-
+utgang, brann/røyk-inngang, vifteoverbelastning.
+
+## Vifteregulering: både relé og analogt
+
+Klemmelista viser at CS 50 har **både** reléutganger for hastighet 1/2/3 per
+vifte (J2) **og** analoge 0–10 V styresignaler (J6 pin 1,3 og 7,9). Det stemmer
+med at statustelegrammet både har et trinn-felt (`payload[5]`) og to
+prosentverdier (`payload[13]`/`[14]`).
