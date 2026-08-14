@@ -3,6 +3,7 @@
 #include "esphome/core/hal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -46,9 +47,6 @@ void FlexitSL4RComponent::dump_config() {
   this->check_uart_settings(19200, 1, uart::UART_CONFIG_PARITY_NONE, 8);
 #ifdef USE_SELECT
   LOG_SELECT("  ", "Viftetrinn", this->fan_level_select_);
-#endif
-#ifdef USE_SWITCH
-  LOG_SWITCH("  ", "Forvarme", this->preheat_switch_);
 #endif
 #ifdef USE_NUMBER
   LOG_NUMBER("  ", "Settpunkt varmeveksler", this->heat_exchanger_setpoint_number_);
@@ -255,6 +253,13 @@ void FlexitSL4RComponent::handle_float_frame_() {
     float value;
     memcpy(&value, data + slot * 4, 4);
 
+    // CS50 rapporterer -55 for en følerinngang som ikke er tilkoblet. Å vise
+    // «-55 °C» i HA er misvisende; NAN gir `unavailable`, som er nettopp det
+    // det betyr. Dette er samtidig en gratis maskinvaredeteksjon: entiteter for
+    // tilvalg som ikke er montert skjuler seg selv.
+    if (value == SENSOR_DISCONNECTED)
+      value = NAN;
+
     if (type == TYPE_FLOAT) {
       if (reg_base == 0 && slot == 1 && this->supply_air_temperature_sensor_ != nullptr)
         this->supply_air_temperature_sensor_->publish_state(value);
@@ -357,11 +362,6 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   if (raw_preheat == 128 || raw_preheat == 0) {
     this->last_raw_preheat_ = raw_preheat;
     preheat_on = raw_preheat == 128;
-#ifdef USE_SWITCH
-    if (this->preheat_switch_ != nullptr) {
-      this->preheat_switch_->publish_state(preheat_on);
-    }
-#endif
   }
 
   if (raw_heat_exchanger_temp > 14 && raw_heat_exchanger_temp < 26) {
@@ -415,16 +415,6 @@ void FlexitSL4RComponent::set_fan_level(uint8_t level) {
   ESP_LOGI(TAG, "Skriver viftetrinn %u (fra %u, byte %02X)", static_cast<unsigned>(level),
            static_cast<unsigned>(prev), cmd);
   this->queue_state_frame_(cmd, 0x00, this->last_raw_heat_exchanger_temp_);
-}
-
-void FlexitSL4RComponent::set_preheat(bool on) {
-  // IKKE STØTTET. Forvarme ligger trolig i flagg-byten i tilstandsrammen
-  // (`data[4]`), men det feltet gikk fra 00 til 01 rett før panelet sendte en
-  // FORSERINGS-kommando — ikke ved noe forvarmerelatert. Å skrive dit kan
-  // dermed utløse noe helt annet enn det står på, så vi lar det være til
-  // betydningen er avklart. Se TODO.md.
-  ESP_LOGW(TAG, "Skriving av forvarme er ikke stottet enda (flagg-byten er uavklart) - ignorerer %s",
-           ONOFF(on));
 }
 
 void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats) {

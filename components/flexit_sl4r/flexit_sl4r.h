@@ -6,9 +6,6 @@
 #ifdef USE_SELECT
 #include "esphome/components/select/select.h"
 #endif
-#ifdef USE_SWITCH
-#include "esphome/components/switch/switch.h"
-#endif
 #ifdef USE_NUMBER
 #include "esphome/components/number/number.h"
 #endif
@@ -74,9 +71,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
 #ifdef USE_SELECT
   SUB_SELECT(fan_level)
 #endif
-#ifdef USE_SWITCH
-  SUB_SWITCH(preheat)
-#endif
 #ifdef USE_NUMBER
   SUB_NUMBER(heat_exchanger_setpoint)
 #endif
@@ -120,7 +114,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
 
   // Kalt fra child-entitetene (select/switch/number) sine control()/write_state()-overrides.
   void set_fan_level(uint8_t level);                  // 1..3
-  void set_preheat(bool on);
   void set_heat_exchanger_setpoint(uint8_t celsius);  // 15..25
 
   // Forsering («Max vifte» — dusj/matlaging). I motsetning til feltene over er

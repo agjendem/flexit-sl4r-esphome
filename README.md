@@ -58,6 +58,34 @@ Protokollarbeidet startet fra
 (MIT, 2018). Sjekksumalgoritmen derfra stemmer eksakt; rammemodellen måtte
 bygges om fra bunnen.
 
+## Ulike aggregatvarianter
+
+SL4R/CS 50 finnes i mange utstyrskombinasjoner — roterende eller plateveksler,
+elektrisk eller vannbatteri, med eller uten ettervarme, bypass eller forvarme.
+Denne integrasjonen håndterer det på tre nivåer:
+
+**1. Følere detekteres av seg selv.** CS 50 rapporterer `-55` for en
+følerinngang som ikke er tilkoblet. Komponenten oversetter det til `NAN`, som
+blir `unavailable` i Home Assistant. En entitet for et tilvalg du ikke har
+skjuler seg altså selv, uten konfigurasjon — og dukker opp den dagen føleren
+monteres.
+
+**2. Alle entiteter er valgfrie.** Hver eneste entitet er `cv.Optional` i
+plattformskjemaene, så `flexit-atom-lite.yaml` er et *eksempel*, ikke et krav.
+Ta med det du har bruk for.
+
+**3. Funksjoner som er fysisk umulige, utelates.** Forvarme er for eksempel en
+plateveksler-funksjon (mikrobryter 3 på kortet: «bare ved plateveksler»), så på
+et rotoraggregat som SL4 R kan en forvarme-bryter aldri virke. Den er derfor
+ikke med. Har du plateveksler, er dette et punkt som må implementeres — se
+[`TODO.md`](TODO.md).
+
+**Automatisk gjenkjenning er innen rekkevidde.** CS 50 vet selv hva den er
+utstyrt med; panelmenyen `Test → Informasjon → System` viser
+`Gjenvinner: Rotor/plate`, `Varme: Elbat/vannbat` og `Avfrosting: Forvarme/Bypass`
+— altså de tre mikrobryterne på kortet. Ligger de bitene på bussen, kan
+integrasjonen konfigurere seg selv. Å finne dem er et åpent punkt.
+
 ## Repo-struktur
 
 ```

@@ -115,12 +115,10 @@ select:
     fan_level:
       name: "Viftetrinn"
 
+# Forvarme-bryteren er FJERNET. CS 50-manualen er entydig: forvarme er en
+# plateveksler-funksjon (mikrobryter 3: «bare ved plateveksler»), og SL4 R har
+# roterende veksler — avfrosting skjer med bypass. Bryteren kunne aldri virke.
 switch:
-  - platform: flexit_sl4r
-    flexit_sl4r_id: flexit_sl4r_hub
-    preheat:
-      name: "Forvarme"
-
   # --- FEILSØKING AV SENDEVEIEN ---
   # Slå på for å sende kontinuerlig, slik at et multimeter rekker å sette seg.
   # Se research/protocol-notes.md → «Multimetermåling av sendeveien».

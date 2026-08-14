@@ -81,6 +81,25 @@ merket «ikke CS 50»:
       Kan ikke fremprovoseres trygt — men finn kandidatbyten, så den fanges
       hvis det først skjer.
 
+## For publisering: automatisk maskinvaregjenkjenning
+
+- [ ] **Finn konfigurasjonsbitene på bussen.** CS 50 kjenner sin egen
+      utrustning — panelmenyen `Test → Informasjon → System` viser
+      `Gjenvinner: Rotor/plate`, `Varme: Elbat/vannbat`,
+      `Avfrosting: Forvarme/Bypass`. Det er de tre mikrobryterne på kortet
+      (bryter 1, 2 og 3), altså **tre bit**. Finner vi dem, kan integrasjonen
+      konfigurere seg selv i stedet for at hver bruker må vite hva de har.
+      Gode kandidater blant de konstante statusbytene: `[4]` (`02` hos oss),
+      `[2]`, og de vi ikke har sett variere.
+      Metode: sammenlign med en annen SL4R/CS 50 med annen utrustning — eller
+      les menyen på panelet og se hvilke byte som stemmer med den.
+- [x] ~~Følere for tilvalg som ikke er montert forvirrer brukeren.~~ **LØST:**
+      `-55` oversettes til `NAN` → `unavailable` i HA. Entiteten skjuler seg
+      selv, og dukker opp hvis føleren monteres senere.
+- [ ] **Forvarme for plateveksler-aggregater.** Fjernet hos oss fordi SL4 R har
+      rotor, men trengs for at integrasjonen skal dekke plateveksler-varianter.
+      Krever noen med slikt aggregat til å avlytte feltet.
+
 ## Åpne, men mindre
 
 - [ ] **FJERN forvarme-entiteten — den gjelder ikke vårt aggregat.**
