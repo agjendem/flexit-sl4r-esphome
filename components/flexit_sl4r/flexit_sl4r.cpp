@@ -10,7 +10,21 @@ namespace esphome::flexit_sl4r {
 
 static const char *const TAG = "flexit_sl4r";
 
+void FlexitSL4RComponent::dump_boot_capture() {
+  ESP_LOGI(TAG, "=== OPPSTARTSFANGST: %u byte ===", static_cast<unsigned>(this->boot_capture_.size()));
+  char line[3 * 32 + 1];
+  for (size_t i = 0; i < this->boot_capture_.size(); i += 32) {
+    const size_t n = std::min<size_t>(32, this->boot_capture_.size() - i);
+    for (size_t k = 0; k < n; k++)
+      sprintf(line + 3 * k, "%02X ", this->boot_capture_[i + k]);
+    line[3 * n] = '\0';
+    ESP_LOGI(TAG, "BOOT %04u: %s", static_cast<unsigned>(i), line);
+  }
+  ESP_LOGI(TAG, "=== SLUTT PÅ OPPSTARTSFANGST ===");
+}
+
 void FlexitSL4RComponent::setup() {
+  this->boot_capture_.reserve(BOOT_CAPTURE_MAX);
   if (this->flow_control_pin_ != nullptr) {
     this->flow_control_pin_->setup();
     this->flow_control_pin_->digital_write(false);
@@ -42,6 +56,8 @@ void FlexitSL4RComponent::loop() {
     if (data < 0)
       break;
     this->last_rx_byte_ms_ = millis();
+    if (this->boot_capture_.size() < BOOT_CAPTURE_MAX)
+      this->boot_capture_.push_back(static_cast<uint8_t>(data));
     this->handle_incoming_byte_(static_cast<uint8_t>(data));
   }
 
@@ -79,7 +95,49 @@ void FlexitSL4RComponent::loop() {
   }
 }
 
+void FlexitSL4RComponent::send_poll_response_() {
+  // Svaret er KUN kroppen: <TYPE> <node> <LEN> <data...> <CK CK>.
+  // C3-headeren tilhører pollen og skal IKKE gjentas — det var nettopp den
+  // feilen som gjorde at alle tidligere sendeforsøk ble ignorert.
+  std::vector<uint8_t> body;
+  if (!this->tx_queue_.empty()) {
+    body = this->tx_queue_.front().bytes;
+    if (--this->tx_queue_.front().repeats == 0)
+      this->tx_queue_.erase(this->tx_queue_.begin());
+  } else {
+    // «Ingenting å melde» — samme korte svar som CI50 gir mellom hendelser.
+    body = {0xC0, this->source_node_, 0x02, 0x22, 0x00};
+  }
+  const auto [s1, s2] = checksum_(body.data(), body.size());
+  body.push_back(s1);
+  body.push_back(s2);
+
+  if (this->flow_control_pin_ != nullptr)
+    this->flow_control_pin_->digital_write(true);
+  this->write_array(body.data(), body.size());
+  this->flush();
+  if (this->flow_control_pin_ != nullptr)
+    this->flow_control_pin_->digital_write(false);
+  ESP_LOGD(TAG, "Svarte på poll til node %u (%u byte)", static_cast<unsigned>(this->source_node_),
+           static_cast<unsigned>(body.size()));
+}
+
 void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
+  // --- Poll-deteksjon ---
+  // Rullende 5-byte vindu. Treffer det pollen for VÅR node, svarer vi straks.
+  if (this->respond_to_polls_) {
+    for (size_t i = 0; i + 1 < this->poll_window_.size(); i++)
+      this->poll_window_[i] = this->poll_window_[i + 1];
+    this->poll_window_.back() = byte;
+    const auto hdr = this->source_header_();
+    if (std::equal(hdr.begin(), hdr.end(), this->poll_window_.begin())) {
+      this->poll_window_.fill(0);
+      this->collecting_frame_ = false;
+      this->send_poll_response_();
+      return;
+    }
+  }
+
   // --- Generell rammeoppsamling ---
   // MERK: den gamle egne «kommandovindu»-tilstandsmaskinen er fjernet. Den
   // spiste byte utenom rammeparseren for å finne et hull å sende i, og hadde
@@ -315,12 +373,30 @@ void FlexitSL4RComponent::queue_command_(uint8_t field_offset, uint8_t value) {
   this->command_repeats_left_ = COMMAND_REPEATS;
 }
 
+// Panelets tilstandsramme, som poll-svar. Alle felt speiles fra sist kjente
+// tilstand, og kun det ønskede endres — usendte felt ville ellers overskrevet
+// virkeligheten. Se research/protocol-notes.md → «Polled buss».
+void FlexitSL4RComponent::queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint) {
+  const std::array<uint8_t, 11> body{0xC1, this->source_node_, 0x08, 0x20,     0x0F, 0x02,
+                                     fan,  flag,               0x04, 0x00,     setpoint};
+  this->queue_raw_frame_(std::vector<uint8_t>(body.begin(), body.end()));
+}
+
 void FlexitSL4RComponent::set_fan_level(uint8_t level) {
   if (level < 1 || level > 3) {
     ESP_LOGW(TAG, "Ugyldig viftetrinn %u (gyldig: 1-3)", level);
     return;
   }
-  this->queue_command_(11, static_cast<uint8_t>(level * 17));
+  // Viftebyten i KOMMANDOEN koder (forrige, nytt) — motsatt av statusbyten,
+  // der høy nibbel er trinnet som kjører. Observert hos panelet:
+  //   0x32 ved overgangen 3->2, 0x21 ved 2->1, 0x11 i ro på trinn 1.
+  // Å sende 0x22 for «trinn 2» er derfor feil — den kombinasjonen sender
+  // panelet aldri.
+  const uint8_t prev = this->last_raw_fan_level_ >> 4;
+  const uint8_t cmd = static_cast<uint8_t>((prev << 4) | level);
+  ESP_LOGI(TAG, "Skriver viftetrinn %u (fra %u, byte %02X)", static_cast<unsigned>(level),
+           static_cast<unsigned>(prev), cmd);
+  this->queue_state_frame_(cmd, 0x00, this->last_raw_heat_exchanger_temp_);
 }
 
 void FlexitSL4RComponent::set_preheat(bool on) { this->queue_command_(12, on ? 128 : 0); }
@@ -365,22 +441,18 @@ void FlexitSL4RComponent::trigger_boost() {
   // Å sende kun den siste ga ingen reaksjon, selv om rammen var byte-identisk
   // og beviselig nådde bussen. Vi speiler derfor hele sekvensen, med gjeldende
   // viftetrinn og settpunkt i tilstandsrammen slik panelet gjør.
-  const auto hdr = this->source_header_();
-  ESP_LOGI(TAG, "Køer forseringssekvens som node %u", static_cast<unsigned>(this->source_node_));
+  ESP_LOGI(TAG, "Køer forseringssekvens som node %u (sendes som poll-svar)",
+           static_cast<unsigned>(this->source_node_));
 
   // b6 gjentar nodenummeret — verifisert på alle rammer i opptaket. Sender vi
   // som node 5 må også b6 være 5, ellers er rammen inkonsistent.
   const uint8_t n = this->source_node_;
   const std::array<uint8_t, 11> state_body{0xC1, n, 0x08, 0x20, 0x0F, 0x02, this->last_raw_fan_level_,
                                            0x01, 0x04, 0x00, this->last_raw_heat_exchanger_temp_};
-  std::vector<uint8_t> state(hdr.begin(), hdr.end());
-  state.insert(state.end(), state_body.begin(), state_body.end());
-  this->queue_raw_frame_(std::move(state));
+  this->queue_raw_frame_(std::vector<uint8_t>(state_body.begin(), state_body.end()));
 
   const std::array<uint8_t, 7> cmd_body{0xC1, n, 0x04, 0x20, 0x14, 0x31, 0x23};
-  std::vector<uint8_t> cmd(hdr.begin(), hdr.end());
-  cmd.insert(cmd.end(), cmd_body.begin(), cmd_body.end());
-  this->queue_raw_frame_(std::move(cmd));
+  this->queue_raw_frame_(std::vector<uint8_t>(cmd_body.begin(), cmd_body.end()));
 }
 
 void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
@@ -388,7 +460,8 @@ void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
     ESP_LOGW(TAG, "Ugyldig settpunkt %u (gyldig: 15-25)", celsius);
     return;
   }
-  this->queue_command_(15, celsius);
+  ESP_LOGI(TAG, "Skriver settpunkt %u grader", static_cast<unsigned>(celsius));
+  this->queue_state_frame_(this->last_raw_fan_level_, 0x00, celsius);
 }
 
 void FlexitSL4RComponent::build_and_send_command_() {

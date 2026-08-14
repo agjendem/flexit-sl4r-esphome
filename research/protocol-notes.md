@@ -887,3 +887,74 @@ reaksjon fra CS50.**
 3. **`20 14 31 23` er ikke forsering.** Den er observert nøyaktig én gang, tolv
    rammer før statusendringen. Korrelasjon, ikke bevist årsak.
 4. **Et felt vi ikke har identifisert** i tilstandsrammen må endres samtidig.
+
+# GJENNOMBRUDD: bussen er POLLED (2026-08-14)
+
+Alt over om «rammer» med et 8-byte hode var **feil modell**. Det jeg kalte én
+ramme er i virkeligheten **to meldinger**: en poll fra masteren og et svar fra
+den adresserte noden.
+
+```
+POLL  (fra master):   C3 <node> 00 <ck1> <ck2>              5 byte
+                      ck = Fletcher over [C3, node, 00]
+
+SVAR  (fra noden):    <TYPE> <node> <LEN> <data...> <ck1> <ck2>
+                      ck = Fletcher over [TYPE, node, LEN, data...]
+                      INGEN C3 — den tilhører pollen
+```
+
+Verifisert på 6144 byte fanget fra en strømsyklus: **194 svar, alle med gyldig
+sjekksum, null ugyldige.**
+
+### Enumerering ved oppstart
+
+| Node | Poll | Svarer |
+|---|---|---|
+| 1 | 159 | ja (CS50s datastrøm) |
+| 2 | 5 | nei |
+| 3 | 5 | nei |
+| 4 | 40 | ja (CI50, panel 1) |
+| 5 | 5 | nei |
+
+Node 2, 3 og 5 pollast **nøyaktig fem ganger, kun under oppstart**. Svarer de
+ikke, droppes de resten av driftsperioden. Node 4 svarte og ble deretter pollet
+kontinuerlig.
+
+**Det var derfor alle sendeforsøk ble ignorert:** vi sendte uoppfordret på en
+buss der ingen snakker uten å bli spurt. Og vi sendte med `C3`-hodet, altså
+utga vi oss for å være masteren som poller — og svarte oss selv.
+
+### Hvordan vi melder oss på
+
+Svar på pollen til vår node. Da blir vi enumerert og pollet videre — også
+gjennom våre egne omstarter (bekreftet: 91 svar etter en OTA-reboot).
+
+Implementert som `source_node: 5` + `respond_to_polls: true`. Node 5 = panel 2,
+altså den identiteten dipswitch 3 konfigurerer på et fysisk panel.
+
+Mellom hendelser svarer vi det samme korte «ingenting å melde» som CI50 gjør:
+`C0 <node> 02 22 00`.
+
+## SKRIVING VIRKER — settpunkt (2026-08-14)
+
+Første vellykkede styring av aggregatet fra Home Assistant.
+
+Svaret på en poll er panelets tilstandsramme:
+
+```
+C1 <node> 08 | 20 0F 02 <vifte> <flagg> 04 00 <settpunkt> | ck ck
+```
+
+Satt fra HA: 15 → **18** → **21**. Bekreftet uavhengig ved at flyttall-
+registeret `0xC2` reg 7 slot 1 — CS50s egen kringkasting av settpunktet — fulgte
+etter hver gang. Det er ikke vår egen optimistiske UI-tilstand, det er
+aggregatet som svarer.
+
+### Viftetrinn virker IKKE ennå
+
+Prøvd `0x22` (nibbel-par som i statusen) og `0x12` (forrige/nytt). Begge
+ignoreres, mens settpunktet i samme ramme går gjennom. Observerte
+kommandoverdier fra panelet: `0x32` ved overgangen 3→2, `0x21` ved 2→1, `0x11`
+i ro — så kodingen er ikke åpenbar. Neste steg er å fange et viftetrinnskifte
+gjort på panelet MENS vi er enumerert som node 5, og se nøyaktig hva som skiller
+det fra vårt eget forsøk.

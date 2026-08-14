@@ -14,3 +14,12 @@ class BoostButton final : public button::Button, public Parented<FlexitSL4RCompo
 };
 
 }  // namespace esphome::flexit_sl4r
+
+namespace esphome::flexit_sl4r {
+
+class DumpBootCaptureButton final : public button::Button, public Parented<FlexitSL4RComponent> {
+ protected:
+  void press_action() override;
+};
+
+}  // namespace esphome::flexit_sl4r

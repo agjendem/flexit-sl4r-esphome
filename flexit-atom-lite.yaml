@@ -92,7 +92,12 @@ flexit_sl4r:
   # Å opptre som node 4 betyr å utgi seg for det ekte panelet; node 5 er en
   # egen identitet CS50 er bygget for å støtte.
   # Tilbake på 4 (panelets identitet) — node 5 er prøvd og gir ingen reaksjon.
-  source_node: 4
+  # Bussen er POLLED: masteren sender 5 byte `C3 <node> 00 <cks>`, og kun den
+  # adresserte noden svarer — UTEN å gjenta C3-headeren. Node 2/3/5 pollast fem
+  # ganger hver ved oppstart (enumerering); svarer de ikke, droppes de.
+  # Vi melder oss derfor på som node 5 = panel 2.
+  source_node: 5
+  respond_to_polls: true
   # Retningsstyring: blokkdiagrammet i M5Stacks datablad for Tail RS485 (SKU
   # T002) viser kun fire signaler mellom modulen og ATOM-en — G/5V/TXD/RXD.
   # Det finnes ingen DE/RE-linje ut av modulen, så retningen styres på kortet.
@@ -166,6 +171,13 @@ button:
     boost:
       name: "Forsering"
       icon: "mdi:fan-plus"
+    # Dumper de første 6 kB fra bussen etter oppstart. Registreringen av
+    # paneler skjer i løpet av sekunder etter at CS50 får strøm — lenge før
+    # WiFi og API er oppe — så den må bufres i RAM og hentes ut etterpå.
+    dump_boot_capture:
+      name: "Dump oppstartsfangst"
+      icon: "mdi:content-save-outline"
+      entity_category: diagnostic
 
 number:
   - platform: flexit_sl4r

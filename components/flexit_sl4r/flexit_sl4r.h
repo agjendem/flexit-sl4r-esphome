@@ -107,6 +107,11 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // (panel 1). Node 5 er panel 2 — jf. dipswitch 3 på panelet. Adressefeltet
   // beregnes av set_source_node_, se der.
   void set_source_node(uint8_t node) { this->source_node_ = node; }
+  // Svar på poll adressert til vår node. Bussen er POLLED (målt 2026-08-14):
+  // masteren sender 5 byte `C3 <node> 00 <cks>`, og KUN den adresserte noden
+  // svarer — uten å gjenta C3-headeren. Noder som ikke svarer på
+  // enumereringsskanningen ved oppstart blir droppet.
+  void set_respond_to_polls(bool v) { this->respond_to_polls_ = v; }
 
   // Kalt fra child-entitetene (select/switch/number) sine control()/write_state()-overrides.
   void set_fan_level(uint8_t level);                  // 1..3
@@ -120,6 +125,13 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // → «Forseringskommandoen». Aggregatet går til trinn 3 og faller selv
   // tilbake til forrige trinn når perioden er over.
   void trigger_boost();
+
+  // Dumper oppstartsfangsten til loggen. Nødvendig fordi de mest interessante
+  // bytene — CS50s registrering av paneler — kommer i løpet av de første
+  // sekundene etter at bussen får strøm, altså LENGE før WiFi og API er oppe
+  // og vi kan lese loggen live. Komponenten mottar fra ~2 s, så vi bufrer
+  // rått i RAM og henter det ut i etterkant.
+  void dump_boot_capture();
 
 #ifdef USE_SENSOR
   // Generiske «utforsknings»-sensorer. Poenget er å kunne eksponere hvilken som
@@ -145,6 +157,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void queue_command_(uint8_t field_offset, uint8_t value);
   // Køer en komplett, ferdig ramme (uten sjekksum — den beregnes ved sending).
   // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
+  void queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint);
   void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats = 1);
   void send_queued_frame_();
   void build_and_send_command_();
@@ -172,6 +185,10 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // korrupsjon også usynlig. Uten denne telleren kan man ikke måle om VÅR
   // sending ødelegger CS50s trafikk — og nettopp det spørsmålet er åpent.
   uint32_t frames_discarded_{0};
+
+  // Rå bytefangst fra oppstart. Fylles én gang, stopper når den er full.
+  static constexpr size_t BOOT_CAPTURE_MAX = 6144;
+  std::vector<uint8_t> boot_capture_;
   bool communication_ok_{false};
   bool preheat_active_state_{false};  // stateful latch, se protocol-notes.md
 
@@ -217,6 +234,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
     return {FRAME_START, this->source_node_, 0x00, s1, s2};
   }
   uint8_t source_node_{4};
+  bool respond_to_polls_{false};
+  std::array<uint8_t, 5> poll_window_{};
+  void send_poll_response_();
 
   GPIOPin *flow_control_pin_{nullptr};
 };
