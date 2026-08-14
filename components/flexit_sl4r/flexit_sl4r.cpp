@@ -429,6 +429,18 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   }
 #endif
 
+  // Settpunktet MÅ speiles fra bussen, ikke bare vises: last_raw_heat_exchanger_temp_
+  // legges inn i hver utgående tilstandsramme. Uten denne oppdateringen ville en
+  // viftetrinn-skriving sendt et foreldet settpunkt og dermed overskrevet
+  // brukerens innstilling.
+  if (raw_heat_exchanger_temp > 14 && raw_heat_exchanger_temp < 26) {
+    this->last_raw_heat_exchanger_temp_ = raw_heat_exchanger_temp;
+#ifdef USE_NUMBER
+    if (this->heat_exchanger_setpoint_number_ != nullptr)
+      this->heat_exchanger_setpoint_number_->publish_state(raw_heat_exchanger_temp);
+#endif
+  }
+
   // payload[6] er et bitfelt, ikke en av/på-verdi. Se AFTERHEAT_* i headeren.
   const bool afterheat_heating = (raw_afterheat & AFTERHEAT_HEATING) != 0;
   const bool afterheat_enabled = (raw_afterheat & AFTERHEAT_DISABLED) == 0;
