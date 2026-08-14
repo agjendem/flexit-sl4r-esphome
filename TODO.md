@@ -30,7 +30,9 @@ hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 
 - [x] ~~`[2]` bit0~~ **= varmegjenvinneren går** (settes når pådraget passerer
       ~10, altså når rotoren faktisk snurrer). Eksponert som entitet.
-- [ ] `[2]` øvrige bit: `0 / 36 / 72 / 144` — dobling, fortsatt ukjent
+- [x] ~~`[2]` øvrige bit~~ **= viftenes relétilbakemelding.** Bit 2–4 og 5–7 er
+      to one-hot-grupper (trinn 3/2/1) for hver sin vifte, verifisert mot 592
+      telegram med null bom. Kun **bit 1** står igjen som ukjent.
 - [ ] `[11]`: `0/1`
 - [ ] `[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?
 - [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå

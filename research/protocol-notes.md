@@ -1590,9 +1590,41 @@ snurre, ikke når behovet oppstår. Verifisert på begge flanker:
 
 Eksponert som `binary_sensor` **«Varmegjenvinner går»**.
 
-**Resten av `[2]` er fortsatt ukjent.** Observert `0`, `36` (`0x24`), `72`
-(`0x48`), `144` (`0x90`). Mønsteret ser ut som et felt med flere tilstander
-snarere enn uavhengige bit — verdiene dobler seg.
+### Resten av `[2]`: viftenes relétilbakemelding
+
+Verdiene `36`/`72`/`144` er ikke et tallfelt, men **to one-hot-kodede
+tre-bits grupper**:
+
+```
+36  = 0x24 = 0010 0100   bit 2 + bit 5   -> trinn 3
+72  = 0x48 = 0100 1000   bit 3 + bit 6   -> trinn 2
+144 = 0x90 = 1001 0000   bit 4 + bit 7   -> trinn 1
+```
+
+| Bit | Betydning |
+|---|---|
+| 0 | varmegjenvinneren går |
+| 1 | **ukjent** |
+| 2, 3, 4 | vifte A på trinn 3 / 2 / 1 |
+| 5, 6, 7 | vifte B på trinn 3 / 2 / 1 |
+
+Verifisert mot **592 statustelegram fra alle opptak**: gruppa i bit 2–4 stemmer
+med `[5]` høy nibbel i 578 tilfeller og bommer 0 ganger. De to gruppene har
+aldri vært uenige.
+
+Det stemmer med maskinvaren: CS 50 har separate reléutganger for tilluftsviftens
+hastighet 1/2/3 og avtrekksviftens 1/2/3 (`J2` pin 3–8). `[2]` er altså en
+**tilbakemelding på hvilke reléer som er trukket**, ikke en beregnet verdi.
+
+En praktisk følge: skulle de to gruppene noen gang vise ulike trinn, betyr det at
+viftene faktisk kjører forskjellig — et diagnostisk signal vi ikke har hatt før.
+Verdien `0` opptrer kort under trinnskifte, mens ingen relé er trukket.
+
+**Merk:** hypotesen om at doblingen var en avlesning av *rotorens* hastighet
+holdt ikke. Mønsteret syklet mens rotoren sto stille (`[11]` = 0 i hele
+13.-august-opptaket), og sto stille mens rotoren gikk opp til 68 under
+varmebehovstesten. Det var viftetrinnet som endret seg i det ene opptaket og
+ikke i det andre.
 
 ### 3. `[15]` og `[20]` — veksler sammen?
 
