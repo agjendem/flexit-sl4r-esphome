@@ -16,8 +16,10 @@ strømforsyning: se
 **Toveis styring virker mot ekte anlegg (14. august 2026).**
 
 - **Lesing:** tilluftstemperatur, viftetrinn (kjørende + retur), viftepådrag i
-  prosent for begge vifter, settpunkt varmeveksler, forsering aktiv, samt en
-  rekke diagnostikk-entiteter for felt vi ennå ikke har tydet.
+  prosent for begge vifter, settpunkt varmeveksler, forsering aktiv,
+  **filteralarm**, og ettervarme både som «aktivert» og «varmer nå» — de to
+  svarer til panelets to lysdioder. I tillegg diagnostikk-entiteter for felt
+  vi ennå ikke har tydet, slik at HAs recorder bygger historikk å korrelere mot.
 - **Skriving:** viftetrinn, settpunkt varmeveksler og forsering — alt verifisert
   mot CS50s egne kringkastede verdier, ikke bare mot vår egen UI-tilstand.
   Å sette viftetrinn avbryter samtidig en pågående forsering.

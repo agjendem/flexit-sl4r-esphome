@@ -34,9 +34,10 @@
 > | «Arbitreringsfeilen», «Kollisjonen …», «Driver vi bussen …» | **Historikk.** To av konklusjonene der var feil og ble tilbakevist; se «RETTELSE» og «GJENNOMBRUDD». |
 > | «Sendeforsøk — status per 2026-08-14» | **Utdatert.** Alle fire variantene feilet fordi de var uoppfordret. |
 >
-> Fortsatt gyldig: fysisk tilkobling, sjekksumalgoritmen, statustelegrammets
-> feltkart, nibbel-kodingen av viftetrinn, flyttall-registrene og
-> temperaturfølerens identitet.
+> Fortsatt gyldig: fysisk tilkobling, sjekksumalgoritmen, flyttall-registrene og
+> temperaturfølerens identitet. **Statustelegrammets feltkart er oppdatert** —
+> se «Statustelegram — GJELDENDE feltkart», som også lister avvikene fra
+> Vongravens opprinnelige tolkning.
 
 Kilde: reverse-engineering av `Flexit_master.ino` (Vongraven-repoet) + verifisert
 med Python mot eksemplene i hans README. Se `Flexit_master.ino` og
@@ -248,39 +249,53 @@ feil trinn om den hadde sluppet gjennom. Rettet til `raw >> 4`.
 **Åpen mulighet:** lav nibbel ≠ høy nibbel er en presis forserings-indikator.
 Verdt å eksponere som egen `binary_sensor` («Forsering aktiv») senere.
 
-## Statustelegram (linje 15, sendt av CS50)
+## Statustelegram — GJELDENDE feltkart
 
-Byte-strøm (som observert på bussen), med offset relativt til en "sync-match":
+> Dette avsnittet er oppdatert etter hvert som felt ble avklart. Tabellen under
+> er det som faktisk er målt på vårt anlegg. Vongravens opprinnelige tolkning
+> er bevart lenger nede der den avviker, fordi flere av avvikene er lærerike.
 
-```
-... 195  h1 h2 h3 h4 h5  193  gap  22  [22 databyte]  ckA  ckB  ...
-    ^i-8                  ^i-2  ^i-1  ^i (match-trigger)
-```
+Statustelegrammet er CS50s svar på pollen til node 1, med `TYPE=0xC1` og
+`LEN=22`. Etter `[TYPE, node, LEN]` følger 22 databyte og to sjekksumbyte.
+Indeksene under er inn i **databytene** (det koden kaller `raw_status_`).
 
-Synkroniseringsregel (fra original-koden): se etter byte-verdi `22` der
-byten 2 posisjoner tilbake er `193` OG byten 8 posisjoner tilbake er `195`.//
-Byte'n `22` er telegramlengden (22 databytes følger).
+| Idx | Innhold | Status |
+|-----|---------|--------|
+| 0 | `0x20` — bank | konstant |
+| 1 | `0x0E` — registeroffset | konstant |
+| 2 | `0 / 36 / 72 / 144` | **ukjent**, varierer |
+| 3 | `0x80` | konstant |
+| 4 | **Alarmbitfelt** — bit1 (`0x02`) = **filteralarm** | målt |
+| 5 | **Viftetrinn**, to nibler: høy = trinnet som kjører, lav = returtrinn. `0x31` = forsering | målt |
+| 6 | **Ettervarme**, bitfelt: bit0 (`0x01`) = elementet varmer nå, bit7 (`0x80`) = **deaktivert** | målt |
+| 7 | `0x04` | konstant |
+| 8 | `0x00` | konstant |
+| 9 | **Settpunkt varmeveksler**, °C (15–25) | målt |
+| 10 | `0` | konstant hos oss |
+| 11 | `0 / 1` | **ukjent**, varierer |
+| 12 | `0` | konstant |
+| 13 | **Viftepådrag tilluft**, % (49 / 74 / 100) | målt |
+| 14 | **Viftepådrag avtrekk**, % | målt |
+| 15 | `32 / 35 / 51` | **ukjent**, varierer |
+| 16–19 | — | ingen variasjon observert |
+| 20 | `68 / 136` | **ukjent**, varierer |
+| 21 | `0` | konstant |
 
-Etter match leses **25 nye byte** rått inn i `rawData[0..24]`:
+De ukjente feltene er eksponert som diagnostikk-entiteter i HA
+(`raw_status_bytes`), slik at recorderen bygger historikk å korrelere mot.
 
-| Indeks (rawData) | Innhold                                          | Verifisert eksempel |
-|-------------------|---------------------------------------------------|----------------------|
-| 0                 | (ukjent, del av datablokk)                        | 32                   |
-| 1                 | (ukjent)                                           | 14                   |
-| 2                 | (ukjent)                                           | 145                  |
-| 3                 | (ukjent)                                           | 128                  |
-| 4                 | (ukjent)                                           | 0                    |
-| **5**             | **Viftetrinn**: 17=trinn1, 34=trinn2, 51=trinn3    | 17                   |
-| **6**             | **Forvarme på/av**: 0=av, 128=på                   | 0                    |
-| 7                 | (ukjent)                                           | 4                    |
-| 8                 | (ukjent)                                           | 0                    |
-| **9**             | **Settpunkt varmeveksler** (°C, gyldig 15–25)      | 25                   |
-| **10**            | Forvarme aktiv threshold1 (aktiv når verdi > 10)   | 0                    |
-| **11**            | Forvarme aktiv threshold2 (inaktiv når verdi < 100)| 100                  |
-| 12–21             | (ukjent, diverse driftsdata)                       | 0,49,49,0,0,0,152,136,136,0 |
-| **22**            | **Sjekksum A**                                     | 179                  |
-| **23**            | **Sjekksum B**                                     | 220                  |
-| 24                | (ubrukt/neste telegram — ikke referert i original) | -                    |
+### Avvik fra Vongravens tolkning
+
+| Idx | Vongraven | Målt hos oss |
+|-----|-----------|--------------|
+| 5 | `17/34/51` = trinn 1/2/3 | to nibler; `verdi/17` er en tilfeldighet som brekker ved forsering (`0x31`) |
+| 6 | «Forvarme på/av: 0=av, 128=på» | **ettervarme**, bitfelt, og `128` betyr **deaktivert** — motsatt |
+| 10, 11 | «Forvarme aktiv»-terskler (>10 / <100) | begge konstant `0`; terskellogikken var unødvendig og er fjernet |
+| 4 | (ukjent) | filteralarm — hans sto `0` fordi alarmen ikke var aktiv, vår sto `2` |
+
+Synkroniseringsregelen han beskrev (lete etter `22` med `193` to tilbake og
+`195` åtte tilbake) er erstattet av den generelle poll/svar-parseren. Se
+«GJENNOMBRUDD: bussen er POLLED».
 
 ### Sjekksumalgoritme (Fletcher-lignende, verifisert i Python)
 
