@@ -123,6 +123,31 @@ switch:
     preheat:
       name: "Forvarme"
 
+  # --- FEILSØKING AV SENDEVEIEN ---
+  # Slå på for å sende kontinuerlig, slik at et multimeter rekker å sette seg.
+  # Se research/protocol-notes.md → «Multimetermåling av sendeveien».
+  # Slå AV igjen etterpå — den forstyrrer bussen HVIS senderen faktisk virker,
+  # og det er nettopp det vi prøver å finne ut.
+  - platform: template
+    name: "TX-test (feilsøking)"
+    id: tx_test
+    optimistic: true
+    entity_category: diagnostic
+    icon: "mdi:test-tube"
+
+interval:
+  - interval: 20ms
+    then:
+      - if:
+          condition:
+            switch.is_on: tx_test
+          then:
+            # 16 nullbyte hver 20 ms ≈ 40 % duty. Nullbyte gir mest tid i
+            # space-tilstand og dermed størst utslag på en DC-måling.
+            - lambda: |-
+                static const uint8_t pattern[16] = {0};
+                id(flexit_uart).write_array(pattern, 16);
+
 # Forsering («Max vifte» — dusj/matlaging). Dette er den ENESTE sendefunksjonen
 # som er aktivert, fordi den er den eneste vi har fanget og verifisert komplett
 # fra bussen (2026-08-13). Aggregatet går til trinn 3 og faller selv tilbake

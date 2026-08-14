@@ -727,3 +727,52 @@ sending til å virke, styrte retningen eksplisitt.
 Neste steg: mål A/B mot GND med multimeter under en sendeburst (30 gjentakelser
 gir god tid), eller sett oscilloskop på paret. Er det ingen bevegelse, driver
 ikke SP485-en, og da er det DE som ikke asserteres.
+
+## Multimetermåling av sendeveien
+
+Uten oscilloskop kan spørsmålet likevel avgjøres, fordi det egentlig er to
+uavhengige spørsmål:
+
+1. Sender ESP-en i det hele tatt ut på G26?
+2. Kobler SP485-en senderen på differensialparet?
+
+Slå på `switch.tx_test` (i HA, kategori diagnostikk) — den sender 16 nullbyte
+hver 20 ms, altså ~40 % duty, så et multimeter rekker å sette seg. **Slå den av
+igjen etterpå.**
+
+### Måling 1 — sender ESP-en? (kan gjøres uten å demontere noe)
+
+Mål **G26 mot G (GND)** på ATOM-ens header, DC-volt:
+
+| TX-test | Forventet | Betydning |
+|---|---|---|
+| AV | ~3,3 V | UART-linja hviler høyt — normalt |
+| PÅ | **merkbart lavere**, typisk 1,5–2,5 V | ESP-en sender ✔ |
+| PÅ | fortsatt ~3,3 V | **ESP-en sender ikke** — feil pinne eller UART-problem |
+
+Nullbyte er valgt nettopp fordi de gir mest tid i lav tilstand og dermed størst
+utslag på gjennomsnittet.
+
+### Måling 2 — driver SP485-en paret?
+
+Denne bør gjøres **isolert fra Flexit-bussen**, ellers drukner målingen i CS50s
+egen trafikk:
+
+1. Trekk ut 4P4C-pluggen (da mister modulen bussforsyningen).
+2. Mat ATOM-en via **USB-C** i stedet. Klemme V er nå frakoblet, så det er
+   trygt — USB-C og klemme V må aldri være tilkoblet samtidig.
+3. Mål **A mot B** på Tail485s klemmerekke, DC-volt.
+
+| TX-test | Forventet | Betydning |
+|---|---|---|
+| AV | ~0 V | senderen er av (høyimpedans) — normalt |
+| PÅ | **klart utslag**, flere hundre mV til et par volt | driveren kobler på ✔ |
+| PÅ | fortsatt ~0 V | **DE asserteres aldri** — dette er feilen |
+
+### Tolkning
+
+- Måling 1 gir utslag, måling 2 ikke → retningsstyringen er synderen. Da må
+  DE styres eksplisitt, slik Vongraven gjorde, eller modulen byttes.
+- Måling 1 gir ikke utslag → problemet er før modulen: pinne eller UART.
+- Begge gir utslag → vi driver faktisk bussen, og da er feilen i protokollen
+  (adressering/rammeinnhold), ikke i maskinvaren.
