@@ -75,10 +75,10 @@ void FlexitSL4RComponent::loop() {
   // Den gamle «send når bussen er stille»-stien stjal ellers rammen og la den
   // ut uoppfordret — og på en polled buss lytter ingen da. Det var årsaken til
   // at viftetrinn ikke virket selv med byte-identisk innhold.
-  if (this->respond_to_polls_)
-    return;
-
-  if (!this->tx_queue_.empty() && !this->collecting_frame_) {
+  // NB: guarden gjelder KUN sendeblokka. Den lå tidligere som et `return` her,
+  // og siden poll-modus alltid er på, hoppet den samtidig over helsesjekken
+  // nedenfor — det var hele årsaken til at «Kommunikasjon OK» aldri ble `on`.
+  if (!this->respond_to_polls_ && !this->tx_queue_.empty() && !this->collecting_frame_) {
     const uint32_t now = millis();
     if (now - this->last_rx_byte_ms_ >= BUS_IDLE_BEFORE_TX_MS) {
       this->send_queued_frame_();
@@ -90,7 +90,7 @@ void FlexitSL4RComponent::loop() {
   }
 
   const bool now_ok =
-      this->last_valid_telegram_ms_ != 0 && (millis() - this->last_valid_telegram_ms_) < COMMUNICATION_TIMEOUT_MS;
+      this->last_valid_frame_ms_ != 0 && (millis() - this->last_valid_frame_ms_) < COMMUNICATION_TIMEOUT_MS;
   if (now_ok != this->communication_ok_) {
     this->communication_ok_ = now_ok;
 #ifdef USE_BINARY_SENSOR
@@ -99,7 +99,7 @@ void FlexitSL4RComponent::loop() {
     }
 #endif
     if (!now_ok) {
-      ESP_LOGW(TAG, "Ingen gyldige statustelegram siste %u ms", static_cast<unsigned>(COMMUNICATION_TIMEOUT_MS));
+      ESP_LOGW(TAG, "Ingen gyldige rammer siste %u ms", static_cast<unsigned>(COMMUNICATION_TIMEOUT_MS));
     }
   }
 }
@@ -195,6 +195,7 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
     return;
   }
 
+  this->last_valid_frame_ms_ = millis();
   this->dispatch_frame_();
 }
 
@@ -268,7 +269,14 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     return;
   }
 
-  this->last_valid_telegram_ms_ = millis();
+  const uint32_t now_ms = millis();
+#ifdef USE_SENSOR
+  // Publiseres kun når et statustelegram faktisk kommer, så den forteller det
+  // reelle intervallet uten å spamme recorderen.
+  if (this->status_interval_sensor_ != nullptr && this->last_valid_telegram_ms_ != 0)
+    this->status_interval_sensor_->publish_state((now_ms - this->last_valid_telegram_ms_) / 1000.0f);
+#endif
+  this->last_valid_telegram_ms_ = now_ms;
 
   const uint8_t raw_fan_level = this->raw_status_[5];
   const uint8_t raw_preheat = this->raw_status_[6];

@@ -200,6 +200,11 @@ sensor:
     # ØDELEGGER vi CS50s trafikk — og da driver vi beviselig bussen.
     frames_discarded:
       name: "Rammer forkastet"
+    # Hvor ofte statustelegrammet faktisk kommer. Lagt inn for å svare på
+    # hvorfor «Kommunikasjon OK» hang seg opp da den var bundet til nettopp
+    # den telegramtypen.
+    status_interval:
+      name: "Statusintervall"
 
     # --- Utforskning ---
     # Ukjente felt eksponert som diagnostikk, slik at HAs recorder bygger

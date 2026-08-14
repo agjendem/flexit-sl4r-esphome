@@ -61,14 +61,17 @@ roterende gjenvinner), og det vi faktisk har målt.
 
 ## 0. ÅPNE SAKER etter at styring kom på plass (2026-08-14)
 
-- [ ] **«Kommunikasjon OK» blir stående `off`.** Etter at vi ble node 5 med
-      poll-svar rapporterer den ikke lenger `on`, selv om lesing og skriving
-      beviselig virker og ingen rammer forkastes. Mest sannsynlig kommer
-      statustelegrammet (`C1`/`len=22`) sjeldnere enn `COMMUNICATION_TIMEOUT_MS`
-      (5 s). Mål faktisk intervall og juster timeouten — eller la sensoren hvile
-      på «har mottatt en gyldig ramme av hvilken som helst type».
-      (Starttilstand er fikset: den publiserer nå `off` ved oppstart i stedet
-      for å bli hengende på `unknown`.)
+- [x] ~~**«Kommunikasjon OK» blir stående `off`.**~~ **LØST 2026-08-14.**
+      Rotårsaken var IKKE protokolltiming, slik jeg antok. `if
+      (respond_to_polls_) return;` — satt inn for å stoppe uoppfordret sending —
+      lå før helsesjekken i `loop()`, så den ble aldri kjørt når poll-modus var
+      på. Guarden gjelder nå kun sendeblokka.
+      Målingen som avkreftet hypotesen: statustelegrammet kommer hvert
+      **0,7–1,2 s**, altså godt innenfor 5-sekunders-timeouten. Å skru opp
+      timeouten ville maskert feilen i stedet for å fjerne den.
+      To forbedringer beholdt: helsesignalet hviler nå på HVILKEN SOM HELST
+      validert ramme (mer robust enn å henge på én telegramtype), og
+      `Statusintervall` er eksponert som diagnostikk.
 - [ ] **Forsering av** er løst underveis: å SETTE viftetrinn avbryter
       forseringen (verifisert — `Forsering aktiv` gikk av, pådrag 100 → 49 %).
       Vurder en egen «avbryt forsering»-knapp som bare skriver gjeldende trinn.

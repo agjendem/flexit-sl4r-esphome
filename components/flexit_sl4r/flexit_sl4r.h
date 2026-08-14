@@ -90,6 +90,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_SENSOR(fan_level_running)            // høy nibbel av payload[5]
   SUB_SENSOR(fan_level_return)             // lav nibbel — trinnet forseringen faller tilbake til
   SUB_SENSOR(frames_discarded)             // rammer forkastet på sjekksum — gjør busskorrupsjon målbar
+  SUB_SENSOR(status_interval)              // sekunder mellom to statustelegram — se under
 #endif
 
  public:
@@ -170,6 +171,13 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   std::array<uint8_t, STATUS_RAW_LENGTH> raw_status_{};
   uint8_t status_sync_193_{0};
   uint8_t status_sync_gap_{0};
+  // Helsesignalet hviler på HVILKEN SOM HELST gyldig ramme, ikke bare
+  // statustelegrammet. Statustelegrammet (`C1`/`len=22`) er én av mange
+  // meldingstyper på bussen, og kommer sjeldnere enn resten — å binde
+  // «Kommunikasjon OK» til nettopp den gjorde at en fullt frisk node
+  // rapporterte `off`. Rammer valideres med lengde + sjekksum, så en gyldig
+  // ramme av hvilken som helst type er et sterkt livstegn.
+  uint32_t last_valid_frame_ms_{0};
   uint32_t last_valid_telegram_ms_{0};
   uint32_t last_rx_byte_ms_{0};    // for deteksjon av stille buss før sending
   uint32_t command_queued_ms_{0};  // for å gi opp en kommando som aldri får plass

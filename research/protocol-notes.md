@@ -1070,3 +1070,17 @@ loggen, og bytene var riktige hver gang.
 | Settpunkt 15 → 18 → 21 | float-register `0xC2` reg 7 fulgte |
 | Viftetrinn 1 → 2 | status `payload[5]` = 2, pådrag 49 % → **74 %** |
 | Forsering | `0x32` = kjører 3 / retur 2, pådrag **100 %** |
+
+## Statustelegrammets frekvens (målt 2026-08-14)
+
+**0,7–1,2 sekunder** mellom hvert statustelegram (`C1`/`len=22` fra node 1).
+Eksponert som `Statusintervall` i HA.
+
+Målingen ble gjort for å teste en hypotese som viste seg å være feil: at
+«Kommunikasjon OK» hang seg opp fordi telegrammet kom sjeldnere enn
+5-sekunders-timeouten. Det gjorde det ikke. Rotårsaken var en `return` i
+`loop()` som hoppet over helsesjekken når poll-modus var på.
+
+Verdt å merke seg som metode: hypotesen var plausibel og ville ført til en
+«fiks» (heve timeouten) som skjulte den virkelige feilen. Målingen kostet lite
+og pekte rett på at forklaringen måtte ligge et annet sted.
