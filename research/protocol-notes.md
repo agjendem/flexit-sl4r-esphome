@@ -528,3 +528,48 @@ med forvarme å gjøre:
 Skriver vi forvarme dit, kan vi utløse noe helt annet enn vi tror.
 **Hold forvarme utenfor første skriverunde**, og avklar feltet ved å slå
 forvarmen av og på mens bussen logges.
+
+## Arbitreringsfeilen — første sendeforsøk (2026-08-14)
+
+Første trykk på forseringsknappen sendte **ingenting**, og satte i tillegg hele
+mottaket ut av spill. Loggen:
+
+```
+[01:59:23][I] Køer forseringskommando (Max vifte)
+[01:59:28][W] Ingen gyldige statustelegram siste 5000 ms
+```
+
+Null TX-linjer i `uart: debug: direction: BOTH`.
+
+**Rotårsak — to feil som forsterket hverandre:**
+
+1. **Off-by-one i header-hoppet.** Arbitreringen trigget på `C3` etterfulgt av
+   `01`, og hoppet så over **seks** byte før den leste lengden. Men etter
+   `C3 01` gjenstår bare fem headerbyte før `LEN` (`00 C4 4B TYPE b6`). Den
+   spiste altså lengdebyten selv og leste første payload-byte — `0x20` = 32 —
+   som lengde. 32+2 = 34 > 32 → «urimelig lengde» → ga opp.
+2. **Ingen oppgivelse.** `command_pending_` ble aldri klarert, så mønsteret
+   gjentok seg på **hver eneste** ramme. Siden praktisk talt alle CS50-rammer
+   starter `C3 01`, ble sju byte spist ut av hver ramme, og ingen ramme kunne
+   lenger parses. Mottaket var dermed permanent ødelagt til noden ble restartet.
+
+**Fiksen: hele tilstandsmaskinen er fjernet.** Den var et levning fra før vi
+hadde en rammeparser — den prøvde å finne slutten på et telegram ved å telle
+byte manuelt. Rammeparseren *vet* allerede når et telegram slutter, og det er
+nøyaktig det hullet vi skal sende i. Sendingen planlegges nå rett etter at en
+ramme er ferdig validert:
+
+```cpp
+this->dispatch_frame_();
+if (this->command_pending_) {
+  this->set_timeout("flexit_sl4r_cmd", COMMAND_INJECT_DELAY_MS, [this]() { this->build_and_send_command_(); });
+}
+```
+
+Det fjerner både off-by-one-en og muligheten for at en mislykket arbitrering
+kan spise byte fra mottaket — det finnes ikke lenger en vei der byte går
+utenom parseren.
+
+**Lærdom:** å teste den tryggeste sendingen først var riktig. Feilen ville
+oppstått like fullt ved skriving av viftetrinn, men da med en varig
+tilstandsendring i spill i tillegg.

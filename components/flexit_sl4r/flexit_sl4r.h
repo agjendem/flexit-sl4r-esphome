@@ -119,7 +119,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void parse_and_publish_status_();
 
   // --- Sending: ikke-blokkerende deteksjon av CI50s kommandovindu + injeksjon ---
-  void handle_command_slot_byte_(uint8_t byte);
   void queue_command_(uint8_t field_offset, uint8_t value);
   // Køer en komplett, ferdig ramme (uten sjekksum — den beregnes ved sending).
   // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
@@ -127,10 +126,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void build_and_send_command_();
 
   static std::pair<uint8_t, uint8_t> checksum_(const uint8_t *data, size_t len);
-
-  // Rullende historikk over de siste 9 rå byte (index 8 = nyeste), brukt til
-  // deteksjon av CI50-kommandovindu-start.
-  std::array<uint8_t, 9> sync_history_{};
 
   // --- Rammeoppsamling ---
   // Vi samler fra hver 0xC3 og validerer med lengde + sjekksum. Slår en ramme
@@ -163,14 +158,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Tom = bruk den vanlige feltskrivingen.
   std::vector<uint8_t> pending_raw_frame_;
 
-  // CI50-kommandovindu-deteksjon (kun aktiv når command_pending_ er satt).
-  enum class CmdSlotState : uint8_t {
-    IDLE,
-    SKIPPING_HEADER,
-    READING_LENGTH,
-    SKIPPING_PAYLOAD,
-  } cmd_slot_state_{CmdSlotState::IDLE};
-  uint8_t cmd_slot_skip_remaining_{0};
 
 #ifdef USE_SENSOR
   std::vector<std::pair<uint8_t, sensor::Sensor *>> raw_status_sensors_;

@@ -60,26 +60,13 @@ void FlexitSL4RComponent::loop() {
 }
 
 void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
-  // Kommandovindu-deteksjon har forrang: den er kun aktiv når vi faktisk har
-  // noe å sende, og da skal byten ikke også mates inn i rammeparseren.
-  if (this->command_pending_ && this->cmd_slot_state_ != CmdSlotState::IDLE) {
-    this->handle_command_slot_byte_(byte);
-    return;
-  }
-
-  // Rullende historikk brukes nå kun til kommandovindu-deteksjonen.
-  for (size_t i = 0; i + 1 < this->sync_history_.size(); i++) {
-    this->sync_history_[i] = this->sync_history_[i + 1];
-  }
-  this->sync_history_.back() = byte;
-  if (this->command_pending_ && this->sync_history_[7] == FRAME_START && byte == 1) {
-    this->cmd_slot_state_ = CmdSlotState::SKIPPING_HEADER;
-    this->cmd_slot_skip_remaining_ = 6;
-    this->collecting_frame_ = false;
-    return;
-  }
-
   // --- Generell rammeoppsamling ---
+  // MERK: den gamle egne «kommandovindu»-tilstandsmaskinen er fjernet. Den
+  // spiste byte utenom rammeparseren for å finne et hull å sende i, og hadde
+  // to feil som til sammen satte hele mottaket ut av spill (se
+  // research/protocol-notes.md → «Arbitreringsfeilen»). Rammeparseren vet
+  // allerede nøyaktig når et telegram slutter — det ER hullet — så
+  // arbitreringen trenger ingen egen bytelesing.
   if (!this->collecting_frame_) {
     if (byte != FRAME_START)
       return;
@@ -115,6 +102,13 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
   }
 
   this->dispatch_frame_();
+
+  // Et telegram er nettopp avsluttet — dette ER hullet mellom rammer, og
+  // dermed riktig øyeblikk å injisere i. Kort guard-forsinkelse først, jf.
+  // original-implementasjonens delay(10), men ikke-blokkerende.
+  if (this->command_pending_) {
+    this->set_timeout("flexit_sl4r_cmd", COMMAND_INJECT_DELAY_MS, [this]() { this->build_and_send_command_(); });
+  }
 }
 
 void FlexitSL4RComponent::dispatch_frame_() {
@@ -281,39 +275,6 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     this->preheat_active_binary_sensor_->publish_state(this->preheat_active_state_);
   }
 #endif
-}
-
-void FlexitSL4RComponent::handle_command_slot_byte_(uint8_t byte) {
-  switch (this->cmd_slot_state_) {
-    case CmdSlotState::SKIPPING_HEADER:
-      if (--this->cmd_slot_skip_remaining_ == 0) {
-        this->cmd_slot_state_ = CmdSlotState::READING_LENGTH;
-      }
-      break;
-    case CmdSlotState::READING_LENGTH: {
-      const uint8_t length = static_cast<uint8_t>(byte + 2);
-      if (length < 3 || length > 32) {
-        // Urimelig lengde: falsk positiv på "195, 1"-mønsteret. Gi opp og gå
-        // tilbake til normal synk-skanning i stedet for å hoppe over feil antall byte.
-        this->cmd_slot_state_ = CmdSlotState::IDLE;
-        break;
-      }
-      this->cmd_slot_skip_remaining_ = length;
-      this->cmd_slot_state_ = CmdSlotState::SKIPPING_PAYLOAD;
-      break;
-    }
-    case CmdSlotState::SKIPPING_PAYLOAD:
-      if (--this->cmd_slot_skip_remaining_ == 0) {
-        this->cmd_slot_state_ = CmdSlotState::IDLE;
-        // Bussen er nå ledig. Kort guard-forsinkelse før vi injiserer, jf. original-
-        // implementasjonens delay(10) — planlagt ikke-blokkerende via set_timeout.
-        this->set_timeout("flexit_sl4r_cmd", COMMAND_INJECT_DELAY_MS, [this]() { this->build_and_send_command_(); });
-      }
-      break;
-    case CmdSlotState::IDLE:
-    default:
-      break;
-  }
 }
 
 void FlexitSL4RComponent::queue_command_(uint8_t field_offset, uint8_t value) {
