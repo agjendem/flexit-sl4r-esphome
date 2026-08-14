@@ -490,6 +490,8 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_);
   if (this->filter_alarm_binary_sensor_ != nullptr)
     this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
+  if (this->heat_recovery_active_binary_sensor_ != nullptr)
+    this->heat_recovery_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_RUNNING) != 0);
 #endif
 }
 

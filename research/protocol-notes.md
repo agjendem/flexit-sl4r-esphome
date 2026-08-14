@@ -1574,11 +1574,25 @@ manualen navngir dem for CS 50:
 Sannsynligvis flere bit i `[4]`. **Sikkerhetsrelevant** — overheting merkes
 ellers først når noen undrer seg over at det er kaldt.
 
-### 2. `[2]` — status/modusfelt
+### 2. `[2]` — delvis dekodet
 
-Observert: `0`, `36`, `72`, `144`, `145`. Bit0 settes ved varmebehov (144→145,
-samtidig som `[11]` begynte å rampe). De øvrige mønstrene (`0x24`, `0x48`,
-`0x90`) ser ut som et felt med flere tilstander, ikke uavhengige bit.
+**Bit0 = varmegjenvinneren går.** Ikke «det finnes et varmebehov» — nyansen er
+målt: pådraget `[11]` begynte å rampe mens biten fortsatt var `0`, og biten ble
+først satt da pådraget passerte **~10**. Altså når rotoren faktisk begynner å
+snurre, ikke når behovet oppstår. Verifisert på begge flanker:
+
+```
+[2] 144 -> 144    [11]  0 -> 1     padrag starter, bit0 fortsatt 0
+[2] 144 -> 145    [11] 10 -> 10    bit0 settes ved terskelen
+...
+[2] 145 -> 144    [11] 68 -> 0     padrag borte, bit0 klarert
+```
+
+Eksponert som `binary_sensor` **«Varmegjenvinner går»**.
+
+**Resten av `[2]` er fortsatt ukjent.** Observert `0`, `36` (`0x24`), `72`
+(`0x48`), `144` (`0x90`). Mønsteret ser ut som et felt med flere tilstander
+snarere enn uavhengige bit — verdiene dobler seg.
 
 ### 3. `[15]` og `[20]` — veksler sammen?
 

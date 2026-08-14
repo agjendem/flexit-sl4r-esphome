@@ -270,8 +270,6 @@ sensor:
     # historikk vi kan korrelere mot senere. Da kan hypoteser prøves mot uker
     # med data i stedet for et nytt uart-debug-opptak. Se TODO.md.
     raw_status_bytes:
-      - index: 2
-        name: "Rå status[2]"
       - index: 4
         name: "Rå status[4]"
       - index: 6
@@ -309,6 +307,11 @@ binary_sensor:
     # alarmen er tidsbasert og nullstilles på panelet.
     filter_alarm:
       name: "Filteralarm"
+    # payload[2] bit0 — settes når varmepådraget passerer ~10, altså når rotoren
+    # faktisk begynner å snurre. Ikke det samme som «det finnes et varmebehov»:
+    # pådraget starter først, biten kommer ved terskelen.
+    heat_recovery_active:
+      name: "Varmegjenvinner går"
     communication:
       name: "Flexit-kommunikasjon OK"
     boost_active:

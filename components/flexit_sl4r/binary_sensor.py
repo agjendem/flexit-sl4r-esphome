@@ -16,6 +16,7 @@ DEPENDENCIES = ["flexit_sl4r"]
 CONF_AFTERHEAT_ACTIVE = "afterheat_active"
 CONF_AFTERHEAT_ENABLED = "afterheat_enabled"
 CONF_FILTER_ALARM = "filter_alarm"
+CONF_HEAT_RECOVERY_ACTIVE = "heat_recovery_active"
 CONF_COMMUNICATION = "communication"
 CONF_BOOST_ACTIVE = "boost_active"
 CONF_ENUMERATED = "enumerated"
@@ -43,6 +44,9 @@ CONFIG_SCHEMA = {
     cv.Optional(CONF_FILTER_ALARM): binary_sensor.binary_sensor_schema(
         device_class="problem", icon="mdi:air-filter"
     ),
+    cv.Optional(CONF_HEAT_RECOVERY_ACTIVE): binary_sensor.binary_sensor_schema(
+        device_class=DEVICE_CLASS_RUNNING, icon="mdi:autorenew"
+    ),
     cv.Optional(CONF_ENUMERATED): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_CONNECTIVITY,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -67,6 +71,9 @@ async def to_code(config):
     if filter_alarm_config := config.get(CONF_FILTER_ALARM):
         sens = await binary_sensor.new_binary_sensor(filter_alarm_config)
         cg.add(flexit_sl4r_component.set_filter_alarm_binary_sensor(sens))
+    if heat_recovery_config := config.get(CONF_HEAT_RECOVERY_ACTIVE):
+        sens = await binary_sensor.new_binary_sensor(heat_recovery_config)
+        cg.add(flexit_sl4r_component.set_heat_recovery_active_binary_sensor(sens))
     if enumerated_config := config.get(CONF_ENUMERATED):
         sens = await binary_sensor.new_binary_sensor(enumerated_config)
         cg.add(flexit_sl4r_component.set_enumerated_binary_sensor(sens))

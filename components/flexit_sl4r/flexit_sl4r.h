@@ -91,6 +91,13 @@ static constexpr uint8_t PANEL_BUTTON_BIT = 0x40;
 // er sannsynlige kandidater.
 static constexpr uint8_t ALARM_FILTER = 0x02;
 
+// --- payload[2] bit0: varmegjenvinneren går (MÅLT 2026-08-15) ---
+// Settes IKKE når varmepådraget starter, men når det passerer ~10 — altså når
+// rotoren faktisk begynner å snurre, ikke når behovet oppstår. Verifisert på
+// både stigende og fallende flanke: `[11]` 0→68 satte biten ved 10, og da
+// pådraget falt tilbake til 0 ble den klarert.
+static constexpr uint8_t HEAT_RECOVERY_RUNNING = 0x01;
+
 // --- data[4] i tilstandsrammen: knappehendelser (MÅLT 2026-08-14) ---
 // Feltet vi lenge førte som «uavklart». Det ser ut til å rapportere hvilke
 // panelknapper som er trykket:
@@ -112,6 +119,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — elementet varmer NÅ
   SUB_BINARY_SENSOR(afterheat_enabled)   // payload[6] bit7 invertert — aktivert av bruker
   SUB_BINARY_SENSOR(filter_alarm)        // payload[4] bit1 — filtertid utløpt
+  SUB_BINARY_SENSOR(heat_recovery_active)  // payload[2] bit0 — rotoren går
   SUB_BINARY_SENSOR(communication)
   SUB_BINARY_SENSOR(boost_active)
   // Blir vi faktisk pollet? Enumereringen skjer KUN når CS50 starter opp. Er

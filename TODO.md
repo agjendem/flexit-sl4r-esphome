@@ -28,7 +28,9 @@ Feltene ligger allerede eksponert som diagnostikk i HA (`raw_status_bytes`), så
 historikken bygger seg opp uten at du trenger å gjøre noe. Etter noen dager kan
 hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 
-- [ ] `[2]`: `0 / 36 / 72 / 144` — dobling, ser ut som bitfelt eller teller
+- [x] ~~`[2]` bit0~~ **= varmegjenvinneren går** (settes når pådraget passerer
+      ~10, altså når rotoren faktisk snurrer). Eksponert som entitet.
+- [ ] `[2]` øvrige bit: `0 / 36 / 72 / 144` — dobling, fortsatt ukjent
 - [ ] `[11]`: `0/1`
 - [ ] `[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?
 - [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå
