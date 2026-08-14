@@ -776,3 +776,56 @@ egen trafikk:
 - Måling 1 gir ikke utslag → problemet er før modulen: pinne eller UART.
 - Begge gir utslag → vi driver faktisk bussen, og da er feilen i protokollen
   (adressering/rammeinnhold), ikke i maskinvaren.
+
+## RETTELSE: vi driver bussen — maskinvaren er frisk (2026-08-14)
+
+Konklusjonen om at senderen ikke nådde tråden var **feil**, og begge
+begrunnelsene mine var det.
+
+### Hvorfor stresstesten var ugyldig
+
+Den lette etter «sjekksum feilet» i loggen. Men den meldingen kommer kun fra
+`parse_and_publish_status_()`, altså for rammer som ALLEREDE har passert
+rammeparserens sjekksum. Rammer som blir ødelagt forkastes **stille** i
+parseren — helt bevisst, siden en `0xC3` inne i en payload treffer den grenen
+normalt. Korrupsjon var dermed usynlig. Og siden vi bare forstyrret 29 rammer i
+en kontinuerlig strøm, kom statusen tilbake innen sekundet, for kort til å
+utløse timeout-advarselen. Testen kunne ikke oppdage det den lette etter.
+
+### Målingen som avgjorde det
+
+Brukerens multimeter viste at begge linjene løftet seg fra ~1,5 V til ~2 V når
+TX-testen sto på, og falt tilbake etterpå — altså gjør modulen noe med paret.
+
+Deretter ble `frames_discarded`-telleren lagt inn, som teller stille forkastede
+rammer og gjør korrupsjon målbar:
+
+| | |
+|---|---|
+| Forkastede rammer før test | **0** |
+| Etter 20 s med kontinuerlig sending | **71** |
+| «Kommunikasjon OK» | gikk **av** |
+| Etter avslåing | på igjen, telleren stoppet |
+
+**Vi driver differensialparet.** ESP-en sender, SP485-en kobler på, og
+retningsstyringen i Tail485 fungerer som antatt. Maskinvaren er frisk.
+
+### Konsekvens: feilen er i protokollen
+
+Sendeveien er bevist ende til ende, så CS50 avviser oss på innhold eller
+sekvens — ikke fordi rammen mangler.
+
+Sterkeste spor fra opptaket: panelet sender **to** rammer ved et
+forseringstrykk, ikke én.
+
+```
+#2303   20 0F 02 11 01 04 00 0F     <- tilstandsramme, data[4] går 00 -> 01
+#2308   20 14 31 23                 <- forseringskommandoen
+```
+
+Vi har kun sendt den siste. Hypotese å teste: enten må de komme i par, eller så
+er det tilstandsrammen med `data[4]=01` som faktisk utløser forseringen, mens
+`20 14 31 23` er noe annet enn vi tror.
+
+**Lærdom:** en negativ test er verdiløs uten en positiv kontroll. Telleren
+skulle vært på plass før den første stresstesten ble tolket.

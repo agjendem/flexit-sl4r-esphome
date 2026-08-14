@@ -191,6 +191,10 @@ sensor:
       name: "Viftetrinn kjørende"
     fan_level_return:
       name: "Viftetrinn retur"
+    # Teller rammer som feilet sjekksum. Stiger den mens TX-testen står på,
+    # ØDELEGGER vi CS50s trafikk — og da driver vi beviselig bussen.
+    frames_discarded:
+      name: "Rammer forkastet"
 
     # --- Utforskning ---
     # Ukjente felt eksponert som diagnostikk, slik at HAs recorder bygger

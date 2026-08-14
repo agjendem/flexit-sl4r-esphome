@@ -90,6 +90,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_SENSOR(fan_duty_extract)             // status payload[14], %
   SUB_SENSOR(fan_level_running)            // høy nibbel av payload[5]
   SUB_SENSOR(fan_level_return)             // lav nibbel — trinnet forseringen faller tilbake til
+  SUB_SENSOR(frames_discarded)             // rammer forkastet på sjekksum — gjør busskorrupsjon målbar
 #endif
 
  public:
@@ -161,6 +162,11 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint32_t last_rx_byte_ms_{0};    // for deteksjon av stille buss før sending
   uint32_t command_queued_ms_{0};  // for å gi opp en kommando som aldri får plass
   uint8_t command_repeats_left_{0};
+  // Teller rammer som feilet sjekksum. Disse forkastes stille i parseren (en
+  // 0xC3 inne i en payload treffer den grenen helt normalt), men da blir ekte
+  // korrupsjon også usynlig. Uten denne telleren kan man ikke måle om VÅR
+  // sending ødelegger CS50s trafikk — og nettopp det spørsmålet er åpent.
+  uint32_t frames_discarded_{0};
   bool communication_ok_{false};
   bool preheat_active_state_{false};  // stateful latch, se protocol-notes.md
 

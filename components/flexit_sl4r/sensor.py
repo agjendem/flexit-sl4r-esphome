@@ -23,6 +23,7 @@ CONF_FAN_DUTY_SUPPLY = "fan_duty_supply"
 CONF_FAN_DUTY_EXTRACT = "fan_duty_extract"
 CONF_FAN_LEVEL_RUNNING = "fan_level_running"
 CONF_FAN_LEVEL_RETURN = "fan_level_return"
+CONF_FRAMES_DISCARDED = "frames_discarded"
 CONF_RAW_STATUS_BYTES = "raw_status_bytes"
 CONF_FLOAT_REGISTERS = "float_registers"
 CONF_REGISTER = "register"
@@ -84,6 +85,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_FAN_DUTY_EXTRACT): _percent_schema(),
         cv.Optional(CONF_FAN_LEVEL_RUNNING): _diagnostic_schema(),
         cv.Optional(CONF_FAN_LEVEL_RETURN): _diagnostic_schema(),
+        cv.Optional(CONF_FRAMES_DISCARDED): _diagnostic_schema(),
         cv.Optional(CONF_RAW_STATUS_BYTES): cv.ensure_list(RAW_STATUS_BYTE_SCHEMA),
         cv.Optional(CONF_FLOAT_REGISTERS): cv.ensure_list(FLOAT_REGISTER_SCHEMA),
     }
@@ -96,6 +98,7 @@ _SIMPLE = {
     CONF_FAN_DUTY_EXTRACT: "set_fan_duty_extract_sensor",
     CONF_FAN_LEVEL_RUNNING: "set_fan_level_running_sensor",
     CONF_FAN_LEVEL_RETURN: "set_fan_level_return_sensor",
+    CONF_FRAMES_DISCARDED: "set_frames_discarded_sensor",
 }
 
 

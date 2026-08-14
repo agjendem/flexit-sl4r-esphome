@@ -111,8 +111,15 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
   const size_t data_end = this->frame_.size() - 2;
   const auto [sum1, sum2] = checksum_(this->frame_.data() + FRAME_CHECKSUM_START, data_end - FRAME_CHECKSUM_START);
   if (sum1 != this->frame_[data_end] || sum2 != this->frame_[data_end + 1]) {
-    // Forkastes stille: en 0xC3 inne i en payload treffer denne grenen ofte, og
-    // det er normalt — ikke en feil verdt å logge på hver forekomst.
+    // Forkastes stille i loggen — en 0xC3 inne i en payload treffer denne
+    // grenen helt normalt — men TELLES, slik at ekte korrupsjon kan måles.
+    // Uten telleren er en ødelagt buss usynlig, og da kan man ikke avgjøre om
+    // vår egen sending kolliderer med CS50.
+    this->frames_discarded_++;
+#ifdef USE_SENSOR
+    if (this->frames_discarded_sensor_ != nullptr)
+      this->frames_discarded_sensor_->publish_state(this->frames_discarded_);
+#endif
     return;
   }
 
