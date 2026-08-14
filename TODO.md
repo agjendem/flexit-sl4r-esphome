@@ -29,7 +29,8 @@ historikken bygger seg opp uten at du trenger å gjøre noe. Etter noen dager ka
 hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
 
 - [ ] `[2]`: `0 / 36 / 72 / 144` — dobling, ser ut som bitfelt eller teller
-- [ ] `[6]`: veksler `0/1` ~50/50 — kandidat: forvarme aktiv, eller en blinkefase
+- [ ] `[6]`: veksler `0/1` ~50/50 — **beste kandidat: ETTERVARME av/på**
+      (el-batteriet som slår mot settpunktet). Se «Åpne, men mindre».
 - [ ] `[11]`: `0/1`
 - [ ] `[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?
 - [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå
@@ -96,12 +97,14 @@ merket «ikke CS 50»:
 - [ ] **Kartlegg `0xC7`-parameterne** (`0.01`, `0.3`, `2`, `1`, `30`, `25`,
       `-20`, `-30`). Konstante over døgn, så trolig regulatorparametere og
       grenseverdier. Kan de gjenfinnes i aggregatets servicemeny?
-- [ ] **Kryssjekk registrene mot CS50-kortets klemmeliste.** Flere float-slots
-      står på `-55` (føler ikke tilkoblet) og flere statusbyte er konstant null,
-      nesten sikkert fordi tilvalg ikke er montert. Aggregatets egen manual
-      (ikke CI 50-manualen) ville gitt hvert ubrukt slot et navn.
-      En **ekstern forseringsbryter** på CS50 ville dessuten gitt en uavhengig
-      kontroll på at vår forseringskommando gjør det samme som maskinvaren.
+- [x] ~~**Kryssjekk registrene mot CS50-kortets klemmeliste.**~~ **GJORT** —
+      klemmelista er hentet fra Flexits egen CS 50-manual (94269N-02) og
+      dokumentert i protokollnotatene. Den forklarte `-55`-slottene (B6,
+      platevekslerens frostføler, ikke montert på et rotoraggregat) og bekreftet
+      at kun tilluft måles.
+- [ ] **Ekstern forseringsbryter på CS 50** (J5 pin 16, «Forsert ventilasjon»)
+      ville gitt en uavhengig kontroll på at vår forseringskommando gjør det
+      samme som maskinvaren. Kun aktuelt hvis du uansett skal inn i aggregatet.
 - [ ] **Last-test bussens strømkapasitet** (100 Ω over 12 V ≈ 120 mA).
       Lav prioritet — ingen brownout gjennom mange OTA-runder, og `Resetårsak`
       + `Oppetid` fanger opp en eventuell svikt.
