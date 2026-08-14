@@ -103,6 +103,10 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
     this->command_template_ = command_template;
   }
   void set_flow_control_pin(GPIOPin *pin) { this->flow_control_pin_ = pin; }
+  // Hvilken node vi utgir oss for å være når vi sender. CI50 er node 4
+  // (panel 1). Node 5 er panel 2 — jf. dipswitch 3 på panelet. Adressefeltet
+  // beregnes av set_source_node_, se der.
+  void set_source_node(uint8_t node) { this->source_node_ = node; }
 
   // Kalt fra child-entitetene (select/switch/number) sine control()/write_state()-overrides.
   void set_fan_level(uint8_t level);                  // 1..3
@@ -141,7 +145,8 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void queue_command_(uint8_t field_offset, uint8_t value);
   // Køer en komplett, ferdig ramme (uten sjekksum — den beregnes ved sending).
   // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
-  void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum);
+  void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats = 1);
+  void send_queued_frame_();
   void build_and_send_command_();
 
   static std::pair<uint8_t, uint8_t> checksum_(const uint8_t *data, size_t len);
@@ -181,9 +186,15 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint8_t pending_field_offset_{0};
   uint8_t pending_field_value_{0};
   std::vector<uint8_t> command_template_;
-  // Ferdig ramme som skal sendes i stedet for command_template-varianten.
-  // Tom = bruk den vanlige feltskrivingen.
-  std::vector<uint8_t> pending_raw_frame_;
+  // FIFO-kø av ferdige rammer (uten sjekksum — den påføres ved sending).
+  // Én ramme sendes per stille vindu, slik at en sekvens av rammer legges ut
+  // på bussen i riktig rekkefølge med reell arbitrering mellom hver.
+  // Nødvendig fordi CI50 sender TO rammer ved et forseringstrykk, ikke én.
+  struct QueuedFrame {
+    std::vector<uint8_t> bytes;
+    uint8_t repeats;
+  };
+  std::vector<QueuedFrame> tx_queue_;
 
 
 #ifdef USE_SENSOR
@@ -196,6 +207,16 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   };
   std::vector<FloatRegisterSensor> float_register_sensors_;
 #endif
+
+  // Bygger de fem headerbytene for vår avsenderadresse. Byte 3-4 er
+  // Fletcher-sjekksummen over [C3, node, 00] — verifisert eksakt mot node 1
+  // (`01 00 C4 4B`) og node 4 (`04 00 C7 51`) i avlyttet trafikk.
+  std::array<uint8_t, 5> source_header_() const {
+    const uint8_t hdr[3] = {FRAME_START, this->source_node_, 0x00};
+    const auto [s1, s2] = checksum_(hdr, 3);
+    return {FRAME_START, this->source_node_, 0x00, s1, s2};
+  }
+  uint8_t source_node_{4};
 
   GPIOPin *flow_control_pin_{nullptr};
 };

@@ -61,7 +61,15 @@ roterende gjenvinner), og det vi faktisk har målt.
 
 ## 1. Sending — verifisere det vi allerede har bygget
 
-- [ ] **Test forseringsknappen ende-til-ende.** Vent til pågående forsering har
+- [x] ~~**Test forseringsknappen ende-til-ende.**~~ Gjort 2026-08-14. Rammen går
+      beviselig ut på bussen, men **CS50 reagerer ikke** på noen av fire
+      varianter (node 4 ×1, node 4 ×5, par node 4, par node 5 med korrekt b6).
+      Se «Sendeforsøk — status» i protokollnotatene.
+- [ ] **FANG BUSSEN UNDER EN STRØMSYKLUS AV AGGREGATET.** Klart mest lovende
+      neste steg: CS50 registrerer trolig hvilke paneler som finnes ved
+      oppstart, og et panel som dukker opp midt i drift blir aldri godkjent.
+      En oppstartslogg vil vise hele registreringssekvensen.
+- [ ] ~~Gammelt punkt:~~ **Test forseringsknappen** Vent til pågående forsering har
       løpt ut, slå på rå-logging, trykk `button.…_forsering` i HA, og bekreft
       både at rammen går ut korrekt og at CS50 svarer med `0x31` i statusen.
       Dette blir vår aller første sending på bussen.

@@ -85,6 +85,14 @@ text_sensor:
 flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
+  # Hvilken node vi utgir oss for å være ved sending. CI50 er node 4 (panel 1).
+  # Node 5 er panel 2 — det er dét dipswitch 3 på panelet konfigurerer.
+  # Adressefeltet beregnes automatisk: byte 3-4 er Fletcher-sjekksummen over
+  # [C3, node, 00], verifisert mot node 1 (01 00 C4 4B) og node 4 (04 00 C7 51).
+  # Å opptre som node 4 betyr å utgi seg for det ekte panelet; node 5 er en
+  # egen identitet CS50 er bygget for å støtte.
+  # Tilbake på 4 (panelets identitet) — node 5 er prøvd og gir ingen reaksjon.
+  source_node: 4
   # Retningsstyring: blokkdiagrammet i M5Stacks datablad for Tail RS485 (SKU
   # T002) viser kun fire signaler mellom modulen og ATOM-en — G/5V/TXD/RXD.
   # Det finnes ingen DE/RE-linje ut av modulen, så retningen styres på kortet.

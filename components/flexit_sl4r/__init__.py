@@ -13,6 +13,7 @@ flexit_sl4r_ns = cg.esphome_ns.namespace("flexit_sl4r")
 FlexitSL4RComponent = flexit_sl4r_ns.class_("FlexitSL4RComponent", cg.Component, uart.UARTDevice)
 
 CONF_FLEXIT_SL4R_ID = "flexit_sl4r_id"
+CONF_SOURCE_NODE = "source_node"
 CONF_COMMAND_TEMPLATE = "command_template"
 
 # Vongravens eksempel-kommando (verifisert sjekksum, se research/protocol-notes.md).
@@ -29,6 +30,7 @@ CONFIG_SCHEMA = (
             cv.Optional(
                 CONF_COMMAND_TEMPLATE, default=DEFAULT_COMMAND_TEMPLATE
             ): cv.All(cv.ensure_list(cv.uint8_t), cv.Length(min=18, max=18)),
+            cv.Optional(CONF_SOURCE_NODE, default=4): cv.int_range(min=1, max=8),
             cv.Optional(CONF_FLOW_CONTROL_PIN): pins.gpio_output_pin_schema,
         }
     )
@@ -66,3 +68,4 @@ async def to_code(config):
     if flow_control_pin_config := config.get(CONF_FLOW_CONTROL_PIN):
         pin = await gpio_pin_expression(flow_control_pin_config)
         cg.add(var.set_flow_control_pin(pin))
+    cg.add(var.set_source_node(config[CONF_SOURCE_NODE]))

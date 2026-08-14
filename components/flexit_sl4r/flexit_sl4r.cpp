@@ -48,14 +48,19 @@ void FlexitSL4RComponent::loop() {
   // Sending skjer KUN når bussen har vært målt stille. Å sende «rett etter en
   // ferdig ramme» kolliderte i praksis, fordi CS50 begynner på neste telegram
   // før det (se research/protocol-notes.md → «Kollisjonen»).
-  if (this->command_pending_ && !this->collecting_frame_) {
+  if ((!this->tx_queue_.empty() || this->command_pending_) && !this->collecting_frame_) {
     const uint32_t now = millis();
     if (now - this->last_rx_byte_ms_ >= BUS_IDLE_BEFORE_TX_MS) {
-      this->build_and_send_command_();
+      if (!this->tx_queue_.empty()) {
+        this->send_queued_frame_();
+      } else {
+        this->build_and_send_command_();
+      }
     } else if (now - this->command_queued_ms_ > COMMAND_GIVE_UP_MS) {
-      ESP_LOGW(TAG, "Fant aldri et stille vindu på bussen - forkaster kommandoen");
+      ESP_LOGW(TAG, "Fant aldri et stille vindu pa bussen - forkaster %u koede ramme(r)",
+               static_cast<unsigned>(this->tx_queue_.size()));
+      this->tx_queue_.clear();
       this->command_pending_ = false;
-      this->pending_raw_frame_.clear();
     }
   }
 
@@ -320,11 +325,31 @@ void FlexitSL4RComponent::set_fan_level(uint8_t level) {
 
 void FlexitSL4RComponent::set_preheat(bool on) { this->queue_command_(12, on ? 128 : 0); }
 
-void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_checksum) {
-  this->pending_raw_frame_ = std::move(frame_without_checksum);
-  this->command_pending_ = true;
+void FlexitSL4RComponent::queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats) {
+  this->tx_queue_.push_back({std::move(frame_without_checksum), repeats});
   this->command_queued_ms_ = millis();
-  this->command_repeats_left_ = COMMAND_REPEATS;
+}
+
+void FlexitSL4RComponent::send_queued_frame_() {
+  if (this->tx_queue_.empty())
+    return;
+  std::vector<uint8_t> frame = this->tx_queue_.front().bytes;
+  const auto [sum1, sum2] = checksum_(frame.data() + FRAME_CHECKSUM_START, frame.size() - FRAME_CHECKSUM_START);
+  frame.push_back(sum1);
+  frame.push_back(sum2);
+
+  if (this->flow_control_pin_ != nullptr)
+    this->flow_control_pin_->digital_write(true);
+  this->write_array(frame.data(), frame.size());
+  this->flush();
+  if (this->flow_control_pin_ != nullptr)
+    this->flow_control_pin_->digital_write(false);
+
+  ESP_LOGD(TAG, "Sendte ramme (%u byte), igjen i kø: %u", static_cast<unsigned>(frame.size()),
+           static_cast<unsigned>(this->tx_queue_.size() - 1));
+
+  if (--this->tx_queue_.front().repeats == 0)
+    this->tx_queue_.erase(this->tx_queue_.begin());
 }
 
 void FlexitSL4RComponent::trigger_boost() {
@@ -334,8 +359,28 @@ void FlexitSL4RComponent::trigger_boost() {
   // De to siste byte er sjekksummen og beregnes ved sending, så de er ikke
   // med her. Rammen er en engangs-kommando uten felt som må speiles fra
   // gjeldende tilstand — derfor går den utenom command_template.
-  ESP_LOGI(TAG, "Køer forseringskommando (Max vifte)");
-  this->queue_raw_frame_({0xC3, 0x04, 0x00, 0xC7, 0x51, 0xC1, 0x04, 0x04, 0x20, 0x14, 0x31, 0x23});
+  // CI50 sender TO rammer ved et forseringstrykk, ikke én (målt 2026-08-14):
+  //   #2303  20 0F 02 <vifte> 01 04 00 <settpunkt>   tilstandsramme, data[4]=01
+  //   #2308  20 14 31 23                             selve kommandoen
+  // Å sende kun den siste ga ingen reaksjon, selv om rammen var byte-identisk
+  // og beviselig nådde bussen. Vi speiler derfor hele sekvensen, med gjeldende
+  // viftetrinn og settpunkt i tilstandsrammen slik panelet gjør.
+  const auto hdr = this->source_header_();
+  ESP_LOGI(TAG, "Køer forseringssekvens som node %u", static_cast<unsigned>(this->source_node_));
+
+  // b6 gjentar nodenummeret — verifisert på alle rammer i opptaket. Sender vi
+  // som node 5 må også b6 være 5, ellers er rammen inkonsistent.
+  const uint8_t n = this->source_node_;
+  const std::array<uint8_t, 11> state_body{0xC1, n, 0x08, 0x20, 0x0F, 0x02, this->last_raw_fan_level_,
+                                           0x01, 0x04, 0x00, this->last_raw_heat_exchanger_temp_};
+  std::vector<uint8_t> state(hdr.begin(), hdr.end());
+  state.insert(state.end(), state_body.begin(), state_body.end());
+  this->queue_raw_frame_(std::move(state));
+
+  const std::array<uint8_t, 7> cmd_body{0xC1, n, 0x04, 0x20, 0x14, 0x31, 0x23};
+  std::vector<uint8_t> cmd(hdr.begin(), hdr.end());
+  cmd.insert(cmd.end(), cmd_body.begin(), cmd_body.end());
+  this->queue_raw_frame_(std::move(cmd));
 }
 
 void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
@@ -357,29 +402,6 @@ void FlexitSL4RComponent::build_and_send_command_() {
     this->command_repeats_left_--;
   if (last_repeat)
     this->command_pending_ = false;
-
-  // Engangs-kommando (f.eks. forsering): send den ferdige rammen som den er,
-  // kun med sjekksum påført. Går utenom command_template-modellen, som antar
-  // en fast 18-byte tilstandsskriving med felt som må speiles.
-  if (!this->pending_raw_frame_.empty()) {
-    std::vector<uint8_t> frame = this->pending_raw_frame_;  // kopi: rammen skal sendes flere ganger
-    const auto [rsum1, rsum2] = checksum_(frame.data() + 5, frame.size() - 5);
-    frame.push_back(rsum1);
-    frame.push_back(rsum2);
-
-    if (this->flow_control_pin_ != nullptr)
-      this->flow_control_pin_->digital_write(true);
-    this->write_array(frame.data(), frame.size());
-    this->flush();
-    if (this->flow_control_pin_ != nullptr)
-      this->flow_control_pin_->digital_write(false);
-
-    ESP_LOGD(TAG, "Sendte engangsramme (%u byte), gjentakelser igjen: %u", static_cast<unsigned>(frame.size()),
-             static_cast<unsigned>(this->command_repeats_left_));
-    if (last_repeat)
-      this->pending_raw_frame_.clear();
-    return;
-  }
 
   // Dobbel sikring: queue_command_ slipper ikke gjennom uten mal, men denne
   // copy_n leser 18 byte og MÅ aldri kjøre mot en tom vector.

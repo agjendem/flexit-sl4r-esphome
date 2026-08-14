@@ -829,3 +829,61 @@ er det tilstandsrammen med `data[4]=01` som faktisk utløser forseringen, mens
 
 **Lærdom:** en negativ test er verdiløs uten en positiv kontroll. Telleren
 skulle vært på plass før den første stresstesten ble tolket.
+
+## Adressefeltet dekodet (2026-08-14)
+
+De fire byte etter `0xC3` er ikke vilkårlige. **Byte 3–4 er Fletcher-sjekksummen
+over `[0xC3, node, 0x00]`** — samme algoritme som resten av protokollen, brukt
+på headeren:
+
+| Node | Header | Beregnet |
+|---|---|---|
+| 1 (CS50) | `01 00 C4 4B` | ✓ |
+| 4 (CI50, panel 1) | `04 00 C7 51` | ✓ |
+| 5 (panel 2) | `05 00 C8 53` | ✓ (predikert, deretter sendt) |
+
+**Byte 6 gjentar nodenummeret** — bekreftet på 4409 av 4500 rammer (98 %;
+resten er parser-artefakter, se under). En ramme fra node N har altså N to
+steder: i adressefeltet og på offset 6.
+
+Implementert som `source_node:` i YAML-en, med adressen beregnet automatisk.
+
+### Om «node 2, 3 og 5» i opptaket — parser-artefakter
+
+Opptaket viste 10 rammer hver fra node 2, 3 og 5, alle med `TYPE=0xC3`,
+`b6=01`, `LEN=0`. De er **falske positive**, ikke ekte noder:
+
+For en nullengde-ramme er sjekksumvinduet `[0xC3, 0x01, 0x00]`, som alltid gir
+`(0xC4, 0x4B)`. Treffer parseren en `0xC3` som ligger nøyaktig fem byte foran
+starten på en ekte node-1-ramme, leser den `C3 01 00 C4 4B` som
+`TYPE/b6/LEN/CK/CK` — og sjekksummen stemmer per konstruksjon. «Adressen» er da
+bare de fire databytene som lå imellom.
+
+Lærdom: en rammedetektor basert på lengde + sjekksum er ikke idiotsikker for
+nullengde-rammer, fordi sjekksumvinduet da er så kort at det kan treffe tilfeldig.
+
+## Sendeforsøk — status per 2026-08-14
+
+Alle fire variantene nedenfor gikk beviselig ut på bussen (verifisert med
+`direction: BOTH`, og `frames_discarded` steg ved kollisjon). **Ingen ga
+reaksjon fra CS50.**
+
+| Variant | Resultat |
+|---|---|
+| Node 4, kun `20 14 31 23`, ×1 | ingen reaksjon |
+| Node 4, kun `20 14 31 23`, ×5 | ingen reaksjon |
+| Node 4, tilstandsramme + kommando i par | ingen reaksjon |
+| Node 5, par, med korrekt `b6=05` | ingen reaksjon |
+
+### Gjenstående hypoteser, prioritert
+
+1. **Enumerering ved oppstart.** CS50 registrerer trolig hvilke paneler som
+   finnes når den starter. Et panel som dukker opp midt i drift blir kanskje
+   aldri «godkjent». **Fang bussen under en strømsyklus av aggregatet** — det
+   vil vise hele registreringssekvensen, og er det klart mest lovende neste
+   steget.
+2. **Panel 2 må konfigureres fysisk.** CS50 lytter kanskje bare til node 5 hvis
+   et ekte panel med dipswitch 3 = ON har meldt seg. Jf. TODO punkt 5.
+3. **`20 14 31 23` er ikke forsering.** Den er observert nøyaktig én gang, tolv
+   rammer før statusendringen. Korrelasjon, ikke bevist årsak.
+4. **Et felt vi ikke har identifisert** i tilstandsrammen må endres samtidig.
