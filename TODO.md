@@ -37,8 +37,18 @@ hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
       gjenvinneren, og bit 1 koder trolig **bypass** på plateveksleraggregater
       (Flexit bruker samme utgang til «rotor eller bypass motor»). Kan bare
       avgjøres av noen med plateveksler.
-- [ ] `[11]`: `0/1`
-- [ ] `[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?
+- [x] ~~`[11]`: `0/1`~~ **= varmepådraget** (se punkt 3 under).
+- [x] ~~`[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?~~
+      **JA — og alle tre flipper ved FORSERINGSSTART** (fase 0-analysen
+      2026-08-15). Blinkfase-hypotesen er avvist: én overgang i hele opptaket,
+      i nøyaktig samme telegram som boost. Betydning fortsatt ukjent
+      (`[20]` er et rent nibbelskift `0x88`→`0x44`), men korrelatet er kjent.
+- [ ] **`[6]` bit0 — RE-VERIFISER: forsering eller element?** Beviset for
+      «elementet varmer» røk i fase 0-analysen: eneste bit0=1-observasjon er
+      forseringsperioden, og ettervarmen var da *deaktivert*. Test live:
+      utløs forsering med ettervarme av (flipper bit0 → forsering), og se
+      etter bit0=1 uten forsering en kald morgen (→ element). Entiteten
+      «Ettervarme aktiv» er feilmerket inntil dette er avgjort.
 - [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå
 
 Korrelér mot noe som endrer seg — utetemperatur, viftetrinn, tid på døgnet.
@@ -64,11 +74,17 @@ Mekanismen er tidsbasert («filtertid»); CS 50 har ingen trykkvakter.
       temperaturknapper). Implementert som knappen **«Nullstill filtervakt»**,
       som kjører hele manualens prosedyre automatisk: settpunkt til 20, reset,
       og tilbake til opprinnelig settpunkt.
-- [ ] **Verifiser at timeren faktisk restarter.** Kan bare bekreftes ved at
-      alarmen holder seg borte over tid — forrige gang (uten 20-graders-steget)
-      kom den tilbake av seg selv. Trykk knappen når filteret faktisk byttes.
-- [ ] Sjekk om **filtertiden/tidstelleren** også ligger på bussen. Da kunne HA
-      vist «dager til filterbytte» i stedet for bare en alarm.
+- [ ] **Verifiser at timeren faktisk restarter — NY METODE (fase 0, 2026-08-15):**
+      les filtertelleren (`C6 20 1C` ord 8) før og etter «Nullstill filtervakt».
+      En ekte nullstilling skal sette telleren til 0; da trengs ingen ukers
+      venting. NB: 14. august-hendelsen nullstilte IKKE telleren (den fortsatte
+      29351 → 29364) — det er derfor alarmen re-armerte.
+- [x] ~~Sjekk om **filtertiden/tidstelleren** også ligger på bussen.~~
+      **FUNNET (fase 0, 2026-08-15):** to timetellere som tikker 1/time —
+      `C6 20 0E` ord 10 (33500+, total driftstid/«Tidsteller») og `C6 20 1C`
+      ord 8 (29342+, timer siden filternullstilling/«Filtertid»). Manualens
+      filterintervall er 0–12 mnd (std 6 — og `00 06`=6 ligger i reg `0x0E`).
+      Eksponeres som sensorer i fase 2; «dager til filterbytte» kan beregnes.
 
 ### 3. ~~Rotorpådrag~~ — FUNNET 2026-08-15
 
@@ -130,6 +146,10 @@ aggregatet faktisk har.
       **NB:** registrene følger ikke menyrekkefølgen (se over), så «kort etter»
       er en svak føring. Klyngestrukturen hjelper derimot: konfigurasjonen er
       ikke et min/maks-par, så den skal ligge utenfor de identifiserte klyngene.
+      **Fase 0-oppdatering (2026-08-15):** `0F 01` er UTE av jakten — det er de
+      lagrede brukerinnstillingene (settpunkt + viftetrinn, fulgte
+      panelsekvensen slavisk i opptaket). `82 xx` er driftstimetelleren.
+      Gjenværende kandidat i reg `0x0E`: `02 32`, pluss `05 0C` i reg `0x00`.
       Avgjøres sikkert bare ved å diffe mot et anlegg med annen utrustning.
 - [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
       gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
@@ -176,20 +196,31 @@ aggregatet faktisk har.
       komponenten er omdøpt (`afterheat_active`), gammel entitet ryddet bort av
       ESPHome selv. Navnet forvarme var arvet fra Vongraven og er feil for et
       rotoraggregat.
-- [x] ~~Bekreft ettervarme-hypotesen.~~ **AVKLART 2026-08-15**, etter tre
-      feiltolkninger. `payload[6]` bit0 = elementet varmer nå. Av/på-flagget
-      ligger derimot i **panelets** ramme, `data[4]` bit7 — verifisert begge
-      veier mot panelets «+»-lampe. Styres fra `switch` «Ettervarme», som til
+- [x] ~~Bekreft ettervarme-hypotesen.~~ **AVKLART 2026-08-15** for av/på-flagget:
+      det ligger i **panelets** ramme, `data[4]` bit7 — verifisert begge veier
+      mot panelets «+»-lampe. Styres fra `switch` «Ettervarme», som til
       forskjell fra panelbevegelsen ikke utløser filterreset.
+      **MEN:** `payload[6]` bit0 = «elementet varmer» røk i fase 0-analysen
+      samme dag (bit0 fulgte forseringen, med ettervarmen deaktivert) —
+      se re-verifiseringspunktet under punkt 1.
 - [ ] **Egen «avbryt forsering»-knapp.** Å sette gjeldende viftetrinn avbryter
       forseringen (verifisert: pådrag 100 → 49 %). En knapp som bare skriver
       dagens trinn ville gjort det åpenbart.
 - [ ] **Viftekommando under aktiv forsering.** Kommandobyten koder (fra, til),
       og «fra» tas fra høy nibbel av statusbyten — som under forsering er 3, ikke
       brukerens valgte trinn. Utestet grensetilfelle.
-- [ ] **Kartlegg `0xC7`-parameterne** (`0.01`, `0.3`, `2`, `1`, `30`, `25`,
-      `-20`, `-30`). Konstante over døgn, så trolig regulatorparametere og
-      grenseverdier. Kan de gjenfinnes i aggregatets servicemeny?
+- [x] ~~**Kartlegg `0xC7`-parameterne.**~~ **DEKODET (fase 0, 2026-08-15):**
+      reg `0x0E` = vinterkompensering (Start vinter −20, Stopp vinter −30,
+      Temp dif 2, følerkorreksjoner 0×4), reg `0x07` slots 3–6 =
+      sommerkompensering (Sommer dif 2, Vinter dif 1, Stopp sommer 30,
+      Start sommer 25 — 25 var altså IKKE maks settpunkt). `0.01`×4 og `0.3`×6
+      er regulatorforsterkninger (fabrikknivå, ingen tall i manualen).
+      Gjenstår: `0, 0.1, 0.1` i reg `0x15`.
+- [ ] **Ukeprogrammet (bank `0x21`) — PARKERT.** Strukturen er kjent (dagur 1–4
+      + ukeur 1–6, defaults synlige: 06:00, 20 °C, 23:59), men postlayouten kan
+      ikke festes uten å endre en ur-innstilling — og det krever CS 500-panel
+      med display. Vårt ur er permanent inaktivt på fabrikkdefault. Trenger
+      logg fra et CS 500-anlegg, eller skriving mot bank `0x21`.
 - [x] ~~**Kryssjekk registrene mot CS50-kortets klemmeliste.**~~ **GJORT** —
       klemmelista er hentet fra Flexits egen CS 50-manual (94269N-02) og
       dokumentert i protokollnotatene. Den forklarte `-55`-slottene (B6,
@@ -239,7 +270,7 @@ aggregatet faktisk har.
 | Hvor mange vifter? | To, ikke fire |
 | Hvordan slås forsering av? | Sett viftetrinn |
 | Hva er `payload[4]`? | Alarmbitfelt — bit1 = filteralarm |
-| Hva er `payload[6]`? | bit0 = elementet varmer nå. Bit7 er IKKE enable-flagget |
+| Hva er `payload[6]`? | bit0 flipper ved forsering (elementet-varmer-tolkningen røk i fase 0 — re-verifiseres). Bit7 er IKKE enable-flagget |
 | Hvor ligger ettervarme av/på? | Panelets `data[4]` bit7 — ikke i statustelegrammet |
 | Hvordan slås ettervarme av/på? | `switch` i HA (verifisert), eller hold − og trykk + på panelet |
 | Hvorfor gir panelbevegelsen filterreset? | Samme knappekombinasjon; varigheten skiller. Vår bryter unngår det |

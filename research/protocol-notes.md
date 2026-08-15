@@ -1979,3 +1979,175 @@ er de nærmeste kandidatene.
 sammenligne med et aggregat med annen utrustning — da vil nøyaktig de bytene
 som koder rotor/plate, el/vann og forvarme/bypass skille seg ut, og resten være
 like.
+
+# Fase 0-analyse: fire gjennombrudd fra eksisterende opptak (2026-08-15)
+
+En systematisk gjennomgang av de to lagrede opptakene pluss manualen (94269N-02)
+— uten en eneste ny byte på bussen — løste eller flyttet fem av de åpne sakene.
+
+## 1. `[15]`/`[20]` er IKKE blinkfase — de flipper ved forsering
+
+Blinkfase-hypotesen ble testet mot 13. august-opptaket (233 statustelegram,
+filteralarmen aktiv og blinkende hele veien): `[15]` og `[20]` har **én eneste
+overgang** i hele opptaket, ikke en veksling i blinketakt. En LED-fase ville
+vekslet ~150 ganger. Hypotesen er død.
+
+Overgangen skjer i **nøyaktig samme telegram** som forseringen starter
+(telegram 118, rett etter panelets boost-kommando `data[4]=0x01` i ramme 2303):
+
+```
+telegram 117: [5]=0x11 [6]=0 [13]=49  [14]=49  [15]=32 (0x20) [20]=136 (0x88)
+telegram 118: [5]=0x31 [6]=1 [13]=100 [14]=100 [15]=35 (0x23) [20]=68  (0x44)
+```
+
+`[6]`, `[15]` og `[20]` flipper alle samtidig med forseringsstart, og står
+deretter stabilt. I 14. august-opptaket (ingen forsering): konstant 32/136.
+
+## 2. Beviset for «`[6]` bit0 = elementet varmer» RYKER
+
+Den eneste observasjonen av `[6]` bit0 = 1 i opptakene er forseringsperioden
+over. Og i hele 13. august-opptaket står panelets `data[4]` bit7 = 0 —
+**ettervarmen var deaktivert**. Et deaktivert element kan ikke varme. Setningen
+i 14. august-seksjonen om at `[6]` «vekslet 0/1 omtrent 50/50: elementet slo av
+og på» var en feillesning av en *fordeling* (118 mot 115 telegram) som i
+virkeligheten er **én** overgang — ved forseringsstart.
+
+**Ny hypotese: `[6]` bit0 = forsering/max-timer aktiv.** Verdien 51 (0x33) for
+`[15]` som er sett live men ikke i opptakene, kan høre til en annen kombinasjon
+(f.eks. forsering med annet utgangstrinn — 0x20/0x23/0x33 ligner nibbelpar).
+
+Avgjøres enkelt live: utløs forsering fra HA-knappen med ettervarme deaktivert
+og se om `[6]` bit0, `[15]` og `[20]` flipper (→ forsering), og aktiver deretter
+ettervarme med høyt settpunkt en kald morgen og se om bit0 kan bli 1 *uten*
+forsering (→ element). Til det er gjort er entiteten «Ettervarme aktiv»
+([6] bit0) å regne som feilmerket.
+
+`[20]`-verdiene er et rent nibbelskift: `0x88 → 0x44`. Betydningen er fortsatt
+ukjent, men den er altså forserings-korrelert, ikke alarm- eller LED-korrelert.
+
+## 3. `C6` reg `0x0E` bytes 22–23 er de LAGREDE brukerinnstillingENE
+
+Utstyrskonfig-kandidaten `0F 01` er forklart — og det på beste vis. I
+13. august-opptaket (der panelet ble kjørt gjennom trinn 3→2→1 og settpunkt
+17→25→15) følger bytes 22–23 i `C6 20 0E` panelsekvensen slavisk:
+
+```
+11 03  (settpunkt 17, trinn 3)   <- starttilstand
+11 02  (17, 2)
+11 01  (17, 1)
+12 01 → 13 01 → ... → 19 01      <- settpunktsveipet 18..25
+18 01 → ... → 10 01              <- ned igjen
+0F 01  (15, 1)                   <- sluttilstand, dominerende
+```
+
+**Byte 22 = lagret settpunkt (0x0F–0x19), byte 23 = lagret viftetrinn.** Det er
+persistensen som gjør at aggregatet husker innstillingen over strømbrudd.
+Dermed er `0F 01` ute av utstyrskonfig-jakten; gjenværende kandidat der er
+`02 32` (bytes 20–21 — men se driftstelleren under: `82 xx` ligger i bytes
+18–19, så feltene må retolkes, se pkt. 6).
+
+## 4. TO DRIFTSTIMETELLERE — og forklaringen på filteralarm-mysteriet
+
+To 16-bit-ord viste seg å *ikke* være konstante på tvers av opptakene:
+
+| Felt | 13. aug | 14. aug | 15. aug (live) | Inkrement |
+|---|---|---|---|---|
+| reg `0x0E` ord «`82 xx`» | `0x82DC` = 33500 | `0x82E5` = 33509 | `0x82F2` = 33522 | +9, +13 |
+| reg `0x1C` ord «`72 xx`» | `0x729E` = 29342 | `0x72A7` = 29351 | `0x72B4` = 29364 | +9, +13 |
+
+Identiske inkrementer, konstant differanse (4158). Dette er **timetellere som
+tikker én gang i timen**. Manualens meny (94269N-02 s. 21) har nøyaktig to slike
+naboposter: **«Tidsteller»** og **«Filtertid»**.
+
+Tolkning:
+- 33500 = total driftstid (~3,8 år kontinuerlig drift)
+- 29342 = timer siden forrige filternullstilling (startet 4158 t ≈ 173 døgn
+  etter totaltelleren — plausibelt et reelt filterbytte ~6 mnd etter
+  idriftsettelse)
+
+Manualen (s. 30, 4.2–4.4): filtertidtageren gir B-alarm hver **«Tidsperiode
+0…12 mnd, standard 6»** — og `00 06` = 6 står i reg `0x0E`! Alarmen skal
+nullstilles manuelt etter filterbytte.
+
+**Dette forklarer 14. august-mysteriet**: da filteralarmen ble nullstilt ved et
+uhell, kom den tilbake av seg selv timer senere. Nå ser vi hvorfor — telleren
+fortsatte (29351 → 29364) uten nullstilling. Gesturen kvitterte bare *lampen*;
+tidtageren løp videre og re-armerte alarmen.
+
+**Prediksjon som kan testes**: en *ekte* filternullstilling skal sette
+reg `0x1C`-telleren til 0 (eller re-ankre den). Dermed har vi endelig en
+fasit for «Nullstill filtervakt»-knappen — vi trenger ikke vente på at alarmen
+holder seg borte i dager; vi kan lese telleren før/etter.
+
+## 5. Viftehastighetene 50/75/100 % — pådragsverdiene forklart
+
+`32 4B 64` = 50, 75, 100 opptrer to ganger (bytes 16–17 + 26–27 i reg `0x0E`,
+med `64` nr. 2 som første byte i reg `0x1C`): **hastighetsinnstillingene for
+trinn 1/2/3, tilluft og avtrekk hver for seg**. Det er nøyaktig pådragene vi
+måler i `[13]`/`[14]`: 49/74/100 % (avvik på 1 er avrunding/kalibrering).
+Manualens «Hastighetsinnstilling»-meny bekrefter modellen: viftetrinn er
+konfigurerbare prosentverdier, og CS50 kjører fabrikkoppsettet.
+
+## 6. Bank `0x21` er UR-LAGRINGEN (dagur 1–4 + ukeur 1–6)
+
+De 80 bytene i bank `0x21` (reg `0x00`/`0x0E`/`0x1C`) matcher manualens
+ur-modell (94269N-02 s. 32–34): **Dagur har 4 kanaler, Ukeur har 6** — og
+dataene består av seks repetisjoner av ett mønster + fire av et annet:
+
+```
+6 x (08 00 10 00 06 00 30 14)      <- ukeur 1-6 (8 byte per kanal?)
+4 x (06 00 17 3B 20 14)            <- dagur 1-4 (6 byte per kanal?)
+1 x (00 00 10 00 88 88 21 09)      <- hale (dato/klokke? status?)
+```
+
+Manualens standardverdier er tydelig gjenkjennbare i mønstrene: `06 00` =
+Tid PÅ 06:00 (default), `14` = 20 °C (default temperatur), `17 3B` = 23:59
+(rangens maksverdi), og `10`/`20`/`30` ligner hastighetsnibler (trinn 1/2/3).
+Full postlayout er *ikke* entydig avgjort — grensene mellom felter kan ikke
+festes uten å endre en ur-innstilling og se hva som flytter seg.
+
+**Og det er poenget: det kan vi ikke.** Ur-programmering krever display
+(CS 500-panel). CI 50 har ingen — på vårt anlegg ligger uret permanent på
+fabrikkdefault og er inaktivt. Dekoding videre krever logg fra et
+CS 500-anlegg, eller skriving (fase 6-mekanikken, men mot bank `0x21` som er
+tryggere enn driftsparametre — uret er uansett inaktivt hos oss).
+
+Halens `88 88 21 09` er lik i begge opptak (to døgn mellom) — altså ikke en
+løpende klokke.
+
+## 7. `C7`-flytene er KOMPENSERINGSPARAMETRENE (+ regulatorforsterkninger)
+
+Match mot manualens tabeller (94269N-02 s. 39–40) løste reg `0x07` og `0x0E`:
+
+| Reg | Slot | Verdi | Manual | Std |
+|---|---|---|---|---|
+| `0x07` | 3 | 2.0 | Sommer dif (s. 39) | −2,0* |
+| `0x07` | 4 | 1.0 | Vinter dif (s. 39) | 1,0 ✓ |
+| `0x07` | 5 | 30.0 | Stopp sommer (s. 39) | 30 ✓ |
+| `0x07` | 6 | 25.0 | Start sommer (s. 39) | 25 ✓ |
+| `0x0E` | 0 | −20.0 | Start vinter (s. 40) | −20 ✓ |
+| `0x0E` | 1 | −30.0 | Stopp vinter (s. 40) | −30 ✓ |
+| `0x0E` | 2 | 2.0 | Temp dif (s. 40) | 2 ✓ |
+| `0x0E` | 3–6 | 0.0 ×4 | følerkorreksjoner (std 0) | ✓ |
+
+\* Tabellutdraget antyder −2,0 som standard for Sommer dif; vi ser +2,0.
+Kan være fortegnsartefakt i PDF-utdraget eller reelt avvik — uavklart.
+
+**Rettelse**: 25.0 i reg `0x07` ble tidligere matchet som «maks settpunkt».
+Det er feil — den er **Start sommer**. (Heltallsvarianten `00 19` = 25 i `C6`
+reg `0x00` kan fortsatt være maks settpunkt.)
+
+Restene: `0.01 ×4` (reg `0x00`) og `0.3 ×6` (reg `0x00`+`0x07`) er
+regulatorforsterkninger (P/I for temperaturreguleringen — fabrikknivå-menyen
+«Reguleringsparam.» på s. 21, uten tall i manualen). `0, 0.1, 0.1` i reg
+`0x15` fortsatt uforklart.
+
+## Konsekvenser for todo-lista
+
+- Blinkfase-eksperimentet utgår (avgjort offline).
+- `[6]` bit0-verifisering NY: forsering vs. element (live, 5 min).
+- Filterreset-verifisering NY metode: les reg `0x1C`-telleren før/etter.
+- Utstyrskonfig-kandidaten er nå kun `02 32` + de re-tolkede feltene rundt.
+- Ukeprogram: parkeres — krever CS 500-logg eller skriving.
+- Forseringens «Standardtid 30» (s. 49) kolliderer med motorvern-30-matchen
+  for `00 1E` — én av dem er feil, avgjøres ikke uten skriving.
