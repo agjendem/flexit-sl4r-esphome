@@ -35,8 +35,8 @@ CONF_SLOT = "slot"
 CONF_BANK = "bank"
 CONF_MODE = "mode"
 
-# Flere parametre er lagret som (min, maks)-BYTEPAR i ett 16-bit-ord, så begge
-# halvdelene må kunne eksponeres hver for seg.
+# Several parameters are stored as (min, max) BYTE PAIRS inside one 16-bit
+# word, so both halves must be exposable separately.
 INT_MODES = {"word": 0, "high_byte": 1, "low_byte": 2}
 
 
@@ -65,8 +65,9 @@ def _diagnostic_schema():
     )
 
 
-# Utforsknings-sensorer: eksponer vilkårlige rå byte / flyttall-slots i HA uten
-# å endre C++-koden, slik at recorder-en bygger historikk å korrelere mot.
+# Exploration sensors: expose arbitrary raw bytes / float slots in Home
+# Assistant without touching the C++ code, so the recorder builds history to
+# correlate against.
 RAW_STATUS_BYTE_SCHEMA = _diagnostic_schema().extend(
     {cv.Required(CONF_INDEX): cv.int_range(min=0, max=21)}
 )
@@ -83,9 +84,9 @@ FLOAT_REGISTER_SCHEMA = sensor.sensor_schema(
     }
 )
 
-# 16-bit-ordene i 0xC6-rammene: parametertabellene (bank 0x20) og ur-lagringen
-# (bank 0x21). Verdiene kringkastes kontinuerlig i CS50s faste runde, så ingen
-# leseforespørsel trengs — vi plukker dem bare ut når rammen passerer.
+# The 16-bit words in the 0xC6 frames: the parameter tables (bank 0x20) and
+# the clock storage (bank 0x21). The values are broadcast continuously in the CS50's fixed round,
+# so no read request is needed - we simply pick them out as the frame passes.
 INT_REGISTER_SCHEMA = _diagnostic_schema().extend(
     {
         cv.Optional(CONF_BANK, default=0x20): cv.hex_int_range(min=0x20, max=0x22),

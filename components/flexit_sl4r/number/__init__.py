@@ -29,7 +29,7 @@ CONFIG_SCHEMA = {
 async def to_code(config):
     flexit_sl4r_component = await cg.get_variable(config[CONF_FLEXIT_SL4R_ID])
     if setpoint_config := config.get(CONF_HEAT_EXCHANGER_SETPOINT):
-        # Gyldig område 15-25 grader, se research/protocol-notes.md.
+        # Valid range 15-25 degrees, see PROTOCOL.md.
         n = await number.new_number(setpoint_config, min_value=15, max_value=25, step=1)
         await cg.register_parented(n, config[CONF_FLEXIT_SL4R_ID])
         cg.add(flexit_sl4r_component.set_heat_exchanger_setpoint_number(n))

@@ -33,29 +33,31 @@ CONFIG_SCHEMA = {
         device_class=DEVICE_CLASS_CONNECTIVITY,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    # Forsering: høy nibbel != lav nibbel i payload[5]. Presis indikator,
-    # gratis fra data vi allerede leser.
+    # Boost: high nibble != low nibble in payload[5]. A precise indicator,
+    # free from data we already read.
     cv.Optional(CONF_BOOST_ACTIVE): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_RUNNING, icon="mdi:fan-plus"
     ),
-    # Uten denne feiler skriving STILLE hvis vi er droppet fra pollerunden.
+    # Afterheater enabled - payload[6] bit7.
     cv.Optional(CONF_AFTERHEAT_ENABLED): binary_sensor.binary_sensor_schema(
         icon="mdi:radiator", entity_category=ENTITY_CATEGORY_DIAGNOSTIC
     ),
-    # Filtertid utlopt. CS 50 har ingen trykkvakt - alarmen er tidsbasert.
+    # Filter time expired. The CS 50 has no pressure switch - the alarm is
+    # time-based.
     cv.Optional(CONF_FILTER_ALARM): binary_sensor.binary_sensor_schema(
         device_class="problem", icon="mdi:air-filter"
     ),
-    # Ethvert alarmbit UNNTATT filterbiten. Den rode alarm-LED-en (rotoralarm,
-    # overhetingstermostat) er ikke dekodet bit for bit - denne fanger den
-    # likevel den dagen den fyrer. Hvilket bit leses av "Ra status[4]".
+    # Any alarm bit EXCEPT the filter bit. The red alarm LED (rotor alarm,
+    # overheat thermostat) has not been decoded bit by bit - this catches it
+    # anyway the day it fires. Which bit it was is read from the raw [4]
+    # sensor.
     cv.Optional(CONF_UNKNOWN_ALARM): binary_sensor.binary_sensor_schema(
         device_class="problem", icon="mdi:alert-circle"
     ),
     cv.Optional(CONF_HEAT_RECOVERY_ACTIVE): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_RUNNING, icon="mdi:autorenew"
     ),
-    # ANTATT bypass. Aldri observert satt - se protocol-notes.md.
+    # ASSUMED bypass. Never observed set - see PROTOCOL.md.
     cv.Optional(CONF_BYPASS_ACTIVE): binary_sensor.binary_sensor_schema(
         icon="mdi:valve", entity_category=ENTITY_CATEGORY_DIAGNOSTIC
     ),

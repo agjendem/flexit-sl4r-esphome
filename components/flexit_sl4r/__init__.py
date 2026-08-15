@@ -39,10 +39,10 @@ FINAL_VALIDATE_SCHEMA = uart.final_validate_device_schema(
     stop_bits=1,
 )
 
-# Brukt av child-platformene (select/switch/number/binary_sensor) for å referere
-# til hub-komponenten. CS50 sender data raskt nok til at standard 64-byte
-# RX-buffer flommer over i løpet av sekunder (se research/protocol-notes.md) —
-# rx_buffer_size i uart:-blokken i eksempel-YAML-en MÅ derfor settes romslig.
+# Used by the child platforms (select/switch/number/binary_sensor) to reference
+# the hub component. The CS50 sends data fast enough that the default 64-byte
+# RX buffer overflows within seconds, so rx_buffer_size in the uart: block MUST
+# be set generously - see the example configuration.
 FLEXIT_SL4R_CLIENT_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_FLEXIT_SL4R_ID): cv.use_id(FlexitSL4RComponent),
