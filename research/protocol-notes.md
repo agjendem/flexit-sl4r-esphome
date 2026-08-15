@@ -2218,3 +2218,92 @@ data som *ikke har hatt anledning til å motsi seg selv* er ikke testet ennå.
   (rotoralarm / overhetingstermostat) første gang den fyrer, uten at vi vet
   hvilket bit den bruker
 - **«Avbryt forsering»** — skriver returtrinnet (lav nibbel av `[5]`)
+
+# `payload[6]` endelig avklart — og to speilingsfeil avdekket (2026-08-15)
+
+Climate-entiteten ga oss et styrt forsøk der én ting kunne varieres om gangen.
+Det avgjorde `[6]` etter **tre** feiltolkninger, og avslørte samtidig to reelle
+feil i skrivestien.
+
+## Fasit
+
+| Bit | Verdi | Betydning |
+|---|---|---|
+| 0 | `0x01` | **Forsering aktiv** |
+| 7 | `0x80` | **Ettervarme aktivert** |
+
+Målt, én variabel om gangen:
+
+| Handling | `[6]` | `[20]` |
+|---|---|---|
+| utgangspunkt (ettervarme av) | `0` | `136` |
+| forsering PÅ | **`1`** | **`68`** |
+| viftetrinn 1 under forsering | `0` | `136` |
+| ettervarme PÅ | **`128`** | `136` |
+| ettervarme AV | `0` | `136` |
+| ettervarme PÅ (gjenoppretting) | `128` | `136` |
+
+## Hvorfor det tok tre forsøk
+
+1. **«bit0 = elementet varmer nå»** (14. aug). Avkreftet direkte: biten var satt
+   under forsering mens ettervarmen beviselig var **av**. Et avslått element
+   varmer ikke.
+2. **«bit7 = ettervarme DEAKTIVERT, invertert»** (14. aug). Avkreftet: å slå
+   ettervarmen **på** setter biten. Vongravens opprinnelige «0=av, 128=på» var
+   riktig hele tiden — vi «rettet» ham feil vei.
+3. **«bit7 er ikke enable-flagget i det hele tatt»** (15. aug). Også feil. Den
+   så ut til å opptre i begge tilstander — men det var fordi **våre egne
+   skrivinger slo av ettervarmen** mellom målingene (se under). Vi målte vår
+   egen bieffekt og trodde det var støy i signalet.
+
+Fellesnevneren: de to bitene ble alltid observert samtidig, i data der begge
+kunne endre seg. Én variabel om gangen løste det på fem minutter.
+
+## Speilingsfeil nr. 3: ettervarmen ble lest fra feil ramme
+
+`afterheat_enabled_` ble latchet fra **panelrammen**, som CI50 bare sender ved
+*endring*. Etter hver omstart sto feltet derfor på sin default (`false`) til
+panelet tilfeldigvis sendte noe — det kunne ta timer, og «Ettervarme aktivert»
+sto `unknown` hele tiden.
+
+Verre: verdien speiles inn i **alle** våre utgående rammer. Den første
+viftekommandoen etter en omstart slo derfor **av ettervarmen** uten at noen
+hadde bedt om det. Det skjedde midt under dette forsøket, og det var nettopp
+den bieffekten som ga feiltolkning nr. 3.
+
+**Rettet:** ettervarmen leses nå fra `[6]` bit7 i statustelegrammet, som
+kringkastes hvert sekund. Entiteten er fersk umiddelbart etter oppstart —
+verifisert: den viste `off` (korrekt) i det noden kom opp, ikke `unknown`.
+
+## Speilingsfeil nr. 4: forseringen hardkodet tilstandsrammen
+
+`trigger_boost()` bygget sin tilstandsramme fra grunnen med `data[2]=0x02` og
+`data[4]=0x01`, i stedet for å gå via `queue_state_frame_()`. Ettervarme-biten
+lå i `data[4]` — så **hvert eneste forseringstrykk slo av ettervarmen.**
+
+**Rettet:** forseringen bruker nå samme speilende sti som alt annet.
+
+Det er tredje og fjerde gang samme klasse feil dukker opp i dette prosjektet.
+Regelen er verdt å gjenta: *bygg aldri en utgående ramme fra grunnen — start
+alltid fra sist mottatte tilstand og overstyr kun det du faktisk mener å endre.*
+
+## Kanttilfellet med viftekommando under forsering: løst
+
+Å sette viftetrinn 1 mens forseringen kjørte ga et rent resultat: `[5]`
+`0x32` → `0x11`, pådrag 100 → 49 %, forsering av. Ingen rar mellomtilstand.
+Kommandobytens «fra»-nibbel er 3 under forsering, og CS50 godtar det uten
+innvendinger. **«Avbryt forsering»-knappen** gjør det samme med returtrinnet.
+
+## `[15]` står fortsatt
+
+`[15]` var `32`/`35` i 13. august-opptaket og `51` gjennom hele dagens forsøk —
+uendret av både forsering og ettervarme. Den henger altså på noe tredje som
+endret seg mellom 13. og 15. august. Fortsatt ukjent; logges videre.
+
+## Climate-entiteten «Ventilasjon»
+
+Verifisert ende-til-ende: settpunkt 18 → 19 fulgte hele veien ut til CS50s egen
+float-verdi **og** til den lagrede innstillingen i `C6 20 0E` ord 12 — som
+dermed bekrefter fase 0-identifiseringen av det feltet en gang til.
+Viftemodus 1/2/3, BOOST-preset og HEAT/FAN_ONLY er alle testet mot bussen.
+`hvac_action` utledes av varmepådraget `[11]`, ikke av `[6]` bit0.

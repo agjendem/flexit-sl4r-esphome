@@ -193,6 +193,18 @@ interval:
 # som er aktivert, fordi den er den eneste vi har fanget og verifisert komplett
 # fra bussen (2026-08-13). Aggregatet går til trinn 3 og faller selv tilbake
 # til forrige trinn når perioden er over — vi trenger derfor ingen «av»-kommando.
+# Samler alt i én termostat-modell — samme grep som HAs offisielle
+# flexit_bacnet-integrasjon. De diskrete entitetene (Viftetrinn, Settpunkt,
+# Ettervarme, Forsering) beholdes ved siden av; de er bedre for automasjoner.
+# Ingen «av»-modus: aggregatet kan ikke stoppes over bussen.
+#   HEAT     = ettervarmen er aktivert   FAN_ONLY = kun gjenvinning
+#   BOOST    = «Max vifte»               fan 1/2/3 = viftetrinn
+climate:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    ventilation:
+      name: "Ventilasjon"
+
 button:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
@@ -450,13 +462,16 @@ binary_sensor:
     # Ettervarme = el-batteriet som varmer tillufta opp til settpunktet.
     # Het tidligere «Forvarme», som var arvet fra Vongraven og feil: forvarme
     # er en plateveksler-funksjon og finnes ikke på et rotoraggregat.
-    # payload[6] bit0 — betydning under re-verifisering: eneste bit0=1 i
-    # opptakene falt sammen med FORSERING (med ettervarmen deaktivert), så
-    # «elementet varmer nå»-tolkningen er trolig feil. Se TODO.
+    # payload[6] bit0 = FORSERING (avklart ved styrt forsøk 2026-08-15: biten
+    # var satt under forsering mens ettervarmen beviselig var av). Beholdes som
+    # diagnostikk fordi den er en UAVHENGIG kilde til forseringstilstanden —
+    # «Forsering aktiv» utledes av [5]-niblene. Spriker de to, har vi lært noe.
     afterheat_active:
-      name: "Ettervarme aktiv"
-    # panelrammens data[4] bit7 — aktivert av bruker (panelets «+»-lampe).
-    # Slås av/på ved å holde inne − og trykke + på panelet.
+      name: "Forsering (statusbit)"
+      entity_category: diagnostic
+    # payload[6] bit7 — ettervarme aktivert (panelets «+»-lampe). Leses fra
+    # statustelegrammet, som kommer hvert sekund; panelrammen sendes kun ved
+    # endring og etterlot feltet ukjent i timevis etter hver omstart.
     afterheat_enabled:
       name: "Ettervarme aktivert"
     # payload[4] bit1 — filtertiden er utløpt. CS 50 har ingen trykkvakt;

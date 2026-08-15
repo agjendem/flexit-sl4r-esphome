@@ -43,12 +43,13 @@ hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
       2026-08-15). Blinkfase-hypotesen er avvist: én overgang i hele opptaket,
       i nøyaktig samme telegram som boost. Betydning fortsatt ukjent
       (`[20]` er et rent nibbelskift `0x88`→`0x44`), men korrelatet er kjent.
-- [ ] **`[6]` bit0 — RE-VERIFISER: forsering eller element?** Beviset for
-      «elementet varmer» røk i fase 0-analysen: eneste bit0=1-observasjon er
-      forseringsperioden, og ettervarmen var da *deaktivert*. Test live:
-      utløs forsering med ettervarme av (flipper bit0 → forsering), og se
-      etter bit0=1 uten forsering en kald morgen (→ element). Entiteten
-      «Ettervarme aktiv» er feilmerket inntil dette er avgjort.
+- [x] ~~**`[6]` bit0 — forsering eller element?**~~ **AVGJORT 2026-08-15 ved
+      styrt forsøk:** `[6]` bit0 = **forsering**, `[6]` bit7 = **ettervarme
+      aktivert**. Målt én variabel om gangen, begge veier. Tre tidligere
+      tolkninger falt — den siste fordi våre egne skrivinger slo av
+      ettervarmen mellom målingene. Se protokollnotatene.
+- [x] ~~`[20]`~~ **= forsering** (`0x88` normal, `0x44` forsering), verifisert
+      på to uavhengige anledninger.
 - [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå
 
 Korrelér mot noe som endrer seg — utetemperatur, viftetrinn, tid på døgnet.
@@ -100,6 +101,10 @@ varmebehov.
 Se «GJENSTÅR Å DEKODE» i protokollnotatene for de fem hullene som er igjen.
 
 ### 3b. Ettervarmens eget pådrag — fyringssesongen
+
+**NB (2026-08-15):** vi har ingen «elementet varmer nå»-indikator i det hele
+tatt — den antatte (`[6]` bit0) viste seg å være forseringen. Ettervarmens
+0–10 V-pådrag (J5 pin 9,10) er dermed fortsatt helt ufunnet.
 
 CS 50-manualens klemmeliste bekrefter at begge finnes, og ingen av dem er
 merket «ikke CS 50»:
@@ -207,12 +212,11 @@ aggregatet faktisk har.
       **MEN:** `payload[6]` bit0 = «elementet varmer» røk i fase 0-analysen
       samme dag (bit0 fulgte forseringen, med ettervarmen deaktivert) —
       se re-verifiseringspunktet under punkt 1.
-- [ ] **Egen «avbryt forsering»-knapp.** Å sette gjeldende viftetrinn avbryter
-      forseringen (verifisert: pådrag 100 → 49 %). En knapp som bare skriver
-      dagens trinn ville gjort det åpenbart.
-- [ ] **Viftekommando under aktiv forsering.** Kommandobyten koder (fra, til),
-      og «fra» tas fra høy nibbel av statusbyten — som under forsering er 3, ikke
-      brukerens valgte trinn. Utestet grensetilfelle.
+- [x] ~~**Egen «avbryt forsering»-knapp.**~~ **GJORT** — skriver returtrinnet
+      (lav nibbel av `[5]`), verifisert: pådrag 100 → 49 %.
+- [x] ~~**Viftekommando under aktiv forsering.**~~ **TESTET 2026-08-15:** rent
+      resultat. `[5]` `0x32` → `0x11`, pådrag 100 → 49 %, forsering av. CS50
+      godtar «fra»-nibbel 3 uten innvendinger.
 - [x] ~~**Kartlegg `0xC7`-parameterne.**~~ **DEKODET (fase 0, 2026-08-15):**
       reg `0x0E` = vinterkompensering (Start vinter −20, Stopp vinter −30,
       Temp dif 2, følerkorreksjoner 0×4), reg `0x07` slots 3–6 =

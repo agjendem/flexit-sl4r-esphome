@@ -26,6 +26,12 @@
 
 namespace esphome::flexit_sl4r {
 
+#ifdef USE_CLIMATE
+// Forward-erklæring: climate-plattformen inkluderer denne headeren, så vi kan
+// ikke inkludere dens header her uten sirkulær avhengighet.
+class FlexitClimate;
+#endif
+
 // Se research/protocol-notes.md for utledning av alle offsets/lengder under.
 static constexpr uint8_t STATUS_DATA_LENGTH = 22;   // databyte i statustelegrammet (uten sync-header/checksum)
 static constexpr uint8_t STATUS_RAW_LENGTH = 25;    // total byte lest etter synk-treff (data + 2 checksum + 1 ubrukt)
@@ -62,18 +68,26 @@ static constexpr uint8_t TYPE_PARAM = 0xC7;    // IEEE754 float-parametere/grens
 // Verdi CS50 rapporterer for en følerinngang som ikke er tilkoblet.
 static constexpr float SENSOR_DISCONNECTED = -55.0f;
 
-// --- payload[6] bit0 (MÅLT 2026-08-14, RE-TOLKET i fase 0 2026-08-15) ---
-// Først tolket som «elementet varmer nå» (panelets «°C»-lampe). Fase 0-analysen
-// viste at eneste bit0=1-observasjon i opptakene er forseringsperioden — og
-// ettervarmen var da DEAKTIVERT. Ny hypotese: bit0 = forsering/max-timer aktiv.
-// Avgjøres live (se TODO). Bit7 er IKKE et enable-flagg (tidligere feiltolkning).
-static constexpr uint8_t AFTERHEAT_HEATING = 0x01;
+// --- payload[6]: TO uavhengige bit, avklart ved styrt forsøk 2026-08-15 ---
+//   bit0 (0x01) = FORSERING aktiv
+//   bit7 (0x80) = ETTERVARME AKTIVERT
+//
+// Tre feiltolkninger gikk forut for dette, alle fordi de to bitene ble sett
+// samtidig uten å variere én om gangen:
+//   1. «bit0 = elementet varmer nå» — avkreftet: bit0 var satt under forsering
+//      mens ettervarmen beviselig var av. Et avslått element varmer ikke.
+//   2. «bit7 = ettervarme DEAKTIVERT (invertert)» — avkreftet: å slå PÅ
+//      ettervarmen setter biten.
+//   3. «bit7 er ikke enable-flagget i det hele tatt» — også feil. Den så ut
+//      til å opptre i begge tilstander fordi VÅRE EGNE skrivinger slo av
+//      ettervarmen bak ryggen på oss (se speilingsfeilene under).
+// Verifisert begge veier: aktiver -> 0x80, deaktiver -> 0x00, forsering -> 0x01.
+// Vongravens opprinnelige «0=av, 128=på» var altså riktig hele tiden.
+static constexpr uint8_t STATUS_BOOST_ACTIVE = 0x01;
+static constexpr uint8_t STATUS_AFTERHEAT_ENABLED = 0x80;
 
-// --- Ettervarme AV/PÅ ligger i PANELETS tilstandsramme, ikke i statusen ---
-// `data[4]` bit7 i node 4-rammen (`20 0F ...`): satt = aktivert. Verifisert
-// begge veier mot panelets «+»-lampe 2026-08-15. (To tidligere kandidater —
-// status-`[6]` bit7 og panelets `data[2]` — ble begge avkreftet.)
-// Bit6 i samme byte er en kortvarig knappebit.
+// Samme flagg i PANELETS tilstandsramme (`data[4]` i node 4-rammen `20 0F`),
+// som er formatet vi selv skriver i. Bit6 er en kortvarig knappebit.
 static constexpr uint8_t AFTERHEAT_ENABLED_BIT = 0x80;
 static constexpr uint8_t PANEL_BUTTON_BIT = 0x40;
 
@@ -114,8 +128,8 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_NUMBER(heat_exchanger_setpoint)
 #endif
 #ifdef USE_BINARY_SENSOR
-  SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — betydning under re-verifisering (forsering?)
-  SUB_BINARY_SENSOR(afterheat_enabled)   // panelramme data[4] bit7 — aktivert av bruker
+  SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — forsering (uavhengig kryssjekk mot [5]-niblene)
+  SUB_BINARY_SENSOR(afterheat_enabled)   // payload[6] bit7 — ettervarme aktivert
   SUB_BINARY_SENSOR(filter_alarm)        // payload[4] bit1 — filtertid utløpt
   // Ethvert annet bit i alarmfeltet enn filterbiten. Fanger den røde
   // alarm-LED-en (rotoralarm / overhetingstermostat — begge udokumenterte
@@ -167,6 +181,10 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // svarer — uten å gjenta C3-headeren. Noder som ikke svarer på
   // enumereringsskanningen ved oppstart blir droppet.
   void set_respond_to_polls(bool v) { this->respond_to_polls_ = v; }
+
+#ifdef USE_CLIMATE
+  void set_ventilation_climate(FlexitClimate *c) { this->ventilation_climate_ = c; }
+#endif
 
   // Kalt fra child-entitetene (select/switch/number) sine control()/write_state()-overrides.
   void set_fan_level(uint8_t level);                  // 1..3
@@ -313,15 +331,27 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // (se protocol-notes.md: usendte felt overskrives ellers utilsiktet).
   uint8_t last_raw_fan_level_{17};
   uint8_t last_raw_afterheat_{0};
-  // Speiles fra panelets tilstandsramme, og sendes i våre egne skrivinger så vi
-  // ikke overstyrer brukerens valg utilsiktet.
+  // Ettervarmens av/på. Leses fra STATUSTELEGRAMMET ([6] bit7), som kringkastes
+  // kontinuerlig — ikke fra panelrammen, som bare sendes ved endring og derfor
+  // kan være timer gammel. Det siste var en reell feilkilde: etter en omstart
+  // sto feltet på `false` til panelet tilfeldigvis sendte noe, og siden verdien
+  // speiles inn i ALLE våre skrivinger, slo den første viftekommandoen etter
+  // omstart av ettervarmen bak brukerens rygg.
   bool afterheat_enabled_{false};
+  bool have_afterheat_state_{false};
   // PRINSIPP: alt vi ikke forstår speiles fra panelets siste ramme, slik at en
   // skriving kun endrer det vi FAKTISK mener å endre. Vi hardkodet felt vi
   // trodde var konstante, og slo dermed av ettervarmen ved hver skriving.
   std::array<uint8_t, 8> panel_state_{{0x20, 0x0F, 0x00, 0x11, 0x00, 0x04, 0x00, 0x12}};
   bool have_panel_state_{false};
   uint8_t last_raw_heat_exchanger_temp_{20};
+  // Tilluft, speilet fra 0xC2 reg 0 slot 1 — climate-entiteten trenger den som
+  // «current temperature», og den kommer i en annen ramme enn statusen.
+  float last_supply_air_temp_{NAN};
+#ifdef USE_CLIMATE
+  FlexitClimate *ventilation_climate_{nullptr};
+  void publish_climate_();
+#endif
 
   // Kommandokø: kun én utestående kommando av gangen, nyeste vinner.
   // FIFO-kø av ferdige rammer (uten sjekksum — den påføres ved sending).

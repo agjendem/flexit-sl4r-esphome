@@ -1,6 +1,9 @@
 #include "flexit_sl4r.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#ifdef USE_CLIMATE
+#include "climate/flexit_climate.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -409,19 +412,20 @@ void FlexitSL4RComponent::handle_panel_frame_() {
   std::copy_n(this->frame_.begin() + FRAME_HEADER_LENGTH, 8, this->panel_state_.begin());
   this->have_panel_state_ = true;
 
-  // data[4] bit7 = ettervarme aktivert. Bit6 er en kortvarig knappebit og
-  // skal ikke tolkes som tilstand.
-  this->afterheat_enabled_ = (this->panel_state_[4] & AFTERHEAT_ENABLED_BIT) != 0;
+  // Ettervarmens tilstand leses IKKE herfra lenger — statustelegrammets [6]
+  // bit7 sier det samme og kommer hvert sekund. Panelrammen brukes kun til å
+  // speile feltene vi ikke forstår inn i våre egne skrivinger.
 }
 
 void FlexitSL4RComponent::set_afterheat_enabled(bool on) {
+  // Settes optimistisk her fordi queue_state_frame_() leser feltet når rammen
+  // bygges. Neste statustelegram overskriver med aggregatets faktiske svar.
   this->afterheat_enabled_ = on;
   ESP_LOGI(TAG, "Skriver ettervarme %s", on ? "PÅ" : "AV");
   this->queue_state_frame_(this->last_raw_fan_level_, BUTTON_NONE, this->last_raw_heat_exchanger_temp_);
 }
 
 void FlexitSL4RComponent::handle_float_frame_() {
-#ifdef USE_SENSOR
   // payload[0] = bank, payload[1] = registerindeks. Indeksen teller i REGISTRE
   // (4-byte floats), ikke i byte — den stepper 0, 7, 14, 21 fordi hver ramme
   // bærer sju floats. Se research/protocol-notes.md → «Flyttall-registre».
@@ -442,6 +446,12 @@ void FlexitSL4RComponent::handle_float_frame_() {
     if (value == SENSOR_DISCONNECTED)
       value = NAN;
 
+    // Tilluften speiles uansett — climate-entiteten trenger den som
+    // «current temperature», og den kommer ikke i statustelegrammet.
+    if (type == TYPE_FLOAT && reg_base == 0 && slot == 1)
+      this->last_supply_air_temp_ = value;
+
+#ifdef USE_SENSOR
     if (type == TYPE_FLOAT) {
       if (reg_base == 0 && slot == 1 && this->supply_air_temperature_sensor_ != nullptr)
         this->supply_air_temperature_sensor_->publish_state(value);
@@ -453,8 +463,8 @@ void FlexitSL4RComponent::handle_float_frame_() {
       if (frs.type == type && frs.reg == reg_base && frs.slot == slot)
         frs.sensor->publish_state(value);
     }
-  }
 #endif
+  }
 }
 
 void FlexitSL4RComponent::parse_and_publish_status_() {
@@ -557,20 +567,24 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 #endif
   }
 
-  // payload[6] er et bitfelt, ikke en av/på-verdi. Se AFTERHEAT_* i headeren.
-  const bool afterheat_heating = (raw_afterheat & AFTERHEAT_HEATING) != 0;
+  // payload[6] er et bitfelt med TO uavhengige bit: bit0 = forsering,
+  // bit7 = ettervarme aktivert. Se STATUS_* i headeren for hvordan de tre
+  // tidligere tolkningene ble avkreftet.
+  //
+  // Ettervarmen leses HER, ikke fra panelrammen. Statustelegrammet kommer hvert
+  // sekund; panelrammen kun ved endring. Med panelrammen som eneste kilde sto
+  // feltet på sin default (av) etter hver omstart — og siden verdien speiles
+  // inn i alle våre skrivinger, slo den første viftekommandoen etterpå av
+  // ettervarmen uten at noen hadde bedt om det.
+  const bool boost_bit = (raw_afterheat & STATUS_BOOST_ACTIVE) != 0;
+  this->afterheat_enabled_ = (raw_afterheat & STATUS_AFTERHEAT_ENABLED) != 0;
+  this->have_afterheat_state_ = true;
   this->last_raw_afterheat_ = raw_afterheat;
 
 #ifdef USE_BINARY_SENSOR
   if (this->afterheat_active_binary_sensor_ != nullptr)
-    this->afterheat_active_binary_sensor_->publish_state(afterheat_heating);
-  // Ettervarmens av/på-tilstand kommer fra panelets ramme, som kun sendes ved
-  // ENDRING — den kan altså være timer unna. Publiser den latchede verdien
-  // her, på hvert statustelegram, så entiteten alltid er fersk.
-  // Publiser KUN når vi faktisk har sett en panelramme. Panelet sender bare ved
-  // endring, så etter en omstart vet vi ingenting om ettervarmens tilstand —
-  // og da er «unknown» riktigere enn å gjette «av».
-  if (this->afterheat_enabled_binary_sensor_ != nullptr && this->have_panel_state_)
+    this->afterheat_active_binary_sensor_->publish_state(boost_bit);
+  if (this->afterheat_enabled_binary_sensor_ != nullptr)
     this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_);
   if (this->filter_alarm_binary_sensor_ != nullptr)
     this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
@@ -584,7 +598,30 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   if (this->bypass_active_binary_sensor_ != nullptr)
     this->bypass_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_BYPASS) != 0);
 #endif
+
+#ifdef USE_CLIMATE
+  this->publish_climate_();
+#endif
 }
+
+#ifdef USE_CLIMATE
+void FlexitSL4RComponent::publish_climate_() {
+  if (this->ventilation_climate_ == nullptr)
+    return;
+  // Forsering = aggregatet kjører på et annet trinn enn det skal falle tilbake
+  // til. Viftemodusen skal vise RETURTRINNET, ikke 3 — det er brukerens valgte
+  // trinn, og det aggregatet går tilbake til når forseringen er over.
+  const uint8_t running = this->last_raw_fan_level_ >> 4;
+  const uint8_t ret = this->last_raw_fan_level_ & 0x0F;
+  const bool boost = running != ret;
+  // «Varmer nå» utledes av varmepådraget ([11]), ikke av [6] bit0 — den biten
+  // viste seg å være forsering. Et pådrag over null betyr at aggregatet
+  // faktisk kaller på varme.
+  const bool heating = this->raw_status_[11] > 0;
+  this->ventilation_climate_->publish_from_bus(this->last_supply_air_temp_, this->last_raw_heat_exchanger_temp_,
+                                               boost ? ret : running, boost, this->afterheat_enabled_, heating);
+}
+#endif
 
 // Panelets tilstandsramme, som poll-svar. Alle felt speiles fra sist kjente
 // tilstand, og kun det ønskede endres — usendte felt ville ellers overskrevet
@@ -683,10 +720,14 @@ void FlexitSL4RComponent::trigger_boost() {
 
   // b6 gjentar nodenummeret — verifisert på alle rammer i opptaket. Sender vi
   // som node 5 må også b6 være 5, ellers er rammen inkonsistent.
+  // Tilstandsrammen bygges via queue_state_frame_(), IKKE hardkodet: den
+  // speiler panelets siste ramme og beholder ettervarme-biten. Den gamle
+  // hardkodede varianten satte data[2]=0x02 og data[4]=0x01 blindt, og slo
+  // dermed AV ettervarmen ved hvert eneste forseringstrykk — samme
+  // speilingsfeil som har bitt oss to ganger før.
+  this->queue_state_frame_(this->last_raw_fan_level_, 0x01, this->last_raw_heat_exchanger_temp_);
+
   const uint8_t n = this->source_node_;
-  const std::array<uint8_t, 11> state_body{0xC1, n, 0x08, 0x20, 0x0F, 0x02, this->last_raw_fan_level_,
-                                           0x01, 0x04, 0x00, this->last_raw_heat_exchanger_temp_};
-  this->queue_raw_frame_(std::vector<uint8_t>(state_body.begin(), state_body.end()));
 
   const std::array<uint8_t, 7> cmd_body{0xC1, n, 0x04, 0x20, 0x14, 0x31, 0x23};
   this->queue_raw_frame_(std::vector<uint8_t>(cmd_body.begin(), cmd_body.end()));
