@@ -162,10 +162,19 @@ aggregatet faktisk har.
       Avgjøres sikkert bare ved å diffe mot et anlegg med annen utrustning.
 - [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
       gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
-- [ ] **Finnes det en skrivevei til parameterregistrene?** Vi kan skrive
-      panelets tilstandsramme (bank `0x20` reg `0x0F`). Om samme mekanisme
-      virker mot andre registre er uprøvd — og potensielt risikabelt, siden
-      `0xC6`-blokkene inneholder driftsparametere.
+- [x] ~~**Finnes det en skrivevei til parameterregistrene?**~~ **JA — BEKREFTET
+      2026-08-15.** Maks settpunkt skrevet 25 → 24 → 25 i `C6` bank `0x20` reg
+      `0x00` som poll-svar; CS50 godtok og kringkastet den nye verdien innen
+      ett sekund, begge veier. Ingen andre registre rørt, ingen alarmer, null
+      forkastede rammer, null anomalier. Koden ligger på grenen
+      `eksperiment/parameterskriving` med dobbel runtime-gating og er bevisst
+      IKKE slått sammen til main.
+- [ ] **Dekod ur-lagringen (bank `0x21`) med skrivemetoden.** Nå mulig: skriv
+      ett felt, se hva som flytter seg. Var tidligere blokkert på at CI 50
+      ikke har display. Uret er inaktivt hos oss, så feltene er trygge å røre.
+- [ ] **ALDRI skrivetest utstyrskonfigurasjonen.** Feltene styrer rotor/plate,
+      el/vann og forvarme/bypass — en feilskriving omkonfigurerer aggregatet.
+      Den skal fortsatt avgjøres ved å diffe mot et annet anlegg.
 
 ## For publisering
 
