@@ -1,0 +1,540 @@
+# The Flexit CS50 / CI50 RS485 protocol
+
+This is a specification of the bus protocol used between a Flexit CS50 control
+board and its CI50 control panel, reverse-engineered from a live SL4 R unit.
+
+It is written as a reference: what the frames look like, what each field means,
+and how confident we are about each claim. The chronological derivation — with
+every dead end, and there were many — lives in
+[`research/protocol-notes.md`](research/protocol-notes.md), in Norwegian.
+
+Everything here was measured on **controller firmware `R1A 2.8`, panel `R1A 1.2`**.
+Other firmware revisions may differ; please report if they do.
+
+**Confidence is marked throughout:**
+
+| Mark | Meaning |
+|---|---|
+| ✅ | Measured and verified, usually both directions or against an independent source |
+| 🟡 | Consistent with all data we have, but not independently confirmed |
+| ❓ | Hypothesis. Stated so it can be disproved |
+
+---
+
+## 1. Physical layer
+
+| Property | Value |
+|---|---|
+| Signalling | RS485, half duplex, 2-wire | ✅ |
+| Baud rate | 19200, 8 data bits, no parity, 1 stop bit | ✅ |
+| Topology | Multi-drop. The CI50's two 4P4C sockets are the **same** bus segment | ✅ |
+| Connector | 4P4C ("RJ9/RJ22"), pin 1 = GND, 2 = B, 3 = A, 4 = +V | ✅ |
+| Bus supply | ~11.8 V measured at the end of a 12 m panel cable | ✅ |
+| Termination | Not needed at 19200 baud over household distances | 🟡 |
+
+A node can be attached at the panel's spare socket, in parallel with the one in
+use. There is no need to open the air handling unit itself.
+
+**Do not expect auto-direction transceivers to be the problem.** A common
+suspicion when transmission appears not to work is the DE/RE line. On an
+M5Stack ATOM Tail485 there is no DE/RE signal at all, and transmission works
+fine. If your writes are ignored, read section 3 first — the cause is almost
+certainly protocol, not electronics.
+
+---
+
+## 2. Frame format
+
+Two distinct message shapes travel on the bus. Confusing them for one framing
+scheme with an 8-byte header is the single biggest trap in this protocol, and
+it cost this project several days.
+
+### 2.1 Poll (master → node)
+
+```
+C3  <node>  00  <ck1>  <ck2>          5 bytes
+```
+
+`ck1`/`ck2` is the checksum (section 2.3) computed over the three preceding
+bytes `[C3, node, 00]`. ✅ Verified exactly for node 1 (`01 00 C4 4B`) and
+node 4 (`04 00 C7 51`).
+
+### 2.2 Response (node → master)
+
+```
+<TYPE>  <node>  <LEN>  <bank>  <reg>  <data …>  <ck1>  <ck2>
+```
+
+**The response does not repeat the `C3` header.** That header belongs to the
+poll. Sending it means impersonating the master, and the CS50 ignores you. ✅
+
+- `LEN` counts from the `bank` byte, so the payload is `LEN − 2` bytes.
+- `ck1`/`ck2` covers everything from `TYPE` up to but not including the
+  checksum itself.
+
+### 2.3 Checksum
+
+A Fletcher-style running sum, both bytes modulo 256:
+
+```c
+uint8_t s1 = 0, s2 = 0;
+for (byte b : data) { s1 += b; s2 += s1; }
+```
+
+✅ Validated over 23,708 sniffed bytes: 766 frames, zero false positives.
+Length plus checksum is therefore a safe frame detector — you do not need to
+track bus state to find frame boundaries.
+
+### 2.4 Sniffer's view
+
+A passive listener sees poll and response back to back, which looks like one
+frame:
+
+```
+C3 01 00 C4 4B   C1 01 16 20 0E  <22 data bytes>  <ck ck>
+└── poll ─────┘  └── response ──────────────────────────┘
+```
+
+This is why an 8-byte-header model appears to work for reading and then fails
+completely for writing.
+
+---
+
+## 3. The bus is polled
+
+This is the central fact about the protocol.
+
+The CS50 is the master. It polls one node at a time, and **only the addressed
+node may transmit**. Unsolicited frames are ignored no matter how byte-perfect
+they are. ✅
+
+### 3.1 Node addresses
+
+| Node | Role |
+|---|---|
+| 1 | CS50 control board (the master's own data source) |
+| 2, 3 | Probed at startup, unused on our installation |
+| 4 | CI50 panel 1 |
+| 5 | Panel 2 — the identity dipswitch 3 selects on a physical panel |
+
+### 3.2 Enumeration — and why it matters
+
+At CS50 startup the master polls nodes 2, 3, 4 and 5. **A node that does not
+answer within five polls is dropped for the rest of the run.** ✅
+
+Measured on a real cold start (both unit and node powered from the same
+supply):
+
+| Node | Polls received | Outcome |
+|---|---|---|
+| 2 | **5** — all within 371 ms | dropped |
+| 3 | **5** — all within 394 ms | dropped |
+| 4 (panel) | 38 and counting | kept |
+| 5 (us) | 38 and counting | kept |
+
+The poll round runs `1, 2, 1, 3, 1, 4, 1, 5, …`; the node-1 entries are the
+master's own address header in front of each data block, not real polls.
+
+**Practical consequence:** if your node is not listening during that ~400 ms
+window, every write will fail *silently* until the unit is power-cycled. The
+integration exposes this as a binary sensor, and you should alert on it.
+
+The margin exists because the CS50's own boot is slower than an ESP32's. That
+is a property of the hardware, not luck — but it is under half a second, so do
+not rely on it blindly.
+
+### 3.3 Idle response
+
+When a node has nothing to say it still must answer. The CI50 replies:
+
+```
+C0 <node> 02 22 00 <ck ck>
+```
+
+✅ Emitting the same is sufficient to stay enumerated.
+
+---
+
+## 4. Frame types
+
+| Type | Payload encoding | Content |
+|---|---|---|
+| `0xC0` | none (bank/reg only) | "nothing new" idle reply ✅ |
+| `0xC1` | raw bytes | status telegram, panel state frame, ASCII version strings ✅ |
+| `0xC2` | IEEE754 float, little endian, 7 per frame | live measurements ✅ |
+| `0xC6` | 16-bit integers, **big endian**, 14 per frame | parameter tables, clock storage ✅ |
+| `0xC7` | IEEE754 float, little endian | float parameters and limits ✅ |
+
+Note the endianness split: `0xC2`/`0xC7` floats are little endian, `0xC6`
+integers are big endian (`00 19` = 25). That is unusual but consistent.
+
+**Banks:** `0x20` = operation and parameters, `0x21` = clock/schedule storage,
+`0x22` = device identity.
+
+**Register indices count in blocks**, not bytes: they step `0x00, 0x07, 0x0E,
+0x15, 0x1C` for floats (7 per frame) and `0x00, 0x0E, 0x1C` for integers
+(14 per frame).
+
+### 4.1 `0xC0` is not a read request
+
+Tested and rejected: of 27 `C0` frames observed, **zero** were followed by a
+reply carrying the same bank/reg. ✅ (negative result)
+
+**There is no known way to request a specific register.** You do not need one:
+the CS50 broadcasts its entire register set continuously in a fixed round of
+15 blocks, so every value arrives within a couple of seconds regardless.
+
+---
+
+## 5. The status telegram
+
+`0xC1`, node 1, `LEN` = 22, bank `0x20`, register `0x0E`. Sent every 0.7–1.2 s.
+
+Indices below are into the payload, where `[0]` is the bank byte.
+
+| Idx | Meaning | Confidence |
+|---|---|---|
+| 0 | `0x20` — bank | constant |
+| 1 | `0x0E` — register | constant |
+| 2 | bit0 = **heat recovery running**; bits 2–4 and 5–7 = fan relay feedback, two one-hot groups (level 3/2/1) for supply and extract; bit1 see below | ✅ |
+| 3 | `0x80` | constant |
+| 4 | **alarm bit field**; bit1 (`0x02`) = filter alarm | ✅ for bit1 |
+| 5 | **fan level, two nibbles**: high = running, low = return. `0x31` = boost | ✅ |
+| 6 | bit0 (`0x01`) = **boost active**; bit7 (`0x80`) = **afterheater enabled** | ✅ |
+| 7 | `0x04` | constant |
+| 8 | `0x00` | constant |
+| 9 | **heat exchanger setpoint**, °C (15–25) | ✅ |
+| 10 | `0` | constant |
+| 11 | **heat demand**, 0–100, drives the rotor (J5 pin 11,12) | ✅ |
+| 12 | `0` | constant |
+| 13 | **supply fan duty**, % (49 / 74 / 100) | ✅ |
+| 14 | **extract fan duty**, % | ✅ |
+| 15 | `32 / 35 / 48 / 51` — varies, no known correlate | ❓ |
+| 16, 17 | `0` | constant |
+| 18, 19 | `0x98`, `0x88` | constant |
+| 20 | `0x88` normal, `0x44` during boost | ✅ correlate, meaning unknown |
+| 21 | `0` | constant |
+
+### 5.1 Fan level is two nibbles
+
+`[5]` high nibble is the level actually running; low nibble is the level the
+unit returns to when boost ends. `0x11`/`0x22`/`0x33` are steady states,
+`0x31` means "running level 3, will fall back to 1" — i.e. boost.
+
+Dividing the byte by 17 happens to work for the steady states and breaks on
+boost. Use `raw >> 4` and `raw & 0x0F`. ✅
+
+**Boost detection comes free:** high nibble ≠ low nibble.
+
+### 5.2 `[6]` — two independent bits, and three wrong answers
+
+This field took three attempts to read correctly, and the failure mode is
+instructive enough to record.
+
+| Reading | Fate |
+|---|---|
+| "bit0 = the element is heating now" | ❌ Disproved: bit0 was set during boost while the afterheater was demonstrably off |
+| "bit7 = afterheater *disabled*, inverted" | ❌ Disproved: enabling the afterheater sets the bit |
+| "bit7 is not the enable flag at all" | ❌ Also wrong — it appeared in both states only because *our own writes* were switching the afterheater off between measurements |
+
+The correct reading, verified in both directions by varying one thing at a
+time: **bit0 = boost, bit7 = afterheater enabled**. ✅
+
+There is consequently **no "element is heating now" indicator on the bus**,
+even though the CI50 has a dedicated LED for it. That remains an open question.
+
+### 5.3 `[2]` — relay feedback, not a computed value
+
+Bits 2–4 and 5–7 are one-hot groups reporting which fan speed relays are
+pulled, for supply and extract separately. Verified against 592 telegrams with
+zero mismatches against `[5]`'s high nibble. ✅
+
+The value `0` appears briefly during a level change, while no relay is
+engaged. If the two groups ever disagree, the fans are genuinely running at
+different speeds — a diagnostic signal not otherwise available.
+
+**Bit1 has never been observed set** in 837 telegrams. Flexit uses the same
+output (J5 pin 11,12) for "rotor **or** bypass motor" depending on unit type,
+so on a plate-exchanger unit this group probably encodes bypass state. ❓
+This cannot be settled on a rotary unit — **a capture from a plate-exchanger
+installation would resolve it immediately.**
+
+---
+
+## 6. The panel state frame
+
+`0xC1`, node 4, `LEN` = 8, bank `0x20`, register `0x0F`. Sent **only on
+change** — it can be hours stale.
+
+```
+20 0F <d2> <fan> <flags> 04 00 <setpoint>
+```
+
+| Field | Meaning |
+|---|---|
+| `data[3]` | fan. As *state*: `0x11`/`0x22`/`0x33`. As a *command*: `(from, to)` — `0x12`, `0x23`, `0x32`, `0x21` ✅ |
+| `data[4]` | bit7 = afterheater enabled; bit6 = momentary button bit; `0x01` = boost button; `0xC0` = both temperature buttons (the filter-reset gesture) ✅ |
+| `data[7]` | setpoint, `0x0F`–`0x19` (15–25 °C) ✅ |
+| `data[2]`, `[5]`, `[6]` | unknown. `[5]` is constant `0x04`, `[6]` constant `0x00` ❓ |
+
+### 6.1 Trap: index `[4]` means two different things
+
+In the **status telegram** `[4]` is the alarm bit field. In the **panel state
+frame** `data[4]` is button events. Different register blocks, same index.
+This has caused real confusion; check which frame you are looking at.
+
+---
+
+## 7. Writing
+
+All writing is done by **answering a poll addressed to your node**. There is no
+other channel.
+
+### 7.1 The mirroring rule — read this before writing anything
+
+> **Never build an outgoing frame from scratch. Start from the last state you
+> received and override only the field you actually mean to change.**
+
+The panel state frame carries several fields in one message. Hardcoding the
+ones you are not changing will overwrite reality. This project got that wrong
+**four separate times**, and each time the symptom was the afterheater
+switching itself off:
+
+1. Hardcoded `data[2] = 0x02` → every write re-enabled the afterheater.
+2. Hardcoded `data[4] = 0x00` → every setpoint or fan write disabled it.
+3. Read the enable flag from the *panel* frame, which is only sent on change →
+   after a restart the mirrored value defaulted to "off", so the first fan
+   command after every boot switched the afterheater off. Fixed by reading it
+   from the status telegram instead, which arrives every second.
+4. `trigger_boost()` built its state frame from scratch → every boost press
+   switched the afterheater off.
+
+The rule is cheap. The bugs were not.
+
+### 7.2 Verified writes
+
+| Operation | Frame | Status |
+|---|---|---|
+| Setpoint | `C1 <n> 08 │ 20 0F <d2> <fan> <flags> 04 00 <°C>` | ✅ confirmed by the CS50's own float register following |
+| Fan level | same frame, `data[3]` = `(prev << 4) │ new` | ✅ duty went 49 % → 74 % |
+| Boost | **two** queued frames: a state frame with `data[4] = 0x01`, then `C1 <n> 04 20 14 31 23` | ✅ |
+| Cancel boost | write the return level (low nibble of `[5]`) | ✅ duty 100 % → 49 % |
+| Afterheater on/off | state frame with `data[4]` bit7 set/cleared | ✅ verified both ways against the panel LED |
+| Filter reset | three state frames: setpoint→20, then `data[4]` button bit, then restore setpoint | ✅ frames accepted; timer reset verifiable via the filter counter |
+
+**Boost needs both frames.** Sending only the command frame produces no
+reaction, even though it is byte-identical to the panel's and demonstrably
+reaches the bus.
+
+**A fan command during active boost cleanly cancels it.** ✅ `[5]` goes
+`0x32` → `0x11`, duty 100 % → 49 %, no odd intermediate state. The command's
+"from" nibble is 3 during boost and the CS50 accepts that without complaint.
+
+### 7.3 Timing
+
+Transmit only after **measured silence** on the bus. A fixed delay after a
+completed frame collides, because the CS50 begins its next telegram before
+that. 5 ms of silence is about 10 character times at 19200 baud; observed gaps
+between telegrams are 20–55 ms.
+
+When answering polls, respond immediately on recognising the poll — do not
+wait for a quiet window, you already have one.
+
+---
+
+## 8. Measurements (`0xC2`)
+
+| Reg | Slot | Value |
+|---|---|---|
+| 0 | 0 | `-55` — spare sensor input, not connected ✅ |
+| 0 | 1 | **supply air temperature** (Flexit's B1) ✅ |
+| 0 | 4 | `-55` — spare sensor input ✅ |
+| 7 | 1 | setpoint as a float — a useful cross-check on status `[9]` ✅ |
+
+**`-55` means "input not connected".** Translating it to NAN gives
+`unavailable` in Home Assistant, which is exactly what it means — and doubles
+as free hardware detection: entities for options you do not have hide
+themselves.
+
+**There is only one temperature sensor on the bus.** Extract, exhaust and
+outdoor air are not measured by the CS50; the manual marks them "not CS 50".
+The `-55` slots correspond to B6, the plate-exchanger frost sensor, which does
+not exist on a rotary unit.
+
+---
+
+## 9. Parameters (`0xC6` and `0xC7`)
+
+These are the parameter tables from the Flexit manual, broadcast continuously.
+
+### 9.1 The register map is the CS 500's
+
+Confirmed, not merely suspected: the cooling parameters `45` (minimum speed)
+and `180` (time between starts), both marked "not CS 50" in the manual, sit in
+the registers of a board that has no cooling at all. ✅ Unused parameters are
+simply left at factory defaults.
+
+### 9.2 Grouped by type, not by menu order
+
+Matching the full CS 500 parameter list against the registers recovers 36 of 38
+factory defaults — but the *order* is not the manual's. The longest in-order
+subsequence is only 4 values, while **17 of 37 adjacent pairs in the manual are
+adjacent bytes in the registers**. Min/max pairs cluster together.
+
+The clearest evidence is six consecutive bytes spanning three separate manual
+sections:
+
+```
+10 23  10 23  0F 02
+16,35  16,35  15,2
+```
+
+Beware of over-reading single-value matches: only 25 distinct byte values occur
+across the whole block, and a null control recovers 29 of 38 by chance. It is
+the *ordered pairs* that carry the proof.
+
+### 9.3 Identified fields
+
+Bank `0x20`, word indices within each register block:
+
+| Reg | Word | Meaning | Value |
+|---|---|---|---|
+| `0x00` | 0 (low byte) | maximum setpoint | 25 ✅ |
+| `0x00` | 9 | min / max supply air temperature | 16 / 35 ✅ |
+| `0x00` | 11 | outdoor compensation: temperature / deviation | 15 / 2 ✅ |
+| `0x0E` | 0 (high byte) | minimum setpoint | 15 ✅ |
+| `0x0E` | 4 | shutdown sequence | 180 s ✅ |
+| `0x0E` | 5 | **filter interval** | 6 months ✅ |
+| `0x0E` | 6 | motor protection delay | 30 s ✅ |
+| `0x0E` | 8, 9 | **fan duty per level**, supply and extract | 50 / 75 / 100 % ✅ |
+| `0x0E` | 12 | **stored user settings**: setpoint (high) and fan level (low) | ✅ |
+| `0x1C` | 8 | **hours since the filter timer was last reset** | ticks +1 per hour ✅ |
+
+The stored-settings word was identified by watching it follow a panel session
+byte for byte as the user swept setpoint and fan level — it is what makes the
+unit remember its settings across a power cut.
+
+**The filter counter is the most useful of these.** Combined with the filter
+interval it gives "time until filter change", and — more importantly — a
+*measurable* check on whether a filter reset actually worked, instead of
+waiting days to see whether the alarm returns.
+
+### 9.4 `0xC7` floats
+
+| Reg | Slot | Meaning |
+|---|---|---|
+| `0x07` | 3–6 | summer compensation: differential 2, winter differential 1, stop 30, start 25 ✅ |
+| `0x0E` | 0–2 | winter compensation: start −20, stop −30, differential 2 ✅ |
+| `0x0E` | 3–6 | sensor corrections, all 0 (default) 🟡 |
+| `0x00` | 0–6 | regulator gains: `0.01` ×4, `0.3` ×3 🟡 |
+| `0x15` | 0–2 | `0`, `0.1`, `0.1` — unexplained ❓ |
+
+### 9.5 A cautionary tale about counters
+
+One 16-bit word looked like a second hour counter: three readings over three
+days with a *constant* difference against the known filter counter. It was not
+a counter at all. The fourth reading showed the low byte wrapping past 255
+while the high byte went to `0x00` instead of carrying to `0x83`. Two
+independent byte fields that happened to sit next to each other.
+
+Three points in a row with a constant difference is not a test. It is a
+hypothesis that has not yet had the chance to contradict itself.
+
+### 9.6 Parameter registers are writable
+
+**Confirmed.** ✅ The CS50 accepts writes to the `0xC6` parameter blocks
+through the same poll-response mechanism as everything else. Verified by
+changing the maximum setpoint 25 → 24 → 25; the CS50 broadcast the new value
+within a second in both directions, with no other register, alarm or counter
+affected.
+
+**This is dangerous and the integration deliberately does not ship it.** The
+blocks are operating parameters and by all appearances live in EEPROM. We have
+shown that a *correct* write can be written back — not that a *wrong* one can
+be undone. If you do this:
+
+1. **Mirror the entire block.** Never construct a parameter frame from scratch.
+2. **One byte at a time**, with the original value written down first.
+3. **Read back** from the broadcast round before doing anything else.
+4. **Gate it at runtime** behind an explicit switch, so a stray button press
+   does nothing.
+5. **Never touch the equipment configuration.** Those fields select
+   rotor/plate, electric/water heating and preheat/bypass defrost. A wrong
+   write reconfigures the unit for hardware it does not have.
+
+---
+
+## 10. Clock storage (bank `0x21`)
+
+Structure identified, semantics not.
+
+The 80 bytes match the manual's clock model: **day program has 4 channels,
+week program has 6** — and the data is six repetitions of one pattern plus
+four of another:
+
+```
+6 × (08 00 10 00 06 00 30 14)     week program 1-6
+4 × (06 00 17 3B 20 14)           day program 1-4
+1 × (00 00 10 00 88 88 21 09)     tail — unidentified
+```
+
+Manual defaults are recognisable: `06 00` = 06:00 (default on-time), `14` = 20
+(default temperature), `17 3B` = 23:59 (range maximum), and `10`/`20`/`30`
+resemble fan level nibbles. 🟡
+
+Exact field boundaries cannot be fixed without changing a clock setting and
+observing what moves — which requires a CS 500 panel with a display, since the
+CI 50 has none. Now that parameter writes are known to work, writing to this
+bank is the practical path; the clock is inactive on a CI 50 installation, so
+the fields are comparatively safe to touch.
+
+---
+
+## 11. Device identity (bank `0x22`)
+
+Eight ASCII bytes at register `0x00`. Node 1 bank `0x20` reg `0x00` gives the
+controller firmware, node 4 bank `0x22` reg `0x00` the panel firmware.
+Corresponds to the manual's `Test → Information → Main board / CS50 panel 1`.
+✅
+
+Please include both in any bug report — the protocol may differ between
+revisions and this is the only version information available.
+
+---
+
+## 12. Open questions
+
+Contributions that would settle these are very welcome; see the README.
+
+| # | Question | What would settle it |
+|---|---|---|
+| 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
+| 2 | Is `[2]` bit1 bypass? | A capture from a **plate-exchanger** unit |
+| 3 | What is `[15]`? | Unknown correlate; varies 32/35/48/51 independently of boost and afterheater |
+| 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | Heating season, with a real heat demand |
+| 5 | Where is the equipment configuration? | A capture from a unit with **different equipment** — diffing two installations would expose it immediately |
+| 6 | What do the two moving high-byte fields in `0xC6` mean? | Long-term logging |
+
+---
+
+## 13. Method notes
+
+Four things worked repeatedly, and are worth stating plainly:
+
+**Provoke a state and watch what moves.** `[11]` sat at 0 in every capture
+until the setpoint was forced to maximum; it then ramped 0 → 68 and identified
+itself as heat demand.
+
+**Vary one thing at a time.** Every wrong reading in this document came from
+observing two fields that changed together. `[6]` took three attempts for
+exactly this reason and five minutes to settle once varied properly.
+
+**A negative result needs a positive control.** An early stress test looked for
+"checksum failed" log lines — which are only emitted for frames that already
+passed framing. Real corruption was invisible, and the conclusion drawn from
+its absence was wrong.
+
+**Verify the frame went out the right way, not just that its content was
+right.** Three transmit attempts were written off on the wrong grounds because
+the result was read without checking whether the frame had actually been sent
+as a poll response.

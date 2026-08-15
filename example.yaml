@@ -1,0 +1,450 @@
+# Flexit SL4R (CS50/CI50) over RS485 — example configuration
+#
+# Hardware: M5Stack ATOM Lite + ATOM Tail485 (SKU T002), wired in parallel with
+# the CI50 in the spare 4P4C socket on the back of the control panel.
+# Pinout: 1 = GND, 2 = B, 3 = A, 4 = +V (~11.8 V, which also powers the node).
+#
+# Every entity below is optional. Take what you need and rename freely —
+# nothing in the component depends on the names.
+#
+# Protocol reference: PROTOCOL.md
+
+substitutions:
+  name: flexit-sl4r
+  friendly_name: Flexit SL4R
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: "Flexit SL4R (CS50/CI50) RS485 bridge on M5Stack ATOM Lite + Tail485"
+
+esp32:
+  board: m5stack-atom
+  framework:
+    type: arduino
+
+# Console logging stays on UART0 and does not collide with the RS485 bus,
+# which runs on its own UART (see uart: below).
+logger:
+
+api:
+  encryption:
+    key: !secret flexit_sl4r_api_key
+
+ota:
+  - platform: esphome
+    password: !secret flexit_sl4r_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+
+captive_portal:
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+# The Tail485 (SP485EEN-L) connects to the ATOM Lite's rear socket:
+# G26 = TX, G32 = RX.
+#
+# rx_buffer_size MUST be generous. The CS50 sends fast enough that the default
+# 64-byte buffer overflows within seconds, and frames are then lost silently.
+uart:
+  id: flexit_uart
+  tx_pin: GPIO26
+  rx_pin: GPIO32
+  baud_rate: 19200
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+  rx_buffer_size: 2048
+
+  # TROUBLESHOOTING: uncomment to log every received byte as hex. This
+  # separates the two common failure modes:
+  #   - nothing at all  -> A and B swapped, or the wrong pin in the 4P4C
+  #   - hex streams in  -> wiring is fine, the problem is further up
+  # Turn it OFF again afterwards; it floods the log and steals CPU from loop().
+  # Prefer the "raw frame logging" switch below, which needs no reflash.
+  # debug:
+  #   direction: RX
+  #   dummy_receiver: false
+  #   after:
+  #     bytes: 32
+  #     timeout: 100ms
+  #   sequence:
+  #     - lambda: UARTDebug::log_hex(direction, bytes, ' ');
+
+# `reset_reason` answers whether the bus can actually supply the node: if it
+# ever shows "Brownout", the rail is too weak for the ESP32's peak draw and the
+# node must be powered from USB-C instead (with the V terminal disconnected).
+# A brief flicker on the controller as you plug in is normal inrush current
+# into the Tail485's input capacitor and causes no reset.
+#
+# Uptime reveals hidden restarts: if it keeps counting up from zero, the node
+# is in a boot loop even though Home Assistant shows it as connected.
+debug:
+  update_interval: 60s
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Reset reason"
+
+  # Firmware versions, read straight off the bus as 8 ASCII bytes. Equivalent
+  # to the manual's "Test -> Information -> Main board / CS50 panel 1: Software
+  # rev." Quote both in bug reports — protocol details may vary between
+  # revisions, and this is the only version information available.
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    controller_firmware:
+      name: "Controller firmware"
+    panel_firmware:
+      name: "Panel firmware"
+
+flexit_sl4r:
+  id: flexit_sl4r_hub
+  uart_id: flexit_uart
+
+  # Which node we present ourselves as. The CI50 is node 4 (panel 1); node 5 is
+  # panel 2, the identity dipswitch 3 selects on a physical panel. Enrolling as
+  # node 5 lets us coexist with the real panel instead of impersonating it.
+  #
+  # The address field is computed automatically: bytes 3-4 are the Fletcher
+  # checksum over [C3, node, 00].
+  source_node: 5
+
+  # The bus is POLLED. The master sends 5 bytes `C3 <node> 00 <cks>` and only
+  # the addressed node answers — WITHOUT repeating the C3 header. Nodes 2, 3
+  # and 5 are polled five times each at CS50 startup (enumeration); a node that
+  # does not answer is dropped for the rest of the run.
+  #
+  # This must be true for writing to work at all.
+  respond_to_polls: true
+
+  # Direction control: M5Stack's block diagram for the Tail RS485 (SKU T002)
+  # shows only four signals between the module and the ATOM — G/5V/TXD/RXD.
+  # There is no DE/RE line, so direction is handled on the module itself and
+  # flow_control_pin must be left UNCONFIGURED. If your transceiver does expose
+  # a DE/RE pin, set it here.
+  # flow_control_pin: GPIOxx
+
+# --- Climate: everything in one thermostat model ---
+#
+# There is no "off" mode: the unit cannot be stopped over the bus.
+#   HEAT  = afterheater enabled     FAN_ONLY = heat recovery only
+#   BOOST = timed max fan           fan mode = Reduced / Normal / Increased
+#
+# The fan mode names come from Flexit's CI 50 manual, which describes level 1
+# as "lower ventilation demand than normal", level 2 as "normal operating
+# ventilation" and level 3 as "increased ventilation in wet rooms".
+climate:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    ventilation:
+      name: "Ventilation"
+
+select:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    # Plain level numbers here on purpose: this mirrors the panel's three LEDs.
+    fan_level:
+      name: "Fan level"
+
+number:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    heat_exchanger_setpoint:
+      name: "Heat exchanger setpoint"
+
+button:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+
+    # "Max fan" for showering or cooking. The unit runs level 3 for a period and
+    # falls back to the previous level on its own.
+    boost:
+      name: "Boost"
+
+    # Cancels boost by writing the return level. A plain fan-level write does
+    # the same thing; this button just makes it obvious.
+    cancel_boost:
+      name: "Cancel boost"
+
+    # Runs the CI 50 manual's full reset procedure automatically: setpoint to
+    # 20 degrees, the reset gesture, then back to your setpoint. The 20-degree
+    # step is required — without it the alarm is merely acknowledged while the
+    # timer keeps counting, and it returns by itself.
+    #
+    # ONLY PRESS THIS WHEN THE FILTER HAS ACTUALLY BEEN CHANGED. You can verify
+    # it worked by watching the "Filter hours" sensor below.
+    reset_filter:
+      name: "Reset filter timer"
+
+    # Prints the first 6 kB received after boot. The most interesting bytes —
+    # the CS50 enumerating its panels — arrive seconds after the bus is
+    # powered, long before WiFi is up, so they are buffered in RAM.
+    dump_boot_capture:
+      name: "Dump boot capture"
+      entity_category: diagnostic
+
+    # Prints the last 40 unexpected events with full frames. Press this after
+    # something has happened and paste the log into an issue.
+    dump_anomalies:
+      name: "Dump anomalies"
+      entity_category: diagnostic
+
+switch:
+  # Afterheater on/off — the same function as holding minus and pressing plus
+  # on the panel, but without the side effect: the panel gesture also triggers
+  # a filter reset, since it is the same button combination.
+  #
+  # restore_mode: DISABLED is CRITICAL. With ESPHome's default the switch is
+  # restored at every boot and calls turn_off_action, switching the afterheater
+  # off in the unit on every restart and OTA update. The state is read from the
+  # bus, so there is nothing to restore.
+  - platform: template
+    name: "Afterheater"
+    id: afterheat_switch
+    icon: "mdi:radiator"
+    restore_mode: DISABLED
+    lambda: 'return id(flexit_sl4r_hub)->get_afterheat_enabled();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(true);'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(false);'
+
+  # Logs every validated frame as hex, toggled at runtime without a reflash.
+  # Use it to capture a whole sequence of events. Verbose — switch it off after.
+  - platform: template
+    name: "Raw frame logging"
+    id: raw_logging
+    restore_mode: DISABLED
+    entity_category: diagnostic
+    icon: "mdi:text-box-search-outline"
+    lambda: 'return id(flexit_sl4r_hub)->get_raw_logging();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_raw_logging(true);'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_raw_logging(false);'
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+
+    # The only connected temperature sensor on the bus — Flexit's B1, the
+    # supply air sensor at the afterheater. Extract, exhaust and outdoor air
+    # are NOT measured by the CS50.
+    supply_air_temperature:
+      name: "Supply air"
+
+    # The same setpoint as the number entity, but as a float straight from the
+    # bus. Useful as an independent check that a write actually landed.
+    heat_exchanger_setpoint_raw:
+      name: "Setpoint (bus)"
+
+    fan_duty_supply:
+      name: "Fan duty supply"
+      icon: "mdi:fan"
+    fan_duty_extract:
+      name: "Fan duty extract"
+      icon: "mdi:fan"
+
+    # Heat demand, which regulates rotor speed (Flexit: J5 pin 11,12, 0-10 V).
+    # Scale assumed 0-100.
+    heat_demand:
+      name: "Heat demand"
+      icon: "mdi:heat-wave"
+
+    fan_level_running:
+      name: "Fan level running"
+    fan_level_return:
+      name: "Fan level return"
+
+    # Counts frames failing the checksum. If this rises while you transmit,
+    # your transmissions are corrupting the CS50's traffic.
+    frames_discarded:
+      name: "Frames discarded"
+
+    # How often the status telegram actually arrives (~0.7-1.2 s).
+    status_interval:
+      name: "Status interval"
+
+    # Counts unexpected events: new frame types, changes in fields believed
+    # constant, and any change in the alarm field. Zero in normal operation.
+    anomalies:
+      name: "Anomalies"
+
+    # --- Exploration ---
+    # Undecoded fields exposed as diagnostics so the recorder builds history to
+    # correlate against later. See PROTOCOL.md section 12 for what is still
+    # open.
+    raw_status_bytes:
+      - index: 4
+        name: "Raw status[4]"     # alarm bit field
+      - index: 6
+        name: "Raw status[6]"     # bit0 = boost, bit7 = afterheater enabled
+      - index: 15
+        name: "Raw status[15]"    # varies, no known correlate
+      - index: 20
+        name: "Raw status[20]"    # 0x88 normal, 0x44 during boost
+
+    # The spare sensor inputs. -55 means "not connected" and is translated to
+    # NAN, so these show as unavailable until a sensor is actually fitted.
+    float_registers:
+      - register: 0
+        slot: 0
+        name: "Spare sensor input 1"
+      - register: 0
+        slot: 4
+        name: "Spare sensor input 2"
+
+    # --- Parameter registers (0xC6) ---
+    # The CS50 broadcasts its whole parameter table continuously, so this is
+    # pure listening — no read request exists, and none is needed.
+    int_registers:
+      # Hours since the filter timer was last reset. Ticks once per hour.
+      # Together with the interval below this gives "time until filter change"
+      # and — more usefully — a measurable check on whether the reset button
+      # actually worked, instead of waiting days to see if the alarm returns.
+      - register: 0x1C
+        index: 8
+        name: "Filter hours"
+        unit_of_measurement: "h"
+        icon: "mdi:air-filter"
+        state_class: total_increasing
+
+      # Filter interval in months (the manual's "time period", 0-12, default 6).
+      - register: 0x0E
+        index: 5
+        name: "Filter interval"
+        unit_of_measurement: "months"
+        icon: "mdi:calendar-clock"
+
+      # The stored user settings — what the unit remembers across a power cut.
+      - register: 0x0E
+        index: 12
+        mode: high_byte
+        name: "Stored setpoint"
+        unit_of_measurement: "°C"
+        device_class: temperature
+      - register: 0x0E
+        index: 12
+        mode: low_byte
+        name: "Stored fan level"
+
+      # Configured fan duty per level (factory 50/75/100 %). These are the
+      # values that show up as the measured duty above.
+      - register: 0x0E
+        index: 8
+        mode: high_byte
+        name: "Fan speed level 1"
+        unit_of_measurement: "%"
+        disabled_by_default: true
+      - register: 0x0E
+        index: 8
+        mode: low_byte
+        name: "Fan speed level 2"
+        unit_of_measurement: "%"
+        disabled_by_default: true
+      - register: 0x0E
+        index: 9
+        mode: high_byte
+        name: "Fan speed level 3"
+        unit_of_measurement: "%"
+        disabled_by_default: true
+
+      # Regulator limits. Diagnostic only; disabled by default.
+      - register: 0x00
+        index: 0
+        mode: low_byte
+        name: "Max setpoint"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x0E
+        index: 0
+        mode: high_byte
+        name: "Min setpoint"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x00
+        index: 9
+        mode: high_byte
+        name: "Min supply air"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x00
+        index: 9
+        mode: low_byte
+        name: "Max supply air"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x0E
+        index: 6
+        name: "Motor protection delay"
+        unit_of_measurement: "s"
+        disabled_by_default: true
+
+binary_sensor:
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+
+    # payload[6] bit7. Read from the status telegram, which arrives every
+    # second — not from the panel frame, which is only sent on change.
+    afterheat_enabled:
+      name: "Afterheater enabled"
+
+    # payload[6] bit0 = boost. Kept as a diagnostic because it is an
+    # INDEPENDENT source for boost state; "Boost active" below is derived from
+    # the [5] nibbles instead. If the two ever disagree, we have learned
+    # something.
+    afterheat_active:
+      name: "Boost (status bit)"
+      entity_category: diagnostic
+
+    # payload[4] bit1. The CS 50 has no pressure switch — the filter alarm is
+    # time-based and is reset from the panel.
+    filter_alarm:
+      name: "Filter alarm"
+
+    # Any other bit in the alarm field. The rotor alarm and the overheat
+    # thermostat are the documented CS 50 alarms whose bit positions we have
+    # never seen, and the overheat thermostat cannot be provoked safely. This
+    # catches them the first time they fire; the raw [4] sensor and the anomaly
+    # log show which bit it was.
+    unknown_alarm:
+      name: "Unknown alarm"
+
+    # payload[2] bit0. Set when heat demand passes ~10, i.e. when the rotor
+    # actually starts turning — not merely when demand exists.
+    heat_recovery_active:
+      name: "Heat recovery running"
+
+    # payload[2] bit1. ASSUMED bypass, never observed set on a rotary unit.
+    # If you have a plate exchanger, this is the entity to watch.
+    bypass_active:
+      name: "Bypass (assumed)"
+      entity_category: diagnostic
+
+    boost_active:
+      name: "Boost active"
+
+    communication:
+      name: "Communication OK"
+
+    # Whether the CS50 is still polling us. If this goes off, every write fails
+    # SILENTLY and the unit must be power-cycled to re-enumerate the node.
+    # Worth alerting on.
+    enumerated:
+      name: "Enumerated on bus"

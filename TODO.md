@@ -1,298 +1,129 @@
-# TODO — hva som gjenstår
+# What remains
 
-Status per 14. august 2026: **toveis styring virker.** Lesing og skriving av
-viftetrinn, settpunkt og forsering er verifisert mot CS50s egne verdier. Det som
-står igjen er kartlegging av felt vi ennå ikke har tydet, og noen få
-robusthetspunkter.
+Two-way control works and is verified against the CS50's own broadcast values.
+What is left is decoding fields we have not yet identified, plus a few
+robustness items.
 
-Utledningen ligger i [`research/protocol-notes.md`](research/protocol-notes.md),
-råopptakene i [`research/captures/`](research/captures/).
+The findings so far are specified in [`PROTOCOL.md`](PROTOCOL.md). The
+chronological derivation, including every dead end, is in
+[`research/protocol-notes.md`](research/protocol-notes.md) (Norwegian); raw
+captures are in [`research/captures/`](research/captures/).
 
-**Arbeidsmåten som har fungert:** slå på `uart: debug:` i
-`flexit-atom-lite.yaml`, OTA, fang loggen til fil, parse med
-poll/svar-validatoren, og *diff mot en kjent tilstand*. Alle funn kom fra å
-endre én ting av gangen og se hva som fulgte. Skru av debug etterpå.
+**The working method:** turn on the `raw frame logging` switch, capture the log
+to a file, parse it with the poll/reply validator, and *diff against a known
+state*. Every finding came from changing one thing at a time and watching what
+followed.
 
-**Metodelærdom verdt å ta med:** en negativ test er verdiløs uten positiv
-kontroll, og en plausibel hypotese fortjener en måling før den blir til en fiks.
-To ganger denne uka pekte «åpenbare» forklaringer feil vei, og begge gangene var
-det en billig måling som avslørte det.
-
----
-
-## Neste — de mest verdifulle
-
-### 1. Kartlegg de ukjente statusfeltene mot recorder-historikk
-
-Feltene ligger allerede eksponert som diagnostikk i HA (`raw_status_bytes`), så
-historikken bygger seg opp uten at du trenger å gjøre noe. Etter noen dager kan
-hypoteser prøves mot uker med data i stedet for et nytt bussopptak.
-
-- [x] ~~`[2]` bit0~~ **= varmegjenvinneren går** (settes når pådraget passerer
-      ~10, altså når rotoren faktisk snurrer). Eksponert som entitet.
-- [x] ~~`[2]` øvrige bit~~ **= viftenes relétilbakemelding.** Bit 2–4 og 5–7 er
-      to one-hot-grupper (trinn 3/2/1) for hver sin vifte, verifisert mot 592
-      telegram med null bom. Kun **bit 1** står igjen som ukjent — aldri
-      observert satt i 837 telegram. Hypotese: gruppa bit 0–1 hører til
-      gjenvinneren, og bit 1 koder trolig **bypass** på plateveksleraggregater
-      (Flexit bruker samme utgang til «rotor eller bypass motor»). Kan bare
-      avgjøres av noen med plateveksler.
-- [x] ~~`[11]`: `0/1`~~ **= varmepådraget** (se punkt 3 under).
-- [x] ~~`[15]`: `32/35`, `[20]`: `68/136` — veksler disse i takt med `[6]`?~~
-      **JA — og alle tre flipper ved FORSERINGSSTART** (fase 0-analysen
-      2026-08-15). Blinkfase-hypotesen er avvist: én overgang i hele opptaket,
-      i nøyaktig samme telegram som boost. Betydning fortsatt ukjent
-      (`[20]` er et rent nibbelskift `0x88`→`0x44`), men korrelatet er kjent.
-- [x] ~~**`[6]` bit0 — forsering eller element?**~~ **AVGJORT 2026-08-15 ved
-      styrt forsøk:** `[6]` bit0 = **forsering**, `[6]` bit7 = **ettervarme
-      aktivert**. Målt én variabel om gangen, begge veier. Tre tidligere
-      tolkninger falt — den siste fordi våre egne skrivinger slo av
-      ettervarmen mellom målingene. Se protokollnotatene.
-- [x] ~~`[20]`~~ **= forsering** (`0x88` normal, `0x44` forsering), verifisert
-      på to uavhengige anledninger.
-- [ ] `[12]`, `[16]`–`[19]`, `[21]`: ingen variasjon observert ennå
-
-Korrelér mot noe som endrer seg — utetemperatur, viftetrinn, tid på døgnet.
-Bekreftet fra før: `[5]` viftetrinn, `[9]` settpunkt, `[13]`/`[14]` viftepådrag.
-
-### 2. Alarmbitfeltet — filteralarmen er løst, resten gjenstår
-
-Filteralarmen var det punktet med størst praktisk nytte, og den er i mål.
-Mekanismen er tidsbasert («filtertid»); CS 50 har ingen trykkvakter.
-
-- [x] ~~Finn alarmbyten.~~ **`payload[4]` bit 1.** Fanget da brukeren
-      nullstilte alarmen ved et uhell under ettervarme-forsøket: `2` → `0`.
-      Eksponert som `binary_sensor` **«Filteralarm»**.
-      Retroaktiv forklaring: `[4]` sto konstant `2` hos oss og `0` hos
-      Vongraven — hans filteralarm var bare ikke aktiv.
-- [ ] **Kartlegg de øvrige bitene i `[4]`.** Trolig et alarmbitfelt.
-      **Rotoralarm** og **overhetingstermostat** er de nærliggende kandidatene,
-      og begge er dokumenterte CS 50-overvåkingsfunksjoner. Overhetingsalarmen
-      er sikkerhetsrelevant.
-- [x] ~~Fang reset-kommandoen.~~ **GJORT** — den lå allerede i opptaket fra
-      ettervarme-forsøket: `data[4] = 0xC0` i en ellers vanlig tilstandsramme.
-      Feltet rapporterer knappehendelser (`0x01` = forsering, `0xC0` = begge
-      temperaturknapper). Implementert som knappen **«Nullstill filtervakt»**,
-      som kjører hele manualens prosedyre automatisk: settpunkt til 20, reset,
-      og tilbake til opprinnelig settpunkt.
-- [ ] **Verifiser at timeren faktisk restarter — NY METODE (fase 0, 2026-08-15):**
-      les filtertelleren (`C6 20 1C` ord 8) før og etter «Nullstill filtervakt».
-      En ekte nullstilling skal sette telleren til 0; da trengs ingen ukers
-      venting. NB: 14. august-hendelsen nullstilte IKKE telleren (den fortsatte
-      29351 → 29364) — det er derfor alarmen re-armerte.
-- [x] ~~Sjekk om **filtertiden/tidstelleren** også ligger på bussen.~~
-      **FUNNET og VERIFISERT LIVE (2026-08-15):** `C6 20 1C` ord 8 tikker én
-      gang i timen (+23 på 23 t), eksponert som **«Filtertimer»** sammen med
-      **«Filterintervall»** (6 mnd, manualens std). Gir «tid til filterbytte».
-      NB: den antatte *andre* telleren (`C6 20 0E` ord 10) viste seg å ikke
-      være en 16-bit teller i det hele tatt — lavbyten rullet rundt mens
-      høybyten nullet seg i stedet for å bære carry. Eksponert byte for byte.
-- [ ] **Kartlegg de to «høybyte-flaggene»** som beveger seg uten forklaring:
-      `C6 20 0E` ord 10 høy (`0x82` → `0x00`) og `C6 20 00` ord 0 høy
-      (`0x00` → `0x08`). Begge logges nå; se etter mønster over dager.
-
-### 3. ~~Rotorpådrag~~ — FUNNET 2026-08-15
-
-`payload[11]` er varmepådraget som regulerer rotoren. Sto konstant `0` i alle
-opptak til settpunktet ble satt til maks; da rampet den monotont `0 → 68`.
-Eksponert som **«Varmepådrag»**. Trengte ikke høsten — bare et provosert
-varmebehov.
-
-Se «GJENSTÅR Å DEKODE» i protokollnotatene for de fem hullene som er igjen.
-
-### 3b. Ettervarmens eget pådrag — fyringssesongen
-
-**NB (2026-08-15):** vi har ingen «elementet varmer nå»-indikator i det hele
-tatt — den antatte (`[6]` bit0) viste seg å være forseringen. Ettervarmens
-0–10 V-pådrag (J5 pin 9,10) er dermed fortsatt helt ufunnet.
-
-CS 50-manualens klemmeliste bekrefter at begge finnes, og ingen av dem er
-merket «ikke CS 50»:
-
-| Klemme | Funksjon |
-|---|---|
-| J5 (Pin 11,12) | Styresignal til gjenvinner (rotor), 0–10 V |
-| J5 (Pin 9,10) | Styresignal til ettervarme, 0–10 V |
-| J5 (Pin 13,14) | Rotoralarm |
-
-- [ ] Endre settpunktet når rotoren faktisk må jobbe, og se hvilken verdi som
-      følger med. Nå i august er differansen ute/inne for liten til å skille et
-      pådrag fra en konstant — **høstforsøk**.
-- [ ] Let etter **ettervarmens** 0–10 V-pådrag på samme måte. Se hypotesen om
-      `payload[6]` under.
-- [ ] **Rotoralarm** skal finnes som statusbit.
-- [ ] **Overhetningstermostat (OT) — sikkerhetsrelevant, prioriter denne.**
-      Aggregatet har ettermontert elektrisk ettervarme (sett 94283-01), og OT-en
-      er en alarmkilde CS 50 overvåker («Elektrisk batteri, termostat»). Løser
-      den ut, er elementet overopphetet og må resettes manuelt inne i
-      aggregatet. Et varsel i HA er verdt mer enn de fleste andre feltene.
-      Kan ikke fremprovoseres trygt — men finn kandidatbyten, så den fanges
-      hvis det først skjer.
-
-## Feature-frame: kan vi be om utstyrskonfigurasjonen?
-
-Målet er at integrasjonen skal kunne slå entiteter av og på selv, ut fra hva
-aggregatet faktisk har.
-
-- [x] ~~Er `C0` en leseforespørsel?~~ **NEI — testet og avvist.** Av 27 `C0`-rammer
-      (bank+reg, ingen data) ble **0** etterfulgt av svar med samme bank/reg.
-      Vi har dermed **ingen kjent måte å be om et bestemt register på**.
-- [x] ~~Let i `0xC6`-parameterblokkene.~~ **DELVIS DEKODET 2026-08-15.**
-      `0xC6` og `0xC7` er **manualens parametertabeller**, men **ikke** i
-      menyrekkefølge — de er gruppert etter type (min/maks-par ligger sammen).
-      Matching mot **hele** CS 500-lista (ikke bare CS-50-delmengden) gjenfant
-      36 av 38 standardverdier, og 17 av 37 av manualens nabopar ligger som
-      nabobytes — bl.a. kjeden `16,35 / 16,35 / 15,2`. **Bekreftet at layouten
-      er CS 500 sin:** kjøleparameterne `45` og `180` («ikke CS 50») ligger i
-      registrene selv om kortet vårt ikke har kjøling. Se «Kan plasseringene
-      utledes fra manualens rekkefølge?» i protokollnotatene.
-- [ ] **Finn utstyrskonfigurasjonen blant restene.** Manualens seksjon **4.91
-      «Komponenter»** er nettopp utstyrskonfigurasjonen, og den er én av de 13
-      som gjelder CS 50. Den ligger mellom 4.84 (motorvern-forsinkelse, funnet
-      som `00 1E`=30) og 4.92 (versjonsstrengen, funnet). Er registerrekkefølgen
-      nær menyrekkefølgen, bør konfigurasjonen ligge kort etter motorvern-
-      verdien i reg `0x0E` — nærmeste kandidater er `02 32` og `0F 01`.
-      **NB:** registrene følger ikke menyrekkefølgen (se over), så «kort etter»
-      er en svak føring. Klyngestrukturen hjelper derimot: konfigurasjonen er
-      ikke et min/maks-par, så den skal ligge utenfor de identifiserte klyngene.
-      **Fase 0-oppdatering (2026-08-15):** `0F 01` er UTE av jakten — det er de
-      lagrede brukerinnstillingene (settpunkt + viftetrinn, fulgte
-      panelsekvensen slavisk i opptaket). `82 xx` er driftstimetelleren.
-      Gjenværende kandidat i reg `0x0E`: `02 32`, pluss `05 0C` i reg `0x00`.
-      Avgjøres sikkert bare ved å diffe mot et anlegg med annen utrustning.
-- [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
-      gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
-- [x] ~~**Finnes det en skrivevei til parameterregistrene?**~~ **JA — BEKREFTET
-      2026-08-15.** Maks settpunkt skrevet 25 → 24 → 25 i `C6` bank `0x20` reg
-      `0x00` som poll-svar; CS50 godtok og kringkastet den nye verdien innen
-      ett sekund, begge veier. Ingen andre registre rørt, ingen alarmer, null
-      forkastede rammer, null anomalier. Koden ligger på grenen
-      `eksperiment/parameterskriving` med dobbel runtime-gating og er bevisst
-      IKKE slått sammen til main.
-- [ ] **Dekod ur-lagringen (bank `0x21`) med skrivemetoden.** Nå mulig: skriv
-      ett felt, se hva som flytter seg. Var tidligere blokkert på at CI 50
-      ikke har display. Uret er inaktivt hos oss, så feltene er trygge å røre.
-- [ ] **ALDRI skrivetest utstyrskonfigurasjonen.** Feltene styrer rotor/plate,
-      el/vann og forvarme/bypass — en feilskriving omkonfigurerer aggregatet.
-      Den skal fortsatt avgjøres ved å diffe mot et annet anlegg.
-
-## For publisering
-
-### Automatisk maskinvaregjenkjenning — viktigst for at andre kan bruke det
-
-- [ ] **Finn konfigurasjonsbitene på bussen.** CS 50 kjenner sin egen
-      utrustning — den settes med tre mikrobrytere på kortet: veksler
-      rotor/plate, varme el/vann, avfrosting forvarme/bypass. **Tre bit.**
-      Finner vi dem, kan integrasjonen konfigurere seg selv i stedet for at hver
-      bruker må vite hva de har.
-      Kandidater blant de konstante statusbytene: `[3]`, `[7]`, `[12]`,
-      `[16]`–`[19]`, `[21]`. NB: `[4]` er nå forklart som alarmbitfelt.
-      **NB:** menyen som viser dette (`Test → Informasjon → System`) hører til
-      **CI 500**. Et CI 50-panel har bare lysdioder og knapper — ingen fasit å
-      lese av. Metoden må derfor være å sammenligne med et annet SL4R/CS 50 med
-      annen utrustning, eller å utlede det fra hvilke felt som er konstante.
-- [x] ~~Følere for tilvalg som ikke er montert forvirrer brukeren.~~ **LØST:**
-      `-55` oversettes til `NAN` → `unavailable` i HA. Entiteten skjuler seg
-      selv, og dukker opp hvis føleren monteres senere.
-- [ ] **Forvarme for plateveksler-aggregater.** Fjernet hos oss fordi SL4 R har
-      rotor, men trengs for at integrasjonen skal dekke plateveksler-varianter.
-      Krever noen med slikt aggregat til å avlytte feltet.
-- [x] ~~Rigg for å fange det uventede.~~ **GJORT:** anomalifangst med
-      læringsperiode, ringbuffer på 40 hendelser, `Anomalier`-teller og
-      «Dump anomalier»-knapp. I tillegg `Rå rammelogging` som kan slås av og på
-      i drift uten reflash. Dokumentert i README under «Feilsøking og
-      innsamling».
-- [x] ~~Be om bidrag fra andre.~~ **GJORT:** eget avsnitt i README om hvilke
-      logger som er mest verdifulle, og at uenighet er velkomment.
-
-## Åpne, men mindre
-
-- [x] ~~Fjern forvarme-entiteten.~~ **GJORT.** CS 50-manualen er entydig:
-      forvarme er en plateveksler-funksjon, og SL4 R har roterende veksler.
-      Hele switch-plattformen utgikk med den.
-- [x] ~~Døp om «Forvarme aktiv» til «Ettervarme aktiv».~~ **GJORT.** Hele
-      komponenten er omdøpt (`afterheat_active`), gammel entitet ryddet bort av
-      ESPHome selv. Navnet forvarme var arvet fra Vongraven og er feil for et
-      rotoraggregat.
-- [x] ~~Bekreft ettervarme-hypotesen.~~ **AVKLART 2026-08-15** for av/på-flagget:
-      det ligger i **panelets** ramme, `data[4]` bit7 — verifisert begge veier
-      mot panelets «+»-lampe. Styres fra `switch` «Ettervarme», som til
-      forskjell fra panelbevegelsen ikke utløser filterreset.
-      **MEN:** `payload[6]` bit0 = «elementet varmer» røk i fase 0-analysen
-      samme dag (bit0 fulgte forseringen, med ettervarmen deaktivert) —
-      se re-verifiseringspunktet under punkt 1.
-- [x] ~~**Egen «avbryt forsering»-knapp.**~~ **GJORT** — skriver returtrinnet
-      (lav nibbel av `[5]`), verifisert: pådrag 100 → 49 %.
-- [x] ~~**Viftekommando under aktiv forsering.**~~ **TESTET 2026-08-15:** rent
-      resultat. `[5]` `0x32` → `0x11`, pådrag 100 → 49 %, forsering av. CS50
-      godtar «fra»-nibbel 3 uten innvendinger.
-- [x] ~~**Kartlegg `0xC7`-parameterne.**~~ **DEKODET (fase 0, 2026-08-15):**
-      reg `0x0E` = vinterkompensering (Start vinter −20, Stopp vinter −30,
-      Temp dif 2, følerkorreksjoner 0×4), reg `0x07` slots 3–6 =
-      sommerkompensering (Sommer dif 2, Vinter dif 1, Stopp sommer 30,
-      Start sommer 25 — 25 var altså IKKE maks settpunkt). `0.01`×4 og `0.3`×6
-      er regulatorforsterkninger (fabrikknivå, ingen tall i manualen).
-      Gjenstår: `0, 0.1, 0.1` i reg `0x15`.
-- [ ] **Ukeprogrammet (bank `0x21`) — PARKERT.** Strukturen er kjent (dagur 1–4
-      + ukeur 1–6, defaults synlige: 06:00, 20 °C, 23:59), men postlayouten kan
-      ikke festes uten å endre en ur-innstilling — og det krever CS 500-panel
-      med display. Vårt ur er permanent inaktivt på fabrikkdefault. Trenger
-      logg fra et CS 500-anlegg, eller skriving mot bank `0x21`.
-- [x] ~~**Kryssjekk registrene mot CS50-kortets klemmeliste.**~~ **GJORT** —
-      klemmelista er hentet fra Flexits egen CS 50-manual (94269N-02) og
-      dokumentert i protokollnotatene. Den forklarte `-55`-slottene (B6,
-      platevekslerens frostføler, ikke montert på et rotoraggregat) og bekreftet
-      at kun tilluft måles.
-- [ ] **Ekstern forseringsbryter på CS 50** (J5 pin 16, «Forsert ventilasjon»)
-      ville gitt en uavhengig kontroll på at vår forseringskommando gjør det
-      samme som maskinvaren. Kun aktuelt hvis du uansett skal inn i aggregatet.
-- [ ] **Last-test bussens strømkapasitet** (100 Ω over 12 V ≈ 120 mA).
-      Lav prioritet — ingen brownout gjennom mange OTA-runder, og `Resetårsak`
-      + `Oppetid` fanger opp en eventuell svikt.
-
-## Robusthet og drift
-
-- [x] ~~«Kommunikasjon OK» ble stående `off`.~~ **LØST.** Ikke protokolltiming,
-      men en `return` i `loop()` som hoppet over helsesjekken. Helsesignalet
-      hviler nå på hvilken som helst validert ramme.
-- [x] ~~Stille feil hvis vi droppes fra pollerunden.~~ **LØST:**
-      `Enumerert på bussen` viser om CS50 fortsatt poller oss.
-- [ ] **Hva skjer ved strømbrudd på huset?** Noden og aggregatet henger på samme
-      kurs, så begge starter samtidig og vi rakk enumereringen i testen. Men det
-      er verifisert én gang. Verdt å bekrefte at det holder konsistent — og
-      vurdere et varsel hvis `Enumerert` går av.
-- [ ] **Automatiser deploy** til `/config/esphome/`, eller versjoner
-      `components/` i addonens nested git, så deploy-målet ikke drifter fra
-      kilden. I dag er det manuell `tar | ssh`.
-
-## Til slutt
-
-- [ ] **Flipp repoet til public.** Protokollen er nå dokumentert langt utover
-      det som fantes offentlig fra før — poll/svar-modellen, adressefeltet,
-      nibbel-kodingene og enumereringen er ikke beskrevet noe annet sted.
-      Andre med SL4R/CS50 vil ha nytte av det.
+**Two method lessons worth carrying:** a negative test is worthless without a
+positive control, and a plausible hypothesis deserves a measurement before it
+becomes a fix. Both cost us days when ignored.
 
 ---
 
-## Besvart underveis (kortversjon)
+## Decoding
 
-| Spørsmål | Svar |
+### Status telegram
+
+- [ ] **Map the remaining bits in `[4]`.** The rotor alarm (B-alarm,
+      self-acknowledging) and the overheat thermostat (A-alarm, requires manual
+      reset inside the unit) are the documented CS 50 alarms. The overheat
+      thermostat is safety-relevant and cannot be provoked safely. The
+      `unknown alarm` entity plus the anomaly log will capture whichever fires
+      first — **a capture from any installation with an active alarm would
+      settle this immediately.**
+- [ ] **`[15]`** — varies between 32/35/48/51, independently of both boost and
+      the afterheater. The only status field with no known correlate.
+- [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
+      but what the value itself encodes is unknown.
+- [ ] **`[2]` bit 1** — assumed bypass, never observed set on our rotary unit.
+      **Needs a capture from a plate-exchanger installation.**
+- [ ] **`[12]`, `[16]`–`[19]`, `[21]`** — no variation observed. Possibly
+      options we do not have, or CS 500-only fields.
+
+### The afterheater's own duty
+
+The CS 50 terminal list confirms both outputs exist, and neither is marked
+"not CS 50":
+
+| Terminal | Function |
 |---|---|
-| Hvorfor ble all sending ignorert? | Bussen er polled; uoppfordret trafikk lyttes ikke på |
-| Hvordan melder vi oss på? | Svar på pollen til vår node — enumereres ved CS50s oppstart |
-| Blir vår skriving overskrevet av panelet? | Nei, panelet sender kun ved endring |
-| Hva er de «sjeldne nodene» 2, 3 og 5? | Parser-artefakter, ikke ekte noder |
-| Trengs dipswitch 3 på et fysisk panel? | Nei — vi enumereres som node 5 uten det |
-| Hvilken temperaturføler er på bussen? | Kun tilluft (Flexits B1, ettervarmeføler) |
-| Hvor mange vifter? | To, ikke fire |
-| Hvordan slås forsering av? | Sett viftetrinn |
-| Hva er `payload[4]`? | Alarmbitfelt — bit1 = filteralarm |
-| Hva er `payload[6]`? | bit0 flipper ved forsering (elementet-varmer-tolkningen røk i fase 0 — re-verifiseres). Bit7 er IKKE enable-flagget |
-| Hvor ligger ettervarme av/på? | Panelets `data[4]` bit7 — ikke i statustelegrammet |
-| Hvordan slås ettervarme av/på? | `switch` i HA (verifisert), eller hold − og trykk + på panelet |
-| Hvorfor gir panelbevegelsen filterreset? | Samme knappekombinasjon; varigheten skiller. Vår bryter unngår det |
-| Har vi forvarme? | Nei — plateveksler-funksjon, vi har rotor |
-| Er filteralarmen trykkbasert? | Nei — timer («filtertid»), trykkvakt er ikke CS 50 |
-| Holder det å trykke begge temp-knappene for filterreset? | Nei — alarmen kom tilbake. Temperaturen må først til 20 grader |
-| Finnes rotorpådrag i det hele tatt? | Ja — J5 pin 11,12 (0–10 V), ikke merket «ikke CS 50» |
-| Én eller to temperaturfølere? | **Én.** Ettervarmesettet monterer to *termostater* (OT + BT), ikke måleførere |
+| J5 (pin 11,12) | Control signal to heat recovery (rotor), 0-10 V |
+| J5 (pin 9,10) | Control signal to the afterheater, 0-10 V |
+| J5 (pin 13,14) | Rotor alarm |
+
+- [ ] **Find the afterheater's 0-10 V duty.** We have no "element is heating
+      now" indicator at all — the field we believed was one turned out to be
+      boost. Best hunted during the heating season, with a real heat demand.
+- [ ] **Find the rotor alarm bit.** The rotor has a built-in self-test that
+      runs for one minute daily; logging over 24 h should reveal it.
+
+### Parameter registers
+
+- [ ] **Decode the clock storage (bank `0x21`).** Structure is known (4 day
+      channels + 6 week channels, with recognisable defaults), semantics are
+      not. Now practical, since parameter writes are confirmed to work: write
+      one field and see what moves. The clock is inactive on a CI 50
+      installation, so these fields are comparatively safe to touch.
+- [ ] **Find the equipment configuration.** The CS 50 knows its own equipment —
+      it is set with three microswitches (rotor/plate, electric/water heating,
+      preheat/bypass defrost). Three bits. Finding them would let the
+      integration configure itself instead of every user having to know what
+      they have.
+      **This can only be settled by diffing two installations with different
+      equipment.** It must NEVER be probed by writing — a wrong write
+      reconfigures the unit for hardware it does not have.
+- [ ] **Explain the two moving high-byte fields** in `0xC6` (`0x0E` word 10 high
+      and `0x00` word 0 high). Both are logged; look for a pattern over days.
+- [ ] `0xC7` register `0x15`: `0`, `0.1`, `0.1` — still unexplained.
+
+## Verification
+
+- [ ] **Confirm the filter reset actually restarts the timer.** Now measurable:
+      read the filter-hours counter before and after pressing the button. A
+      genuine reset should zero it. (An accidental panel reset did *not* zero
+      it, which is why the alarm re-armed hours later.)
+- [ ] **Preheat for plate-exchanger units.** Removed here because the SL4 R has
+      a rotor. Needed for the integration to cover plate-exchanger variants —
+      requires someone with that hardware.
+
+## Robustness and operation
+
+- [ ] **Automate deployment**, so the deployed copy cannot drift from the
+      source.
+- [ ] **Load-test the bus supply** (100 Ω across 12 V ≈ 120 mA). Low priority —
+      no brownout through many OTA cycles, and `reset reason` plus `uptime`
+      would catch a failure.
+
+## For publication
+
+- [ ] **Automatic hardware detection**, once the equipment configuration bits
+      are found.
+- [ ] **External boost switch on the CS 50** (J5 pin 16) would give an
+      independent check that our boost command does the same thing the hardware
+      does. Only worth it if you are opening the unit anyway.
+
+---
+
+## Answered along the way
+
+| Question | Answer |
+|---|---|
+| Why was everything we transmitted ignored? | The bus is polled; unsolicited traffic is not listened to |
+| How do we enrol? | Answer the poll for our node — enumerated at CS50 startup |
+| Does the panel overwrite our writes? | No, the panel only transmits on change |
+| Is dipswitch 3 needed on a physical panel? | No — we enumerate as node 5 without it |
+| Which temperature sensor is on the bus? | Supply air only (Flexit's B1) |
+| How many fans? | Two, not four |
+| How is boost cancelled? | Write a fan level |
+| What is `payload[4]`? | Alarm bit field — bit1 = filter alarm |
+| What is `payload[6]`? | bit0 = boost, bit7 = afterheater enabled |
+| How is the afterheater switched? | Write `data[4]` bit7, or hold minus and press plus on the panel |
+| Why does the panel gesture also reset the filter? | Same button combination; duration distinguishes them. Our switch avoids it |
+| Do we have preheat? | No — it is a plate-exchanger function, we have a rotor |
+| Is the filter alarm pressure-based? | No — it is a timer. Pressure switches are not CS 50 |
+| Is pressing both temperature buttons enough to reset the filter? | No — the setpoint must be at 20 first |
+| Does rotor duty exist at all? | Yes — J5 pin 11,12, exposed as heat demand |
+| One or two temperature sensors? | **One.** The afterheater kit fits two *thermostats*, not measuring sensors |
+| Is `0xC0` a read request? | No — tested and rejected, 0 of 27 |
+| Can the parameter registers be written? | **Yes** — confirmed. See PROTOCOL.md §9.6 before trying |
+| Does the node survive a house-wide power cut? | Yes — measured. The CS50 boots slower than the ESP32, so we answer within the enumeration window |

@@ -1,5 +1,11 @@
 # Flexit SL4R / CS50 RS485-protokoll — notater
 
+> **English reader:** this is the chronological derivation log, written in
+> Norwegian as a lab notebook. The finished specification is in
+> [`../PROTOCOL.md`](../PROTOCOL.md) and is the document you want. This file is
+> kept for the reasoning, the measurements and the dead ends — several readings
+> in here were later disproved, and they are left in place on purpose.
+
 > ## LES DETTE FØRST
 >
 > **Dokumentet er kronologisk, og de tidlige avsnittene beskriver en modell som

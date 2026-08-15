@@ -1,327 +1,279 @@
-# Flexit SL4R (CS50/CI50) — ESPHome-integrasjon via RS485
+# Flexit SL4R (CS50/CI50) — ESPHome integration over RS485
 
-Toveis integrasjon av et Flexit SL4R-ventilasjonsaggregat (CS50-hovedkort,
-CI50-betjeningspanel) i Home Assistant, uten Flexit sin egen CI66-adapter.
-Leser status og skriver kommandoer over aggregatets egen RS485-buss.
+*[Norsk versjon](README.no.md) — the original, and the language the research
+notes are written in.*
 
-Maskinvare: M5Stack **ATOM Lite** (ESP32) + **ATOM Tail485** (TTL↔RS485,
-SKU T002), koblet i parallell med CI50 i den ledige **4P4C**-kontakten bak på
-betjeningspanelet, og matet fra bussens egne 12 V (målt 11,8 V). Pinout og
-strømforsyning: se
-[`research/protocol-notes.md`](research/protocol-notes.md) → «Fysisk tilkobling».
+Two-way integration of a Flexit SL4 R air handling unit (CS50 main board, CI50
+control panel) into Home Assistant, over the unit's own RS485 bus and without
+Flexit's CI66 Modbus adapter.
+
+Hardware: an M5Stack **ATOM Lite** (ESP32) plus an **ATOM Tail485**
+(TTL↔RS485, SKU T002), wired in parallel with the CI50 in the **spare 4P4C
+socket** on the back of the control panel, and powered from the bus's own 12 V
+(measured 11.8 V). No need to open the air handling unit.
+
+The protocol is documented in **[`PROTOCOL.md`](PROTOCOL.md)**.
 
 ## Status
 
-**Toveis styring virker mot ekte anlegg (14. august 2026).** Siden da er
-`climate`-entitet, parameterregistrene og filtertelleren kommet til, og det er
-bekreftet at parameterregistrene kan skrives (15. august).
+**Two-way control works against a real installation.**
 
-- **Lesing:** tilluftstemperatur, viftetrinn (kjørende + retur), viftepådrag i
-  prosent for begge vifter, settpunkt, varmepådrag, forsering, **filteralarm**,
-  **ettervarme aktivert**, og fra parameterregistrene **timer siden
-  filternullstilling** med filterintervall. I tillegg diagnostikk-entiteter for
-  felt vi ennå ikke har tydet, slik at HAs recorder bygger historikk.
-- **Skriving:** viftetrinn, settpunkt, forsering, avbryt forsering, ettervarme
-  av/på og filterreset — alt verifisert mot CS50s egne kringkastede verdier,
-  ikke bare mot vår egen UI-tilstand.
-- **`climate`-entitet** «Ventilasjon» samler settpunkt, viftemodus,
-  BOOST-preset og HEAT/FAN_ONLY (ettervarme) i én termostat-modell.
-  Viftemodusene bruker Flexits egne navn fra CI 50-manualen —
-  **Redusert / Normal / Økt** — ikke trinnummer. `select`-entiteten
-  «Viftetrinn» beholder 1/2/3, siden den speiler panelets tre lysdioder.
-- **Driftsdiagnostikk:** `Enumerert på bussen` viser om CS50 fortsatt poller
-  oss. Går den av, feiler skriving *stille*, og aggregatet må strømsykles.
-  `Kommunikasjon OK` dekker mottakssiden, og `Statusintervall` viser hvor ofte
-  statustelegrammet kommer (~0,7–1,2 s).
+- **Reading:** supply air temperature, fan level (running and return), fan duty
+  in percent for both fans, heat exchanger setpoint, heat demand, boost state,
+  **filter alarm**, **afterheater enabled**, and from the parameter registers
+  **hours since the filter timer was last reset** together with the filter
+  interval. Plus diagnostic entities for fields not yet decoded, so Home
+  Assistant's recorder builds history to correlate against.
+- **Writing:** fan level, setpoint, boost, cancel boost, afterheater on/off and
+  filter reset — all verified against the CS50's own broadcast values, not just
+  against our own UI state.
+- **A `climate` entity** gathers setpoint, fan mode, boost preset and
+  HEAT/FAN_ONLY (afterheater) into one thermostat model.
+- **Operational diagnostics:** an `enumerated` binary sensor shows whether the
+  CS50 is still polling us. If it goes off, writing fails *silently* and the
+  unit must be power-cycled — you should alert on this.
 
-Noden er koblet på CI50-panelets ledige 4P4C-kontakt og matet fra bussens egne
-11,8 V.
+## How it works
 
-### Hvordan det henger sammen
-
-Bussen er **polled**. Masteren sender en 5-byte poll til én node av gangen, og
-kun den adresserte noden svarer:
+The bus is **polled**. The master sends a 5-byte poll to one node at a time and
+only the addressed node may answer:
 
 ```
-POLL  (fra master):  C3 <node> 00 <ck1> <ck2>
-SVAR  (fra noden):   <TYPE> <node> <LEN> <data...> <ck1> <ck2>
+POLL  (master):  C3 <node> 00 <ck1> <ck2>
+REPLY (node):    <TYPE> <node> <LEN> <data...> <ck1> <ck2>
 ```
 
-Ved oppstart pollast node 2, 3 og 5 fem ganger hver. Svarer de ikke, droppes de
-resten av driftsperioden — målt på en kaldstart: node 2 og 3 fikk sine fem
-forsøk innen henholdsvis 371 og 394 ms, og forsvant deretter. Vi melder oss derfor på som **node 5 = panel 2** —
-identiteten dipswitch 3 konfigurerer på et fysisk panel — og blir enumerert og
-pollet videre, også gjennom våre egne omstarter.
+At startup the CS50 probes nodes 2, 3 and 5 five times each. A node that does
+not answer is dropped for the rest of the run. We therefore enrol as
+**node 5 = panel 2** — the identity dipswitch 3 selects on a physical panel —
+and are then polled continuously, including across our own restarts.
 
-Det tok lang tid å komme dit, fordi den opprinnelige modellen tolket poll og
-svar som ÉN ramme med et 8-byte hode. Se
-[`research/protocol-notes.md`](research/protocol-notes.md) for hele utledningen,
-inkludert blindveiene — de er dokumentert med vilje, siden flere av dem så
-overbevisende riktige ut.
+Getting there took a while, because the obvious model treats poll and reply as
+one frame with an 8-byte header. That model reads fine and fails completely for
+writing. [`PROTOCOL.md`](PROTOCOL.md) has the full specification;
+[`research/protocol-notes.md`](research/protocol-notes.md) has the
+chronological derivation including the dead ends, in Norwegian.
 
-Protokollarbeidet startet fra
-[Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)
-(MIT, 2018). Sjekksumalgoritmen derfra stemmer eksakt; rammemodellen måtte
-bygges om fra bunnen.
+## Entities
 
-## Entiteter
+Names below are from [`example.yaml`](example.yaml). Every entity is optional —
+take what you need, name it what you like.
 
-**Styring**
+**Control**
 
-| Entitet | Type | Merknad |
+| Entity | Type | Notes |
 |---|---|---|
-| Viftetrinn | `select` | 1–3. Å sette trinn avbryter en pågående forsering |
-| Settpunkt varmeveksler | `number` | 15–25 °C |
-| Forsering | `button` | «Max vifte» — aggregatet faller selv tilbake |
-| Avbryt forsering | `button` | Skriver returtrinnet |
-| Ettervarme | `switch` | Skriver flagget direkte — utløser ikke filterreset, slik panelbevegelsen gjør |
-| Nullstill filtervakt | `button` | Kjører hele manualens prosedyre automatisk |
-| Ventilasjon | `climate` | Alt det over i én termostat-modell |
+| Fan level | `select` | 1–3. Setting a level cancels an active boost |
+| Heat exchanger setpoint | `number` | 15–25 °C |
+| Boost | `button` | "Max fan" — the unit falls back on its own |
+| Cancel boost | `button` | Writes the return level |
+| Afterheater | `switch` | Writes the flag directly — unlike the panel gesture, it cannot trigger a filter reset |
+| Reset filter timer | `button` | Runs the manual's full procedure automatically |
+| Ventilation | `climate` | All of the above in one thermostat model |
 
-**Måling**
+The climate entity's fan modes use Flexit's own wording from the CI 50 manual —
+**Reduced / Normal / Increased** — rather than level numbers. The `select`
+entity keeps 1/2/3, because that is what the panel's three LEDs show.
 
-Tilluftstemperatur · **varmepådrag** (0–100, styrer rotorens hastighet) ·
-viftepådrag tilluft/avtrekk (%) · viftetrinn kjørende og retur · settpunkt lest
-fra bussen · ledige følerinnganger (skjuler seg selv når de ikke er tilkoblet).
+**Measurement**
 
-**Tilstand og alarm**
+Supply air temperature · heat demand (0–100, drives the rotor) · fan duty
+supply/extract (%) · fan level running and return · setpoint read back from the
+bus · spare sensor inputs (which hide themselves when nothing is connected) ·
+filter hours and filter interval · fan duty configured per level.
 
-Filteralarm · **ukjent alarm** · ettervarme aktivert · forsering aktiv ·
-**varmegjenvinner går** (rotoren snurrer faktisk, ikke bare at det finnes et
-behov) · **bypass (antatt)**.
+**State and alarm**
 
-«Ettervarme aktivert» svarer til panelets «+»-lampe og kan verifiseres mot den
-direkte. «Ukjent alarm» er ethvert bit i alarmfeltet utenom filterbiten — vi vet
-ikke hvilket bit som er rotoralarm og hvilket som er overhetingstermostat, men
-entiteten fanger dem den dagen de fyrer, og rådataene ligger i anomaliloggen.
+Filter alarm · **unknown alarm** · afterheater enabled · boost active ·
+**heat recovery running** (the rotor is actually turning, not merely that
+demand exists) · **bypass (assumed)**.
 
-«Bypass (antatt)» er en åpen gjetning, og navnet sier det: biten er aldri
-observert satt på vårt rotoraggregat. Hypotesen er at den koder bypass på
-plateveksleraggregater. Endrer den seg, logges det som anomali med full ramme.
+"Unknown alarm" is any bit in the alarm field other than the filter bit. We do
+not know which bit is the rotor alarm and which is the overheat thermostat, but
+this entity catches them the day they fire, with the raw frame in the anomaly
+log.
 
-**Diagnostikk**
+"Bypass (assumed)" is an open guess and the name says so: the bit has never
+been observed set on our rotary unit. If it ever changes, it is logged as an
+anomaly with the full frame.
 
-Kommunikasjon OK · enumerert på bussen · anomalier · statusintervall · rammer
-forkastet · resetårsak · oppetid · rå statusbyte for felt som ennå ikke er tydet
-· **firmwareversjon for styrekort og panel**.
+**Diagnostics**
 
-Firmwareversjonene leses rett fra bussen, og er verdt å oppgi i feilrapporter:
-alt i protokollnotatene er utledet fra styrekort `R1A 2.8` og panel `R1A 1.2`.
+Communication OK · enumerated on the bus · anomalies · status interval · frames
+discarded · reset reason · uptime · raw status bytes for undecoded fields ·
+**firmware version for both the controller and the panel**.
 
-## Hvordan skriving oppfører seg
+Please quote both firmware versions in any bug report — everything documented
+here was derived from controller `R1A 2.8` and panel `R1A 1.2`.
 
-**En skriving endrer kun feltet du ba om. Alt annet speiles.**
+## How writing behaves
 
-Panelets tilstandsramme inneholder flere felt i samme melding — viftetrinn,
-settpunkt, ettervarme og noen vi ennå ikke forstår. Endrer du settpunktet, må de
-øvrige feltene likevel fylles ut, og da er det fristende å skrive konstanter.
+**A write changes only the field you asked for. Everything else is mirrored.**
 
-Det gjør denne integrasjonen **ikke**. Hver skriving bygger på panelets sist
-kjente ramme, og kun det ene feltet du faktisk endrer blir overstyrt.
+The panel's state frame carries several fields in one message. When you change
+the setpoint, the other fields must still be filled in, and it is tempting to
+write constants.
 
-Grunnen er erfaring, ikke prinsipprytteri. Vi hardkodet først to felt vi trodde
-var konstante, og oppdaget senere at det ene var ettervarmens av/på-flagg — så
-hver settpunkt- eller viftetrinn-endring slo av ettervarmen i aggregatet. Med
-speiling kan den feilen ikke gjenoppstå, heller ikke i felt vi ennå ikke har
-tydet.
+This integration does **not** do that. Every write starts from the panel's last
+known frame and overrides only the one field you are actually changing.
 
-To følger er verdt å merke seg:
+That rule comes from experience, not principle. We hardcoded fields we believed
+were constant, and each time the symptom was the afterheater switching itself
+off — once on every write, once on every boost press, and once on the first fan
+command after each restart. [`PROTOCOL.md` §7.1](PROTOCOL.md) lists all four
+incidents.
 
-- **Les tilstand fra statustelegrammet, ikke fra panelrammen**, når begge har
-  den. Panelet sender kun ved *endring*, så en verdi som bare latches derfra kan
-  være timer gammel — og etter en omstart står den på sin default. Ettervarmen
-  ble lest slik en periode, og siden verdien speiles inn i alle utgående rammer,
-  slo den første viftekommandoen etter hver omstart av ettervarmen. Nå leses den
-  fra statustelegrammet, som kommer hvert sekund.
-- **Knappebitene settes aldri** med mindre en handling krever det. Derfor kan
-  for eksempel `switch` «Ettervarme» ikke utløse filterreset som bieffekt —
-  noe panelets egen knappebevegelse faktisk gjør.
+One consequence worth knowing: state that exists in both the status telegram
+and the panel frame is read from the **status telegram**, because the panel
+only transmits on change and its frame can be hours stale.
 
-## Ulike aggregatvarianter
+## Different unit variants
 
-SL4R/CS 50 finnes i mange utstyrskombinasjoner — roterende eller plateveksler,
-elektrisk eller vannbatteri, med eller uten ettervarme, bypass eller forvarme.
-Denne integrasjonen håndterer det på tre nivåer:
+SL4R/CS 50 ships in many equipment combinations — rotary or plate exchanger,
+electric or water battery, with or without an afterheater, bypass or preheat
+defrost. This integration handles that on three levels:
 
-**1. Følere detekteres av seg selv.** CS 50 rapporterer `-55` for en
-følerinngang som ikke er tilkoblet. Komponenten oversetter det til `NAN`, som
-blir `unavailable` i Home Assistant. En entitet for et tilvalg du ikke har
-skjuler seg altså selv, uten konfigurasjon — og dukker opp den dagen føleren
-monteres.
+**1. Sensors detect themselves.** The CS 50 reports `-55` for an unconnected
+sensor input. The component translates that to `NAN`, which becomes
+`unavailable` in Home Assistant. An entity for an option you do not have hides
+itself, with no configuration — and appears the day the sensor is fitted.
 
-**2. Alle entiteter er valgfrie.** Hver eneste entitet er `cv.Optional` i
-plattformskjemaene, så `flexit-atom-lite.yaml` er et *eksempel*, ikke et krav.
-Ta med det du har bruk for.
+**2. Every entity is optional.** Each one is `cv.Optional` in the platform
+schemas, so [`example.yaml`](example.yaml) is an *example*, not a requirement.
 
-**3. Funksjoner som er fysisk umulige, utelates.** Forvarme er for eksempel en
-plateveksler-funksjon (mikrobryter 3 på kortet: «bare ved plateveksler»), så på
-et rotoraggregat som SL4 R kan en forvarme-bryter aldri virke. Den er derfor
-ikke med. Har du plateveksler, er dette et punkt som må implementeres — se
+**3. Physically impossible functions are left out.** Preheat, for instance, is
+a plate-exchanger function, so on a rotary unit like the SL4 R a preheat switch
+could never work. If you have a plate exchanger, that is a gap — see
 [`TODO.md`](TODO.md).
 
-**Automatisk gjenkjenning er trolig mulig.** CS 50 vet selv hva den er utstyrt
-med — det settes med tre mikrobrytere på kortet (veksler rotor/plate, varme
-el/vann, avfrosting forvarme/bypass). Ligger de bitene på bussen, kan
-integrasjonen konfigurere seg selv.
+**Automatic detection is probably possible.** The CS 50 knows its own
+equipment; it is set with three microswitches on the board. If those bits are
+on the bus, the integration could configure itself. Finding them requires
+comparing two installations with different equipment — see
+[Contributions](#contributions-and-logs-wanted).
 
-Merk at menyen som viser dette (`Test → Informasjon → System`) hører til
-**CI 500**, ikke CI 50. Et CI 50-panel har bare lysdioder og knapper, så på et
-SL4R-anlegg finnes ingen enkel fasit å lese av — bitene må eventuelt finnes ved
-å sammenligne anlegg med ulik utrustning. Åpent punkt, se [`TODO.md`](TODO.md).
-
-## Repo-struktur
+## Repository layout
 
 ```
-components/flexit_sl4r/   ESPHome external_component (C++ hub + sensor/select/switch/number/binary_sensor/button)
-research/                 Kildemateriale + protokollutledning (se research/README.md)
-research/captures/        Rå bussopptak fra eget anlegg, med parse-oppskrift
-TODO.md                   Kartleggingsbacklog — hva som skal testes og dokumenteres
-flexit-atom-lite.yaml     Eksempel-/produksjonskonfig for ATOM Lite + Tail485
-secrets.yaml.example      Mal for secrets.yaml (wifi/api/ota)
+PROTOCOL.md               Protocol specification (English)
+components/flexit_sl4r/   ESPHome external component (C++ hub + platforms)
+example.yaml              Canonical example configuration
+flexit-atom-lite.yaml     The author's live configuration (Norwegian entity names)
+research/                 Source material and derivation (see research/README.md)
+research/captures/        Raw bus captures with a parsing recipe
+TODO.md                   What remains to be decoded and tested
+secrets.yaml.example      Template for secrets.yaml (wifi/api/ota)
 ```
 
-Målet framover er å teste alle varianter som lar seg teste og dokumentere så
-mye av protokollen som mulig — se [`TODO.md`](TODO.md).
-
-## Kom i gang
+## Getting started
 
 ```bash
 python3.12 -m venv .venv-esphome
 ./.venv-esphome/bin/pip install esphome
-cp secrets.yaml.example secrets.yaml   # fyll inn wifi + generer api-nøkkel/ota-passord
-./.venv-esphome/bin/esphome run flexit-atom-lite.yaml
+cp secrets.yaml.example secrets.yaml   # fill in wifi, generate api key and ota password
+./.venv-esphome/bin/esphome run example.yaml
 ```
 
-(`python3.12` fordi ESPHome pt. ikke støtter Python 3.14, som er standard
-`python3` på denne utviklingsmaskinen.)
+Wire the Tail485 to the panel's spare 4P4C socket: pin 1 = GND, 2 = B, 3 = A,
+4 = +V. **Check polarity with a meter before plugging in** — the buck converter
+has no reverse-polarity protection, and module cables exist in mirrored
+variants. Flash over USB-C with the 4P4C disconnected; USB and bus power must
+never be connected at the same time.
 
-## Videre plan
+If nothing arrives, swap A and B. That is the single most common mistake, and
+it was ours too.
 
-Kartleggingen fortsetter i [`TODO.md`](TODO.md). Rotorpådraget (`[11]`),
-filteralarmen (`[4]` bit1) og til og med driftstimetellerne er funnet — de
-største åpne punktene nå:
+## Contributions and logs wanted
 
-1. **Ur-lagringen (bank `0x21`)** — nå dekodbar, siden parameterregistrene
-   viste seg å være skrivbare: skriv ett felt og se hva som flytter seg.
-2. **Ettervarmens eget 0–10 V-pådrag** (J5 pin 9,10). Vi har ingen
-   «elementet varmer nå»-indikator i det hele tatt — den antatte viste seg
-   å være forseringsflagget. Fyringssesongen gir bedre signal.
-3. **Rød alarm-LED**: hvilke bit i `[4]` er rotoralarm og
-   overhetingstermostat? Fanges automatisk av «Ukjent alarm» + anomaliloggen.
-4. **`[15]`** — varierer (32/35/48/51) uavhengig av både forsering og
-   ettervarme. Eneste statusfelt uten kjent korrelat.
-5. **Bidrag fra andre anlegg** (plateveksler, CS 500) for bypass-biten og
-   utstyrskonfigurasjonen — de kan ikke avgjøres på vårt aggregat.
+This is reverse engineering of an undocumented protocol, done on **one**
+installation. Much of what is written here surely generalises; some of it
+surely does not. **Logs from other SL4R/CS 50 installations are very welcome** —
+especially from units with different equipment (plate exchanger, water battery,
+preheat, two panels).
 
-## Hvor koden kjører
+Most valuable, concretely:
 
-Firmwaren bygges **ikke** fra dette repoet i praksis. 3. august 2026 ble
-`components/flexit_sl4r/` og YAML-en kopiert til HA-vertens ESPHome-addon som
-`/config/esphome/flexit-sl4r.yaml` + `/config/esphome/components/flexit_sl4r/`,
-og flashet derfra. Det er den kopien som faktisk kjører på noden.
+- **A boot capture.** Press "dump boot capture" after the unit has been
+  power-cycled. It shows the enumeration and which nodes exist.
+- **Anomalies.** The integration captures the unexpected automatically. Press
+  "dump anomalies" after something has happened and paste the log.
+- **What the panel showed at that moment.** The CI 50's LEDs are the ground
+  truth we compare bytes against — that is exactly how the afterheater bits and
+  the filter alarm were cracked.
+- **What equipment your unit has** — exchanger type, heating battery,
+  afterheater, defrost method.
+- **Your firmware versions.** If they differ from ours, that is the first place
+  to look when something does not match.
+- **Do you have a plate exchanger instead of a rotor?** Then you are
+  particularly interesting. One bit in the status telegram (`[2]` bit 1) has
+  never been set on our unit, and the structure suggests it encodes bypass
+  state — something only a plate-exchanger unit can show.
 
-Dette repoet er dermed **kilden/utviklingsstedet**, og `/config/esphome/` er
-**deploy-målet**. De kan drifte fra hverandre — per 13. august 2026 er
-HA-kopien én revisjon bak, men forskjellen er kun kommentarer. Ved endringer i
-komponenten: rediger her, kopier over, bygg der. Sjekk drift med:
+Open an issue with the log. Disagreement is useful too: several of Vongraven's
+original readings turned out to be wrong for our unit, and it is entirely
+possible that some of ours are wrong for yours.
+
+## Troubleshooting and evidence collection
+
+The integration is set up to gather evidence without you having to sit and
+watch.
+
+**Anomaly capture (always on).** It logs *the unexpected*, not everything: new
+frame types, changes in fields we believe constant, and any change in the alarm
+field. The last 40 events are stored with the full frame and a timestamp.
+Because it only reacts to deviations it costs almost nothing to leave running —
+in normal operation it counts zero. The `anomalies` sensor shows the count; the
+**dump anomalies** button prints them.
+
+The first 30 seconds after boot are a **learning period** in which the node
+learns the installation's normal repertoire of frame types without reporting.
+After that, any new signature is a real event.
+
+**Raw frame logging (toggled at runtime).** The `raw frame logging` switch
+prints every validated frame as hex — no reflash needed. Use it to capture a
+whole sequence of events. Switch it off afterwards; it is verbose.
+
+**Boot capture.** The first 6 kB from the bus are buffered in RAM at every
+start, because the most interesting part — enumeration — happens before WiFi is
+up. Retrieved with the "dump boot capture" button.
+
+To get the log into a file:
 
 ```bash
-ssh anders@192.168.1.205 'cat /config/esphome/flexit-sl4r.yaml' | diff -u flexit-atom-lite.yaml -
+esphome logs example.yaml --device <ip> > flexit.log
 ```
 
-(`/config/esphome/` er en egen nested git fra ESPHome-addonen og er ekskludert
-fra HA-config-repoet — se `CLAUDE.md` i homeassistant-workspace.)
-
-## Bidrag og logger ønskes
-
-Dette er reverse-engineering av en udokumentert protokoll, gjort på **ett**
-anlegg. Mye av det som står her gjelder sikkert bredere enn vi kan vite, og noe
-gjelder sikkert bare oss. Derfor: **logger fra andre SL4R/CS 50-anlegg er svært
-velkomne** — særlig fra aggregater med annen utrustning enn vårt (plateveksler,
-vannbatteri, forvarme, to paneler).
-
-Konkret er dette mest verdifullt:
-
-- **Et oppstartsopptak.** Trykk «Dump oppstartsfangst» etter at aggregatet har
-  vært strømsyklet. Det viser enumereringen og hvilke noder som finnes.
-- **Anomalier.** Integrasjonen fanger automatisk det uventede (se under).
-  Trykk «Dump anomalier» når noe har skjedd, og lim inn loggen.
-- **Hva panelet viser** i samme øyeblikk. Lysdiodene på CI 50 er fasiten vi
-  sammenligner bytene mot, og det var nettopp slik ettervarme-bitene og
-  filteralarmen ble knekt.
-- **Hvilken utrustning aggregatet ditt har** — veksler, varmebatteri,
-  ettervarme, avfrosting.
-- **Firmwareversjonene dine** (entitetene «Styrekort-firmware» og
-  «Panel-firmware»). Avviker de fra våre, er det første sted å lete hvis noe
-  ikke stemmer.
-- **Har du plateveksler i stedet for rotor?** Da er du særlig interessant. Ett
-  bit i statustelegrammet (`[2]` bit 1) har aldri vært satt hos oss, og
-  strukturen tyder på at det koder bypass-tilstand — noe bare et
-  plateveksleraggregat kan vise.
-
-Åpne en issue med loggen. Uenighet er også nyttig: flere av Vongravens
-opprinnelige tolkninger viste seg å være feil for vårt anlegg, og det er fullt
-mulig at noen av våre er feil for ditt.
-
-## Feilsøking og innsamling
-
-Integrasjonen er rigget for å samle bevis uten at du må sitte og vente.
-
-**Anomalifangst (alltid på).** Den logger *det uventede*, ikke alt: nye
-rammetyper, endringer i felt vi tror er konstante, og enhver endring i
-alarmfeltet. De siste 40 hendelsene lagres med full ramme og tidsstempel.
-Fordi den bare reagerer på avvik, koster den nesten ingenting å ha stående —
-i normal drift teller den null. Sensoren `Anomalier` viser antallet; knappen
-**«Dump anomalier»** skriver dem ut.
-
-De første 30 sekundene etter oppstart er en **læringsperiode** der noden lærer
-anleggets normale repertoar av rammetyper uten å melde fra. Etterpå er enhver
-ny signatur en ekte hendelse.
-
-**Rå rammelogging (av/på i drift).** Bryteren `Rå rammelogging` skriver hver
-validerte ramme som hex — uten reflash. Bruk den når du skal fange et helt
-hendelsesforløp. Slå av igjen etterpå; den er ordrik.
-
-**Oppstartsfangst.** De første 6 kB fra bussen bufres i RAM ved hver oppstart,
-fordi det mest interessante — enumereringen — skjer før WiFi er oppe. Hentes ut
-med «Dump oppstartsfangst».
-
-Slik får du loggen ut i en fil:
-
-```bash
-esphome logs flexit-atom-lite.yaml --device <ip> > flexit.log
-```
-
-Rammene kan parses med poll/svar-validatoren i
+Frames can be parsed with the poll/reply validator in
 [`research/captures/README.md`](research/captures/README.md).
 
-## Kilder og kreditering
+## Sources and credit
 
-Protokollkunnskapen her hviler på **[Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)**
-(MIT, 2018) — en Arduino Mega-implementasjon testet mot ekte SL4R/CS50, og
-eneste kjente kilde til både protokollen og koblingsskjemaet for denne bussen.
-Dette repoet er ikke en fork: det deler ingen kodelinjer, og protokollen er
-reimplementert og verifisert numerisk på nytt. Se
-[`research/README.md`](research/README.md) for nøyaktig hva som er kopiert
-derfra og hva som er vår egen utledning.
+The protocol knowledge here rests on
+**[Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)**
+(MIT, 2018) — an Arduino Mega implementation tested against a real SL4R/CS50,
+and the only known source for both the protocol and the wiring diagram for this
+bus. This repository is not a fork: it shares no code, and the protocol has been
+reimplemented and re-verified numerically. See
+[`research/README.md`](research/README.md) for exactly what was copied and what
+is our own derivation.
 
-Øvrige kilder brukt i utledningen:
+Other sources used:
 
 - [patstave/Node-FlexitCS60-RS485](https://github.com/patstave/Node-FlexitCS60-RS485)
-  — dokumentert RJ12-pinout for søstergenerasjonen CS60 (+12 V på pinne 5–6),
-  som underbygger tolkningen av CS50s 4P4C-kontakt.
-- [M5Stack Tail RS485, SKU T002](https://docs.m5stack.com/en/atom/tail485) —
-  [datablad med blokkdiagram](https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/static/pdf/static/en/atom/tail485.pdf)
-  (9–24 V buck, SP485EEN-L, G26/G32, ingen DE/RE-linje).
-- Flexits egne manualer: [CI 50 styrepanel](https://www.flexit.no/globalassets/catalog/documents/man_110191n_3748.pdf)
-  (2 kontakter bak på panelet, dipswitch 3 = PANEL 1/2) og
-  [Modbusadapter CI 66](https://www.flexit.no/produkter/relatert/modbusadapter_ci66_k2-c2-uni/)
-  (RJ12 1–1 og D0/D1/Common/VP-navngivning på nyere generasjon).
-- [hjemmeautomasjon.no: «Styre balansert ventilasjon, Flexit CI60»](https://www.hjemmeautomasjon.no/forums/topic/714-styre-balansert-ventilasjon-flexit-ci60/)
-  — Vongravens egen beskrivelse av tilkoblingen, og erfaringer fra CS60/CI60.
+  — documented RJ12 pinout for the sister generation CS60 (+12 V on pins 5–6),
+  supporting our reading of the CS50's 4P4C socket.
+- [M5Stack Tail RS485, SKU T002](https://docs.m5stack.com/en/atom/tail485) and
+  its [datasheet](https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/static/pdf/static/en/atom/tail485.pdf)
+  (9–24 V buck, SP485EEN-L, G26/G32, no DE/RE line).
+- Flexit's own manuals: [CI 50 control panel](https://www.flexit.no/globalassets/catalog/documents/man_110191n_3748.pdf)
+  and the [CI 66 Modbus adapter](https://www.flexit.no/produkter/relatert/modbusadapter_ci66_k2-c2-uni/).
+  The manuals themselves are copyrighted and are **not** included in this
+  repository; only document numbers are cited.
+- [hjemmeautomasjon.no: "Styre balansert ventilasjon, Flexit CI60"](https://www.hjemmeautomasjon.no/forums/topic/714-styre-balansert-ventilasjon-flexit-ci60/)
+  — Vongraven's own description of the wiring, and experience from CS60/CI60.
 
-## Lisens
+## License
 
-MIT, se [`LICENSE`](LICENSE). Kopiert kildemateriale i `research/` er
-Copyright (c) 2018 Vongraven, også MIT — se
+MIT, see [`LICENSE`](LICENSE). Copied source material in `research/` is
+Copyright (c) 2018 Vongraven, also MIT — see
 [`research/LICENSE-Vongraven`](research/LICENSE-Vongraven).

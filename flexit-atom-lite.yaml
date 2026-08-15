@@ -1,3 +1,10 @@
+# The author's own live configuration. Entity names are in Norwegian and are
+# kept that way deliberately: renaming them would change the entity_ids of a
+# running installation and break existing automations.
+#
+# If you are setting this up yourself, start from example.yaml instead — it is
+# the canonical, fully commented reference in English.
+
 substitutions:
   name: flexit-sl4r
   friendly_name: Flexit SL4R
