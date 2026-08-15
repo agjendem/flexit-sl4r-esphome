@@ -118,11 +118,16 @@ aggregatet faktisk har.
       sekvensen `180` (to ganger), motorvern-forsinkelsen `30`, og maks nivå
       `300` (to ganger, med `0` som min). Se «`0xC6` og `0xC7` er manualens
       parametertabeller» i protokollnotatene.
-- [ ] **Finn utstyrskonfigurasjonen blant restene.** Kandidater som ikke lot seg
-      matche mot en kjent parameter: `02 1C`, `10 23`, `0F 02`, `05 0C` i reg
-      `0x00`, og `00 06` i reg `0x0E`. Tre av dem bør være rotor/plate,
-      el/vann og forvarme/bypass — men det krever et anlegg med annen
-      utrustning å diffe mot.
+- [ ] **Finn utstyrskonfigurasjonen blant restene.** Manualens seksjon **4.91
+      «Komponenter»** er nettopp utstyrskonfigurasjonen, og den er én av de 13
+      som gjelder CS 50. Den ligger mellom 4.84 (motorvern-forsinkelse, funnet
+      som `00 1E`=30) og 4.92 (versjonsstrengen, funnet). Er registerrekkefølgen
+      nær menyrekkefølgen, bør konfigurasjonen ligge kort etter motorvern-
+      verdien i reg `0x0E` — nærmeste kandidater er `02 32` og `0F 01`.
+      **Posisjonsutledning fra manualen alene er utelukket:** registerplassen
+      rommer 62 verdier mot manualens 13 CS-50-parametere, fordi CS 50 og
+      CS 500 deler firmware og layout. Avgjøres bare ved å diffe mot et anlegg
+      med annen utrustning.
 - [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
       gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
 - [ ] **Finnes det en skrivevei til parameterregistrene?** Vi kan skrive

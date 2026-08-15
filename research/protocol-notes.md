@@ -1869,3 +1869,53 @@ standardverdi: `02 1C` = (2, 28), `10 23` = (16, 35), `0F 02` = (15, 2),
 Det er den samme begrensningen som for `[2]` bit 1, og den samme løsningen:
 ett logguttrekk fra et aggregat med plateveksler eller vannbatteri ville
 avgjort flere spørsmål på én gang.
+
+## Kan plasseringene utledes fra manualens rekkefølge?
+
+Prøvd 2026-08-15. **Nei, ikke direkte** — men forsøket ga et brukbart spor.
+
+### Hvorfor det ikke går
+
+| | |
+|---|---|
+| Parametere manualen dokumenterer **for CS 50** | 13 |
+| Parametere merket **«(ikke CS 50)»** | 11 |
+| Verdier vi faktisk ser i `C6` + `C7` (bank `0x20`) | **62** |
+
+Registerplassen rommer fem ganger mer enn manualen beskriver for vårt kort.
+Forklaringen er at **CS 50 og CS 500 deler firmware** — dokumentet er felles —
+så layouten er trolig CS 500 sin, med parametere vårt kort ikke bruker liggende
+igjen på standardverdi.
+
+Det forklarer også hvorfor **verdi-matching virket** mens **posisjons-matching
+ikke gjør det**: de doble standardverdiene lot seg gjenkjenne uansett hvor de
+lå, mens den korte CS-50-lista ikke dekker feltet, og den lange lista er i
+*meny*rekkefølge — som ikke er bevist å være *register*rekkefølge.
+
+### Sporet det likevel ga
+
+Manualens seksjon **4.91 «Komponenter»** er en av de 13 som *gjelder* CS 50, og
+det er nettopp den som viser `Gjenvinner: Rotor/plate`, `Varme: Elbat/vannbat`,
+`Avfrosting: Forvarme/Bypass`. Den ligger mellom to seksjoner vi kan feste:
+
+| Seksjon | Parameter | Funnet i data |
+|---|---|---|
+| 4.84 | Motorvern forsinkelse (std 30) | `00 1E` = 30 i reg `0x0E` ✓ |
+| **4.91** | **Komponenter — utstyrskonfigurasjonen** | **søkes** |
+| 4.92/4.93 | Versjon på kretskort | ASCII-strengen i `C1` bank `0x20` reg `0x00` ✓ |
+
+Er registerrekkefølgen i nærheten av menyrekkefølgen, bør konfigurasjonen ligge
+**kort etter** motorvern-verdien. Det som følger i reg `0x0E` er:
+
+```
+... 00 1E  00 B4  32 4B  64 00  82 F2  02 32  0F 01  32 4B
+     ^30    ^180
+```
+
+Tre enumererte valg ville vært små tall. `02 32` = (2, 50) og `0F 01` = (15, 1)
+er de nærmeste kandidatene.
+
+**Men dette er en hypotese, ikke et funn.** Den kan bare avgjøres ved å
+sammenligne med et aggregat med annen utrustning — da vil nøyaktig de bytene
+som koder rotor/plate, el/vann og forvarme/bypass skille seg ut, og resten være
+like.
