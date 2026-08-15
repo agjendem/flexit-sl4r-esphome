@@ -2307,3 +2307,67 @@ float-verdi **og** til den lagrede innstillingen i `C6 20 0E` ord 12 — som
 dermed bekrefter fase 0-identifiseringen av det feltet en gang til.
 Viftemodus 1/2/3, BOOST-preset og HEAT/FAN_ONLY er alle testet mot bussen.
 `hvac_action` utledes av varmepådraget `[11]`, ikke av `[6]` bit0.
+
+# Kaldstart-test: enumereringsmodellen bekreftet i tall (2026-08-15)
+
+Aggregatet ble strømsyklet fra HA (wallpluggen «Friskluftsanlegg»). Noden mates
+fra bussens 12 V via CI50, så **begge mistet strøm samtidig** — nøyaktig det
+scenarioet som er kritisk, og som til nå bare var verifisert én gang løselig.
+
+Første observasjon kom gratis: noden forsvant fra nettet i det pluggen ble slått
+av. Det bekrefter at den ikke har egen strømkilde.
+
+## Enumereringen, målt
+
+Oppstartsfangsten (6144 byte ≈ 3,2 s bussetrafikk fra ESP-ens første mottatte
+byte) gir fasit på hvordan CS50 registrerer noder:
+
+| Node | Antall poll i fangsten | Utfall |
+|---|---|---|
+| 2 | **5** | droppet (svarte aldri) |
+| 3 | **5** | droppet (svarte aldri) |
+| 4 (CI50-panelet) | 38 | beholdt |
+| **5 (oss)** | **38** | **beholdt** |
+
+Pollerunden går `1, 2, 1, 3, 1, 4, 1, 5, …` — node 1-«pollene» er CS50s egen
+adresseheader foran hver datablokk, ikke ekte poll.
+
+Node 2 fikk sine fem forsøk innenfor de første **371 ms**, node 3 innen 394 ms.
+Etter det er de borte for resten av driftsperioden. Modellen «fem forsøk, så
+droppet» er dermed ikke lenger en slutning fra et opptak — den er telt.
+
+## Hvorfor vi overlevde, og hvor stor marginen er
+
+Vår node ble pollet første gang **91 ms inn i fangsten**, altså mens
+enumereringsvinduet fortsatt sto åpent, og fortsatte å bli pollet alle 38
+gangene. Det betyr at ESP-en var oppe og svarte før CS50 rakk å gi opp.
+
+Marginen kommer av at **CS50 booter langsommere enn ESP32-en**: aggregatets
+strømforsyning og styrekort bruker lengre tid enn nodens oppstart, så når
+enumereringen begynner, lytter vi allerede. Det er en egenskap ved maskinvaren,
+ikke flaks — men marginen er på under et halvt sekund *målt fra CS50s side*, så
+`Enumerert på bussen` er fortsatt et nødvendig varsel.
+
+(Våre egne svar finnes ikke i fangsten — den bufrer kun mottatte byte. Beviset
+for at vi svarte er at CS50 fortsatte å polle oss mens 2 og 3 falt ut.)
+
+## Tilstand etter kaldstart
+
+| Entitet | Verdi | Merknad |
+|---|---|---|
+| Enumerert på bussen | `on` | ✓ |
+| Flexit-kommunikasjon OK | `on` | ✓ |
+| Resetårsak | `power-on event` | ekte strømbrudd, ikke OTA |
+| **Ettervarme aktivert** | **`on`** | ✓ **korrekt umiddelbart** |
+| Settpunkt | 18 °C | aggregatet husket innstillingen |
+
+Ettervarme-linja er verdt å merke seg: før dagens rettelse ville den stått
+`unknown` etter en kaldstart, og den første viftekommandoen etterpå ville slått
+ettervarmen av. Nå leses den fra statustelegrammet og er riktig fra første
+sekund. Kaldstarten er dermed også en verifikasjon av den rettelsen.
+
+## Telleren tikker
+
+`C6 20 0E` ord 10 lavbyte gikk `12` → `13` over klokkeslettet 14:00, mens
+filtertelleren sto stille. De to tikker altså i ulik fase (eller ulik enhet).
+Overlevde strømbruddet — det er lagret, ikke flyktig.
