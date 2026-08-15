@@ -2157,3 +2157,64 @@ regulatorforsterkninger (P/I for temperaturreguleringen — fabrikknivå-menyen
 Feltkart-tabellen (`[2]`, `[6]`, `[11]`) og rammetypetabellen (`C6`/`C7`) er
 oppdatert på stedet så de speiler fase 0-funnene over — de er levende
 referanser, ikke historikk.
+
+# C6-parseren i drift — og en teller som ikke var en teller (2026-08-15)
+
+Parseren for `0xC6` (16-bit heltall, big endian) er implementert og verifisert
+mot fasit: alle de identifiserte klyngene leser riktig verdi live (50/75/100 %
+viftehastigheter, 16/35 tilluftgrenser, 15/2 utekompensering, 30 s motorvern,
+180 s avstengingssekvens, filterintervall 6 mnd).
+
+## Filtertelleren holder — og den er nyttig
+
+`C6 20 1C` ord 8 var `72 B4` = 29364 i går og `72 CB` = 29387 nå: **+23 på ~23
+timer**. Den tikker altså én gang i timen, monotont, som forventet. Eksponert
+som **«Filtertimer»**. Med manualens filterintervall (6 mnd ≈ 4380 t) gir det
+«tid til filterbytte» — og, viktigere, en **målbar fasit** på om
+filterreset-knappen faktisk nullstiller timeren.
+
+## Men den «andre timetelleren» var en feilslutning
+
+`C6 20 0E` ord 10 så overbevisende ut som teller nummer to:
+
+| Tidspunkt | Verdi | Differanse mot filtertelleren |
+|---|---|---|
+| 13. aug | `82 DC` = 33500 | 4158 |
+| 14. aug | `82 E5` = 33509 | 4158 |
+| 15. aug (morgen) | `82 F2` = 33522 | 4158 |
+| **15. aug 13:29** | **`00 0C` = 12** | −29375 |
+
+Tre målinger med *konstant* differanse mot en teller vi vet er ekte — det er
+sterkt. Og likevel feil.
+
+Det fjerde datapunktet avslører strukturen: lavbyten gikk `F2` (242) → `0C`
+(12), altså en rundgang forbi 255. Men høybyten gikk `0x82` → **`0x00`**, ikke
+til `0x83`. **En carry som nuller høybyten er ingen carry.** De to bytene er
+uavhengige felt som tilfeldigvis lå ved siden av hverandre, og «differansen
+4158» var et artefakt av at høybyten sto stille på `0x82` i tre døgn.
+
+Samme mønster i `C6 20 00` ord 0: lavbyten står stabilt på 25 (maks settpunkt),
+mens høybyten gikk `0x00` → `0x08` i samme tidsrom. To høybyte-felt som beveger
+seg uten at vi vet hva de er.
+
+Begge er nå eksponert **byte for byte** som diagnostikk («Teller 0x0E[10] lav»,
+«Flagg 0x0E[10] høy», «Flagg 0x00[0] høy»), slik at recorderen kartlegger
+oppførselen over dager i stedet for at vi gjetter videre.
+
+**Metodenotatet igjen:** tre punkter på rad med konstant differanse fristet til
+en konklusjon. Det fjerde punktet kostet ingenting — det kom av seg selv da
+koden ble satt i drift — og veltet hele tolkningen. En hypotese bygget på
+data som *ikke har hatt anledning til å motsi seg selv* er ikke testet ennå.
+
+## Nye entiteter i denne runden
+
+- «Filtertimer», «Filterintervall» (mnd)
+- «Lagret settpunkt» / «Lagret viftetrinn» — verifisert live: viser 18/1, som
+  er nøyaktig aggregatets faktiske innstilling
+- Viftehastighet trinn 1/2/3 (50/75/100 %)
+- Grenseverdier som diagnostikk (av som standard): min/maks settpunkt,
+  min/maks tilluft, utekompensering, motorvern, avstengingssekvens
+- **«Ukjent alarm»** — `[4] & ~0x02`. Fanger den røde alarm-LED-en
+  (rotoralarm / overhetingstermostat) første gang den fyrer, uten at vi vet
+  hvilket bit den bruker
+- **«Avbryt forsering»** — skriver returtrinnet (lav nibbel av `[5]`)

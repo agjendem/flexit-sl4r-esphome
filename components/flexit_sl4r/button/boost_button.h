@@ -41,3 +41,12 @@ class ResetFilterButton final : public button::Button, public Parented<FlexitSL4
 };
 
 }  // namespace esphome::flexit_sl4r
+
+namespace esphome::flexit_sl4r {
+
+class CancelBoostButton final : public button::Button, public Parented<FlexitSL4RComponent> {
+ protected:
+  void press_action() override;
+};
+
+}  // namespace esphome::flexit_sl4r

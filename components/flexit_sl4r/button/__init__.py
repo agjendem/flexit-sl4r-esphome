@@ -11,11 +11,13 @@ CONF_BOOST = "boost"
 CONF_DUMP_BOOT_CAPTURE = "dump_boot_capture"
 CONF_DUMP_ANOMALIES = "dump_anomalies"
 CONF_RESET_FILTER = "reset_filter"
+CONF_CANCEL_BOOST = "cancel_boost"
 
 BoostButton = flexit_sl4r_ns.class_("BoostButton", button.Button, cg.Parented)
 DumpBootCaptureButton = flexit_sl4r_ns.class_("DumpBootCaptureButton", button.Button, cg.Parented)
 DumpAnomaliesButton = flexit_sl4r_ns.class_("DumpAnomaliesButton", button.Button, cg.Parented)
 ResetFilterButton = flexit_sl4r_ns.class_("ResetFilterButton", button.Button, cg.Parented)
+CancelBoostButton = flexit_sl4r_ns.class_("CancelBoostButton", button.Button, cg.Parented)
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -24,6 +26,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DUMP_BOOT_CAPTURE): button.button_schema(DumpBootCaptureButton),
         cv.Optional(CONF_DUMP_ANOMALIES): button.button_schema(DumpAnomaliesButton),
         cv.Optional(CONF_RESET_FILTER): button.button_schema(ResetFilterButton),
+        cv.Optional(CONF_CANCEL_BOOST): button.button_schema(CancelBoostButton),
     }
 )
 
@@ -41,4 +44,7 @@ async def to_code(config):
         await cg.register_parented(btn, parent)
     if reset_filter_config := config.get(CONF_RESET_FILTER):
         btn = await button.new_button(reset_filter_config)
+        await cg.register_parented(btn, parent)
+    if cancel_boost_config := config.get(CONF_CANCEL_BOOST):
+        btn = await button.new_button(cancel_boost_config)
         await cg.register_parented(btn, parent)

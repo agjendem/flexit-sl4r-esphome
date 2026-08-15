@@ -29,8 +29,15 @@ CONF_ANOMALIES = "anomalies"
 CONF_HEAT_DEMAND = "heat_demand"
 CONF_RAW_STATUS_BYTES = "raw_status_bytes"
 CONF_FLOAT_REGISTERS = "float_registers"
+CONF_INT_REGISTERS = "int_registers"
 CONF_REGISTER = "register"
 CONF_SLOT = "slot"
+CONF_BANK = "bank"
+CONF_MODE = "mode"
+
+# Flere parametre er lagret som (min, maks)-BYTEPAR i ett 16-bit-ord, så begge
+# halvdelene må kunne eksponeres hver for seg.
+INT_MODES = {"word": 0, "high_byte": 1, "low_byte": 2}
 
 
 def _temperature_schema():
@@ -76,6 +83,18 @@ FLOAT_REGISTER_SCHEMA = sensor.sensor_schema(
     }
 )
 
+# 16-bit-ordene i 0xC6-rammene: parametertabellene (bank 0x20) og ur-lagringen
+# (bank 0x21). Verdiene kringkastes kontinuerlig i CS50s faste runde, så ingen
+# leseforespørsel trengs — vi plukker dem bare ut når rammen passerer.
+INT_REGISTER_SCHEMA = _diagnostic_schema().extend(
+    {
+        cv.Optional(CONF_BANK, default=0x20): cv.hex_int_range(min=0x20, max=0x22),
+        cv.Required(CONF_REGISTER): cv.int_range(min=0, max=255),
+        cv.Required(CONF_INDEX): cv.int_range(min=0, max=13),
+        cv.Optional(CONF_MODE, default="word"): cv.enum(INT_MODES, lower=True),
+    }
+)
+
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_ID): cv.declare_id(cg.EntityBase),
@@ -103,6 +122,7 @@ CONFIG_SCHEMA = cv.Schema(
         ),
         cv.Optional(CONF_RAW_STATUS_BYTES): cv.ensure_list(RAW_STATUS_BYTE_SCHEMA),
         cv.Optional(CONF_FLOAT_REGISTERS): cv.ensure_list(FLOAT_REGISTER_SCHEMA),
+        cv.Optional(CONF_INT_REGISTERS): cv.ensure_list(INT_REGISTER_SCHEMA),
     }
 )
 
@@ -137,5 +157,13 @@ async def to_code(config):
         cg.add(
             hub.add_float_register_sensor(
                 sub[CONF_TYPE], sub[CONF_REGISTER], sub[CONF_SLOT], sens
+            )
+        )
+
+    for sub in config.get(CONF_INT_REGISTERS, []):
+        sens = await sensor.new_sensor(sub)
+        cg.add(
+            hub.add_int_register_sensor(
+                sub[CONF_BANK], sub[CONF_REGISTER], sub[CONF_INDEX], sub[CONF_MODE], sens
             )
         )

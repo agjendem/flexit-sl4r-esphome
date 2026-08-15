@@ -56,6 +56,7 @@ static constexpr uint8_t FRAME_MAX_PAYLOAD = 64;    // observert maks er 30
 
 static constexpr uint8_t TYPE_STATUS = 0xC1;   // med LEN=22 er dette statustelegrammet
 static constexpr uint8_t TYPE_FLOAT = 0xC2;    // IEEE754 float-registre (målinger)
+static constexpr uint8_t TYPE_INT = 0xC6;      // 16-bit heltall: parametertabellene + ur-lagringen (bank 0x21)
 static constexpr uint8_t TYPE_PARAM = 0xC7;    // IEEE754 float-parametere/grenser
 
 // Verdi CS50 rapporterer for en følerinngang som ikke er tilkoblet.
@@ -116,6 +117,10 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — betydning under re-verifisering (forsering?)
   SUB_BINARY_SENSOR(afterheat_enabled)   // panelramme data[4] bit7 — aktivert av bruker
   SUB_BINARY_SENSOR(filter_alarm)        // payload[4] bit1 — filtertid utløpt
+  // Ethvert annet bit i alarmfeltet enn filterbiten. Fanger den røde
+  // alarm-LED-en (rotoralarm / overhetingstermostat — begge udokumenterte
+  // bits) den dagen den fyrer. HVILKET bit leses av «Rå status[4]».
+  SUB_BINARY_SENSOR(unknown_alarm)
   SUB_BINARY_SENSOR(heat_recovery_active)  // payload[2] bit0 — rotoren går
   SUB_BINARY_SENSOR(bypass_active)         // payload[2] bit1 — ANTATT bypass, aldri observert
   SUB_BINARY_SENSOR(communication)
@@ -175,6 +180,10 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // tilbake til forrige trinn når perioden er over.
   void trigger_boost();
 
+  // Avbryter forseringen ved å skrive returtrinnet — samme mekanisme som en
+  // manuell trinn-endring, bare med trinnet aggregatet uansett skal tilbake til.
+  void cancel_boost();
+
   // Nullstiller filtervakttimeren, med hele prosedyren fra CI 50-manualen:
   // settpunkt til 20 grader, så reset-flagget, så tilbake til opprinnelig
   // settpunkt. Manualen krever 20-graders-steget, og en reset uten det viste
@@ -216,6 +225,14 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void add_float_register_sensor(uint8_t type, uint8_t reg, uint8_t slot, sensor::Sensor *sensor) {
     this->float_register_sensors_.push_back({type, reg, slot, sensor});
   }
+  // 16-bit-ord fra 0xC6-rammene (parametertabellene). `index` er ordindeks
+  // innenfor rammen (0–13); `mode` velger hele ordet eller én av bytene —
+  // flere parametre er lagret som (min, maks)-BYTEPAR i ett ord.
+  // Publiserer kun ved endring: rammene gjentas kontinuerlig i CS50s runde,
+  // og verdiene er parametre/tellere som nesten aldri endrer seg.
+  void add_int_register_sensor(uint8_t bank, uint8_t reg, uint8_t index, uint8_t mode, sensor::Sensor *sensor) {
+    this->int_register_sensors_.push_back({bank, reg, index, mode, sensor, -1});
+  }
 #endif
 
  protected:
@@ -223,6 +240,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void handle_incoming_byte_(uint8_t byte);
   void dispatch_frame_();
   void handle_float_frame_();
+  void handle_int_frame_();
   void parse_and_publish_status_();
 
   // --- Sending: ikke-blokkerende deteksjon av CI50s kommandovindu + injeksjon ---
@@ -326,6 +344,15 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
     sensor::Sensor *sensor;
   };
   std::vector<FloatRegisterSensor> float_register_sensors_;
+  struct IntRegisterSensor {
+    uint8_t bank;
+    uint8_t reg;
+    uint8_t index;  // ordindeks i rammen, 0-13
+    uint8_t mode;   // 0 = helt ord, 1 = høy byte, 2 = lav byte
+    sensor::Sensor *sensor;
+    int32_t last_value;  // -1 = aldri publisert (alle reelle verdier er 0-65535)
+  };
+  std::vector<IntRegisterSensor> int_register_sensors_;
 #endif
 
   // Bygger de fem headerbytene for vår avsenderadresse. Byte 3-4 er

@@ -199,6 +199,12 @@ button:
     boost:
       name: "Forsering"
       icon: "mdi:fan-plus"
+    # Avbryter forseringen ved å skrive RETURTRINNET (lav nibbel av [5]) —
+    # altså trinnet aggregatet uansett faller tilbake til. Verifisert
+    # mekanisme: en trinnskriving avslutter forseringen (pådrag 100 -> 49 %).
+    cancel_boost:
+      name: "Avbryt forsering"
+      icon: "mdi:fan-off"
     # Dumper de første 6 kB fra bussen etter oppstart. Registreringen av
     # paneler skjer i løpet av sekunder etter at CS50 får strøm — lenge før
     # WiFi og API er oppe — så den må bufres i RAM og hentes ut etterpå.
@@ -301,6 +307,143 @@ sensor:
         slot: 4
         name: "Ledig følerinngang 2"
 
+    # --- Parameterregistrene (0xC6) ---
+    # CS50 kringkaster hele parametertabellen kontinuerlig i sin faste runde, så
+    # dette er ren avlytting — ingen leseforespørsel finnes (og trengs ikke).
+    # Layouten er CS 500 sin (bekreftet: kjøleparametere merket «ikke CS 50»
+    # ligger der på fabrikkverdi), gruppert etter TYPE — min/maks-par ligger
+    # sammen — ikke etter menyrekkefølge. Se research/protocol-notes.md.
+    int_registers:
+      # reg 0x0E ord 10 så lenge ut som en andre timeteller (`82 DC` -> `82 E5`
+      # -> `82 F2`, +9 og +13 over to døgn, konstant differanse 4158 mot
+      # filtertelleren). 15. august sto det plutselig `00 0C`: lavbyten hadde
+      # rullet rundt 242 -> 12, og høybyten gikk 0x82 -> 0x00 i stedet for å
+      # bære carry til 0x83. Det ER altså ikke ett 16-bit tall. Bytene
+      # eksponeres derfor hver for seg til oppførselen er kartlagt.
+      - register: 0x0E
+        index: 10
+        mode: low_byte
+        name: "Teller 0x0E[10] lav"
+      - register: 0x0E
+        index: 10
+        mode: high_byte
+        name: "Flagg 0x0E[10] høy"
+      # Samme mønster i reg 0x00 ord 0: lavbyten er stabilt 25 (maks settpunkt),
+      # mens høybyten gikk 0x00 -> 0x08 i samme tidsrom. To «høybyte-flagg» som
+      # beveger seg — verdt å følge.
+      - register: 0x00
+        index: 0
+        mode: high_byte
+        name: "Flagg 0x00[0] høy"
+      # Den viktigste av de to: timer siden filtervakten sist ble nullstilt.
+      # Gir «tid til filterbytte» i HA, og — viktigere — en MÅLBAR fasit på om
+      # «Nullstill filtervakt» faktisk virker. Da alarmen ble kvittert ved et
+      # uhell 14. august fortsatte denne å telle, og alarmen kom tilbake.
+      - register: 0x1C
+        index: 8
+        name: "Filtertimer"
+        unit_of_measurement: "h"
+        icon: "mdi:air-filter"
+        state_class: total_increasing
+      # Filterintervallet i måneder (manualens «Tids periode», 0-12, std 6).
+      - register: 0x0E
+        index: 5
+        name: "Filterintervall"
+        unit_of_measurement: "mnd"
+        icon: "mdi:calendar-clock"
+      # De lagrede brukerinnstillingene — det aggregatet husker over strømbrudd.
+      # Fulgte panelsekvensen slavisk gjennom hele 13. august-opptaket, som er
+      # det som identifiserte dem.
+      - register: 0x0E
+        index: 12
+        mode: high_byte
+        name: "Lagret settpunkt"
+        unit_of_measurement: "°C"
+        device_class: temperature
+      - register: 0x0E
+        index: 12
+        mode: low_byte
+        name: "Lagret viftetrinn"
+      # Viftepådragene per trinn (50/75/100 %) — de matcher målt [13]/[14].
+      - register: 0x0E
+        index: 8
+        mode: high_byte
+        name: "Viftehastighet trinn 1"
+        unit_of_measurement: "%"
+      - register: 0x0E
+        index: 8
+        mode: low_byte
+        name: "Viftehastighet trinn 2"
+        unit_of_measurement: "%"
+      - register: 0x0E
+        index: 9
+        mode: high_byte
+        name: "Viftehastighet trinn 3"
+        unit_of_measurement: "%"
+      # Settpunktgrensene. Maks (25) er samtidig målet for skriveeksperimentet
+      # i TODO — den er en ren UI-grense og dermed det tryggeste feltet å røre.
+      - register: 0x00
+        index: 0
+        mode: low_byte
+        name: "Maks settpunkt"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x0E
+        index: 0
+        mode: high_byte
+        name: "Min settpunkt"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      # Tilluftgrensene (16/35 °C) — regulatorens ytterpunkter.
+      - register: 0x00
+        index: 9
+        mode: high_byte
+        name: "Min tilluft"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x00
+        index: 9
+        mode: low_byte
+        name: "Maks tilluft"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      # Utekompensering: knekkpunkt 15 °C, avvik 2 °C (manualens 4.32/4.33).
+      - register: 0x00
+        index: 11
+        mode: high_byte
+        name: "Utekompensering utetemperatur"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        disabled_by_default: true
+      - register: 0x00
+        index: 11
+        mode: low_byte
+        name: "Utekompensering avvik"
+        unit_of_measurement: "°C"
+        disabled_by_default: true
+      # Motorvernforsinkelse (30 s) og avstengingssekvens (180 s).
+      - register: 0x0E
+        index: 6
+        name: "Motorvern forsinkelse"
+        unit_of_measurement: "s"
+        disabled_by_default: true
+      - register: 0x0E
+        index: 4
+        name: "Avstengingssekvens"
+        unit_of_measurement: "s"
+        disabled_by_default: true
+      # Ukjent — men et av de få feltene som fortsatt kan være
+      # utstyrskonfigurasjonen (manualens 4.91 «Komponenter»). Ligger utenfor
+      # min/maks-klyngene, som er nettopp der en enumerert konfig skal ligge.
+      - register: 0x0E
+        index: 11
+        name: "Ukjent parameter 0x0E[11]"
+        disabled_by_default: true
+
 binary_sensor:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
@@ -320,6 +463,12 @@ binary_sensor:
     # alarmen er tidsbasert og nullstilles på panelet.
     filter_alarm:
       name: "Filteralarm"
+    # Alle andre bit i payload[4]. Rotoralarm og overhetingstermostat er de
+    # dokumenterte CS 50-alarmene vi IKKE har sett bitposisjonen til — og
+    # overhetingstermostaten kan ikke provoseres trygt. Denne fanger dem
+    # likevel første gang de fyrer; «Rå status[4]» + anomaliloggen viser hvilket.
+    unknown_alarm:
+      name: "Ukjent alarm"
     # payload[2] bit0 — settes når varmepådraget passerer ~10, altså når rotoren
     # faktisk begynner å snurre. Ikke det samme som «det finnes et varmebehov»:
     # pådraget starter først, biten kommer ved terskelen.

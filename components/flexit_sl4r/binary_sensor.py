@@ -16,6 +16,7 @@ DEPENDENCIES = ["flexit_sl4r"]
 CONF_AFTERHEAT_ACTIVE = "afterheat_active"
 CONF_AFTERHEAT_ENABLED = "afterheat_enabled"
 CONF_FILTER_ALARM = "filter_alarm"
+CONF_UNKNOWN_ALARM = "unknown_alarm"
 CONF_HEAT_RECOVERY_ACTIVE = "heat_recovery_active"
 CONF_BYPASS_ACTIVE = "bypass_active"
 CONF_COMMUNICATION = "communication"
@@ -44,6 +45,12 @@ CONFIG_SCHEMA = {
     # Filtertid utlopt. CS 50 har ingen trykkvakt - alarmen er tidsbasert.
     cv.Optional(CONF_FILTER_ALARM): binary_sensor.binary_sensor_schema(
         device_class="problem", icon="mdi:air-filter"
+    ),
+    # Ethvert alarmbit UNNTATT filterbiten. Den rode alarm-LED-en (rotoralarm,
+    # overhetingstermostat) er ikke dekodet bit for bit - denne fanger den
+    # likevel den dagen den fyrer. Hvilket bit leses av "Ra status[4]".
+    cv.Optional(CONF_UNKNOWN_ALARM): binary_sensor.binary_sensor_schema(
+        device_class="problem", icon="mdi:alert-circle"
     ),
     cv.Optional(CONF_HEAT_RECOVERY_ACTIVE): binary_sensor.binary_sensor_schema(
         device_class=DEVICE_CLASS_RUNNING, icon="mdi:autorenew"
@@ -76,6 +83,9 @@ async def to_code(config):
     if filter_alarm_config := config.get(CONF_FILTER_ALARM):
         sens = await binary_sensor.new_binary_sensor(filter_alarm_config)
         cg.add(flexit_sl4r_component.set_filter_alarm_binary_sensor(sens))
+    if unknown_alarm_config := config.get(CONF_UNKNOWN_ALARM):
+        sens = await binary_sensor.new_binary_sensor(unknown_alarm_config)
+        cg.add(flexit_sl4r_component.set_unknown_alarm_binary_sensor(sens))
     if heat_recovery_config := config.get(CONF_HEAT_RECOVERY_ACTIVE):
         sens = await binary_sensor.new_binary_sensor(heat_recovery_config)
         cg.add(flexit_sl4r_component.set_heat_recovery_active_binary_sensor(sens))

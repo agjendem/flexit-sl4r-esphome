@@ -80,11 +80,15 @@ Mekanismen er tidsbasert («filtertid»); CS 50 har ingen trykkvakter.
       venting. NB: 14. august-hendelsen nullstilte IKKE telleren (den fortsatte
       29351 → 29364) — det er derfor alarmen re-armerte.
 - [x] ~~Sjekk om **filtertiden/tidstelleren** også ligger på bussen.~~
-      **FUNNET (fase 0, 2026-08-15):** to timetellere som tikker 1/time —
-      `C6 20 0E` ord 10 (33500+, total driftstid/«Tidsteller») og `C6 20 1C`
-      ord 8 (29342+, timer siden filternullstilling/«Filtertid»). Manualens
-      filterintervall er 0–12 mnd (std 6 — og `00 06`=6 ligger i reg `0x0E`).
-      Eksponeres som sensorer i fase 2; «dager til filterbytte» kan beregnes.
+      **FUNNET og VERIFISERT LIVE (2026-08-15):** `C6 20 1C` ord 8 tikker én
+      gang i timen (+23 på 23 t), eksponert som **«Filtertimer»** sammen med
+      **«Filterintervall»** (6 mnd, manualens std). Gir «tid til filterbytte».
+      NB: den antatte *andre* telleren (`C6 20 0E` ord 10) viste seg å ikke
+      være en 16-bit teller i det hele tatt — lavbyten rullet rundt mens
+      høybyten nullet seg i stedet for å bære carry. Eksponert byte for byte.
+- [ ] **Kartlegg de to «høybyte-flaggene»** som beveger seg uten forklaring:
+      `C6 20 0E` ord 10 høy (`0x82` → `0x00`) og `C6 20 00` ord 0 høy
+      (`0x00` → `0x08`). Begge logges nå; se etter mønster over dager.
 
 ### 3. ~~Rotorpådrag~~ — FUNNET 2026-08-15
 

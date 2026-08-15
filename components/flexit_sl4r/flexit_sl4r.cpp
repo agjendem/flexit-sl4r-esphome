@@ -335,8 +335,52 @@ void FlexitSL4RComponent::dispatch_frame_() {
     return;
   }
 
-  if (type == TYPE_FLOAT || type == TYPE_PARAM)
+  if (type == TYPE_FLOAT || type == TYPE_PARAM) {
     this->handle_float_frame_();
+    return;
+  }
+
+  if (type == TYPE_INT)
+    this->handle_int_frame_();
+}
+
+void FlexitSL4RComponent::handle_int_frame_() {
+#ifdef USE_SENSOR
+  // 0xC6: payload[0] = bank, payload[1] = registerindeks (i ORD — den stepper
+  // 0x00/0x0E/0x1C fordi hver ramme bærer 14 16-bit-ord). Ordene er BIG endian
+  // (`00 19` = 25), i motsetning til floatene som er little endian.
+  if (this->int_register_sensors_.empty())
+    return;
+  const uint8_t bank = this->frame_[FRAME_HEADER_LENGTH];
+  const uint8_t reg_base = this->frame_[FRAME_HEADER_LENGTH + 1];
+  const uint8_t *data = this->frame_.data() + FRAME_HEADER_LENGTH + 2;
+  const size_t words = (this->frame_[FRAME_LEN_OFFSET] - 2) / 2;
+
+  for (auto &irs : this->int_register_sensors_) {
+    if (irs.bank != bank || irs.reg != reg_base || irs.index >= words)
+      continue;
+    const uint8_t hi = data[irs.index * 2];
+    const uint8_t lo = data[irs.index * 2 + 1];
+    int32_t value;
+    switch (irs.mode) {
+      case 1:
+        value = hi;
+        break;
+      case 2:
+        value = lo;
+        break;
+      default:
+        value = (static_cast<int32_t>(hi) << 8) | lo;
+        break;
+    }
+    // Publiser kun ved endring — rammen gjentas hvert par sekunder, og
+    // parametre/tellere endrer seg fra aldri til én gang i timen.
+    if (value != irs.last_value) {
+      irs.last_value = value;
+      irs.sensor->publish_state(value);
+    }
+  }
+#endif
 }
 
 void FlexitSL4RComponent::publish_firmware_(bool controller) {
@@ -530,6 +574,11 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_);
   if (this->filter_alarm_binary_sensor_ != nullptr)
     this->filter_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ALARM_FILTER) != 0);
+  // Alle andre alarmbit enn filterbiten. Går denne på, har den røde
+  // alarm-LED-en trolig tent — les «Rå status[4]» og anomaliloggen for
+  // HVILKET bit (rotoralarm og overhetingstermostat er kandidatene).
+  if (this->unknown_alarm_binary_sensor_ != nullptr)
+    this->unknown_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ~ALARM_FILTER) != 0);
   if (this->heat_recovery_active_binary_sensor_ != nullptr)
     this->heat_recovery_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_RUNNING) != 0);
   if (this->bypass_active_binary_sensor_ != nullptr)
@@ -641,6 +690,20 @@ void FlexitSL4RComponent::trigger_boost() {
 
   const std::array<uint8_t, 7> cmd_body{0xC1, n, 0x04, 0x20, 0x14, 0x31, 0x23};
   this->queue_raw_frame_(std::vector<uint8_t>(cmd_body.begin(), cmd_body.end()));
+}
+
+void FlexitSL4RComponent::cancel_boost() {
+  // Å skrive gjeldende viftetrinn avbryter forseringen (verifisert: pådraget
+  // falt 100 -> 49 %). Vi skriver RETURTRINNET (lav nibbel), altså nøyaktig det
+  // trinnet aggregatet uansett skal tilbake til når perioden er over — ikke
+  // høy nibbel, som under forsering er 3.
+  const uint8_t return_level = this->last_raw_fan_level_ & 0x0F;
+  if (return_level < 1 || return_level > 3) {
+    ESP_LOGW(TAG, "Kjenner ikke returtrinnet ennå - avbryter ikke forseringen");
+    return;
+  }
+  ESP_LOGI(TAG, "Avbryter forsering: skriver returtrinn %u", static_cast<unsigned>(return_level));
+  this->set_fan_level(return_level);
 }
 
 void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
