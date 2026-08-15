@@ -2,8 +2,7 @@
 
 Toveis integrasjon av et Flexit SL4R-ventilasjonsaggregat (CS50-hovedkort,
 CI50-betjeningspanel) i Home Assistant, uten Flexit sin egen CI66-adapter.
-Leser status (viftetrinn, forvarme, settpunkt varmeveksler) og — når Fase 2
-er verifisert med maskinvare — sender kommandoer tilbake.
+Leser status og skriver kommandoer over aggregatets egen RS485-buss.
 
 Maskinvare: M5Stack **ATOM Lite** (ESP32) + **ATOM Tail485** (TTL↔RS485,
 SKU T002), koblet i parallell med CI50 i den ledige **4P4C**-kontakten bak på
@@ -13,23 +12,24 @@ strømforsyning: se
 
 ## Status
 
-**Toveis styring virker mot ekte anlegg (14. august 2026).**
+**Toveis styring virker mot ekte anlegg (14. august 2026).** Siden da er
+`climate`-entitet, parameterregistrene og filtertelleren kommet til, og det er
+bekreftet at parameterregistrene kan skrives (15. august).
 
 - **Lesing:** tilluftstemperatur, viftetrinn (kjørende + retur), viftepådrag i
-  prosent for begge vifter, settpunkt varmeveksler, forsering aktiv,
-  **filteralarm**, og ettervarme både som «aktivert» og «varmer nå» — de to
-  svarer til panelets to lysdioder. I tillegg diagnostikk-entiteter for felt
-  vi ennå ikke har tydet, slik at HAs recorder bygger historikk å korrelere mot.
-- **Skriving:** viftetrinn, settpunkt varmeveksler og forsering — alt verifisert
-  mot CS50s egne kringkastede verdier, ikke bare mot vår egen UI-tilstand.
-  Å sette viftetrinn avbryter samtidig en pågående forsering.
-- **Ikke aktivert:** forvarme. Flagg-byten i tilstandsrammen er uavklart, og vi
-  gjetter ikke på et felt som kan utløse noe annet enn det står på.
+  prosent for begge vifter, settpunkt, varmepådrag, forsering, **filteralarm**,
+  **ettervarme aktivert**, og fra parameterregistrene **timer siden
+  filternullstilling** med filterintervall. I tillegg diagnostikk-entiteter for
+  felt vi ennå ikke har tydet, slik at HAs recorder bygger historikk.
+- **Skriving:** viftetrinn, settpunkt, forsering, avbryt forsering, ettervarme
+  av/på og filterreset — alt verifisert mot CS50s egne kringkastede verdier,
+  ikke bare mot vår egen UI-tilstand.
+- **`climate`-entitet** «Ventilasjon» samler settpunkt, viftemodus 1/2/3,
+  BOOST-preset og HEAT/FAN_ONLY (ettervarme) i én termostat-modell.
 - **Driftsdiagnostikk:** `Enumerert på bussen` viser om CS50 fortsatt poller
-  oss. Går den av, feiler skriving *stille* — enumereringen skjer kun ved
-  aggregatets oppstart, så da må aggregatet strømsykles. `Kommunikasjon OK`
-  dekker mottakssiden, og `Statusintervall` viser hvor ofte statustelegrammet
-  kommer (~0,7–1,2 s).
+  oss. Går den av, feiler skriving *stille*, og aggregatet må strømsykles.
+  `Kommunikasjon OK` dekker mottakssiden, og `Statusintervall` viser hvor ofte
+  statustelegrammet kommer (~0,7–1,2 s).
 
 Noden er koblet på CI50-panelets ledige 4P4C-kontakt og matet fra bussens egne
 11,8 V.
@@ -45,7 +45,8 @@ SVAR  (fra noden):   <TYPE> <node> <LEN> <data...> <ck1> <ck2>
 ```
 
 Ved oppstart pollast node 2, 3 og 5 fem ganger hver. Svarer de ikke, droppes de
-resten av driftsperioden. Vi melder oss derfor på som **node 5 = panel 2** —
+resten av driftsperioden — målt på en kaldstart: node 2 og 3 fikk sine fem
+forsøk innen henholdsvis 371 og 394 ms, og forsvant deretter. Vi melder oss derfor på som **node 5 = panel 2** —
 identiteten dipswitch 3 konfigurerer på et fysisk panel — og blir enumerert og
 pollet videre, også gjennom våre egne omstarter.
 
@@ -69,8 +70,10 @@ bygges om fra bunnen.
 | Viftetrinn | `select` | 1–3. Å sette trinn avbryter en pågående forsering |
 | Settpunkt varmeveksler | `number` | 15–25 °C |
 | Forsering | `button` | «Max vifte» — aggregatet faller selv tilbake |
+| Avbryt forsering | `button` | Skriver returtrinnet |
 | Ettervarme | `switch` | Skriver flagget direkte — utløser ikke filterreset, slik panelbevegelsen gjør |
 | Nullstill filtervakt | `button` | Kjører hele manualens prosedyre automatisk |
+| Ventilasjon | `climate` | Alt det over i én termostat-modell |
 
 **Måling**
 
@@ -80,12 +83,14 @@ fra bussen · ledige følerinnganger (skjuler seg selv når de ikke er tilkoblet
 
 **Tilstand og alarm**
 
-Filteralarm · ettervarme aktivert · ettervarme varmer nå · forsering aktiv ·
+Filteralarm · **ukjent alarm** · ettervarme aktivert · forsering aktiv ·
 **varmegjenvinner går** (rotoren snurrer faktisk, ikke bare at det finnes et
 behov) · **bypass (antatt)**.
 
-De to ettervarme-entitetene svarer til panelets to lysdioder, og kan verifiseres
-mot dem direkte.
+«Ettervarme aktivert» svarer til panelets «+»-lampe og kan verifiseres mot den
+direkte. «Ukjent alarm» er ethvert bit i alarmfeltet utenom filterbiten — vi vet
+ikke hvilket bit som er rotoralarm og hvilket som er overhetingstermostat, men
+entiteten fanger dem den dagen de fyrer, og rådataene ligger i anomaliloggen.
 
 «Bypass (antatt)» er en åpen gjetning, og navnet sier det: biten er aldri
 observert satt på vårt rotoraggregat. Hypotesen er at den koder bypass på
@@ -119,10 +124,12 @@ tydet.
 
 To følger er verdt å merke seg:
 
-- **Etter en omstart av noden vet vi ingenting** om panelets tilstand før
-  panelet sender neste ramme, og det gjør det kun ved endring. Entiteter som
-  hviler på panelets ramme viser derfor `unknown` inntil da, i stedet for å
-  gjette.
+- **Les tilstand fra statustelegrammet, ikke fra panelrammen**, når begge har
+  den. Panelet sender kun ved *endring*, så en verdi som bare latches derfra kan
+  være timer gammel — og etter en omstart står den på sin default. Ettervarmen
+  ble lest slik en periode, og siden verdien speiles inn i alle utgående rammer,
+  slo den første viftekommandoen etter hver omstart av ettervarmen. Nå leses den
+  fra statustelegrammet, som kommer hvert sekund.
 - **Knappebitene settes aldri** med mindre en handling krever det. Derfor kan
   for eksempel `switch` «Ettervarme» ikke utløse filterreset som bieffekt —
   noe panelets egen knappebevegelse faktisk gjør.
