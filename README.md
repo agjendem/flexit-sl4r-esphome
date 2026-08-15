@@ -191,16 +191,17 @@ Kartleggingen fortsetter i [`TODO.md`](TODO.md). Rotorpådraget (`[11]`),
 filteralarmen (`[4]` bit1) og til og med driftstimetellerne er funnet — de
 største åpne punktene nå:
 
-1. **Climate-entitet** («Ventilasjon») som samler settpunkt, viftetrinn,
-   forsering og ettervarme i én termostat-modell i HA.
-2. **Parametersensorer fra `C6`/`C7`-registrene** — filtertid-telleren gir
-   «timer siden filternullstilling» rett i HA.
-3. **`[6]` bit0-re-verifisering** (forsering vs. ettervarme-element) og de
-   siste ukjente statusfeltene (`[15]`/`[20]`-betydning, rød alarm-LED-bits).
-4. **Skrivevei til parameterregistrene?** Testes aller sist, med full
-   sikkerhetsprotokoll — se TODO.
-5. **Bidrag fra andre anlegg** (plateveksler, CS 500) for bypass-bitene,
-   utstyrskonfigurasjonen og ur-lagringen.
+1. **Ur-lagringen (bank `0x21`)** — nå dekodbar, siden parameterregistrene
+   viste seg å være skrivbare: skriv ett felt og se hva som flytter seg.
+2. **Ettervarmens eget 0–10 V-pådrag** (J5 pin 9,10). Vi har ingen
+   «elementet varmer nå»-indikator i det hele tatt — den antatte viste seg
+   å være forseringsflagget. Fyringssesongen gir bedre signal.
+3. **Rød alarm-LED**: hvilke bit i `[4]` er rotoralarm og
+   overhetingstermostat? Fanges automatisk av «Ukjent alarm» + anomaliloggen.
+4. **`[15]`** — varierer (32/35/48/51) uavhengig av både forsering og
+   ettervarme. Eneste statusfelt uten kjent korrelat.
+5. **Bidrag fra andre anlegg** (plateveksler, CS 500) for bypass-biten og
+   utstyrskonfigurasjonen — de kan ikke avgjøres på vårt aggregat.
 
 ## Hvor koden kjører
 
