@@ -212,6 +212,25 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void set_afterheat_enabled(bool on);
   bool get_afterheat_enabled() const { return this->afterheat_enabled_; }
 
+  // --- EKSPERIMENT: skriving til parameterregistrene (bank 0x20, type 0xC6) ---
+  //
+  // FARE. `0xC6`-blokkene er aggregatets DRIFTSPARAMETERE og ligger etter alt
+  // å dømme i EEPROM. En feilskriving kan ikke nødvendigvis nullstilles med en
+  // strømsykling. Derfor:
+  //   * dobbel gating i runtime (egen «Eksperimentmodus»-bryter i tillegg til
+  //     knappen), slik at et feiltrykk alene ikke gjør noe,
+  //   * målet er ETT ord som er en ren visningsgrense — maks settpunkt — og som
+  //     kan leses tilbake fra kringkastingsrunden innen ett sekund,
+  //   * hele blokken speiles fra siste mottatte ramme, og KUN én byte endres,
+  //     så selv om CS50 skulle skrive alle 14 ordene, skrives de tilbake til
+  //     nøyaktig de verdiene de allerede hadde.
+  //
+  // Er `enabled` false gjør kallet ingenting og logger en advarsel.
+  void set_param_write_enabled(bool on);
+  bool get_param_write_enabled() const { return this->param_write_enabled_; }
+  // Skriver maks settpunkt (bank 0x20 reg 0x00, ord 0, lav byte).
+  void write_max_setpoint_test(uint8_t celsius);
+
   // Dumper oppstartsfangsten til loggen. Nødvendig fordi de mest interessante
   // bytene — CS50s registrering av paneler — kommer i løpet av de første
   // sekundene etter at bussen får strøm, altså LENGE før WiFi og API er oppe
@@ -348,6 +367,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Tilluft, speilet fra 0xC2 reg 0 slot 1 — climate-entiteten trenger den som
   // «current temperature», og den kommer i en annen ramme enn statusen.
   float last_supply_air_temp_{NAN};
+  // Siste mottatte C6 bank 0x20 reg 0x00-blokk, speilet for skriveeksperimentet.
+  std::vector<uint8_t> last_param_block_;
+  bool param_write_enabled_{false};
 #ifdef USE_CLIMATE
   FlexitClimate *ventilation_climate_{nullptr};
   void publish_climate_();

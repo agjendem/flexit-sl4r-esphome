@@ -168,6 +168,24 @@ switch:
     turn_off_action:
       - lambda: 'id(flexit_sl4r_hub)->set_raw_logging(false);'
 
+  # --- EKSPERIMENT: låser opp skriving til parameterregistrene ---
+  # FARE: 0xC6-blokkene er driftsparametere og ligger etter alt å dømme i
+  # EEPROM — en feilskriving kan ikke nødvendigvis nullstilles med strømsykling.
+  # Denne bryteren er halvparten av en dobbel gating: knappen under gjør
+  # ingenting før den står på. restore_mode: DISABLED slik at den aldri er
+  # påslått etter en omstart.
+  - platform: template
+    name: "Eksperimentmodus (parameterskriving)"
+    id: param_write_mode
+    restore_mode: DISABLED
+    entity_category: diagnostic
+    icon: "mdi:flask-outline"
+    lambda: 'return id(flexit_sl4r_hub)->get_param_write_enabled();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_param_write_enabled(true);'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->set_param_write_enabled(false);'
+
   - platform: template
     name: "TX-test (feilsøking)"
     id: tx_test
@@ -239,6 +257,26 @@ button:
       name: "Dump anomalier"
       icon: "mdi:bug-outline"
       entity_category: diagnostic
+
+# --- EKSPERIMENT: skriv ETT parameterord og les det tilbake ---
+# Målet er maks settpunkt (bank 0x20 reg 0x00, ord 0, lav byte): en ren
+# visningsgrense som ikke påvirker drift, og som kringkastes tilbake innen
+# ett sekund så vi ser resultatet umiddelbart. Hele blokken speiles fra CS50s
+# siste ramme og KUN den ene byten endres — skulle CS50 skrive alle 14 ordene,
+# skrives de tilbake til verdiene de allerede hadde.
+# Begge knappene krever at «Eksperimentmodus» står på.
+  - platform: template
+    name: "EKSPERIMENT: sett maks settpunkt 24"
+    entity_category: diagnostic
+    icon: "mdi:flask"
+    on_press:
+      - lambda: 'id(flexit_sl4r_hub)->write_max_setpoint_test(24);'
+  - platform: template
+    name: "EKSPERIMENT: gjenopprett maks settpunkt 25"
+    entity_category: diagnostic
+    icon: "mdi:backup-restore"
+    on_press:
+      - lambda: 'id(flexit_sl4r_hub)->write_max_setpoint_test(25);'
 
 number:
   - platform: flexit_sl4r
@@ -400,7 +438,6 @@ sensor:
         name: "Maks settpunkt"
         unit_of_measurement: "°C"
         device_class: temperature
-        disabled_by_default: true
       - register: 0x0E
         index: 0
         mode: high_byte

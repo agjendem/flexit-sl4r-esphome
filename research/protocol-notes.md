@@ -2371,3 +2371,70 @@ sekund. Kaldstarten er dermed også en verifikasjon av den rettelsen.
 `C6 20 0E` ord 10 lavbyte gikk `12` → `13` over klokkeslettet 14:00, mens
 filtertelleren sto stille. De to tikker altså i ulik fase (eller ulik enhet).
 Overlevde strømbruddet — det er lagret, ikke flyktig.
+
+# GJENNOMBRUDD: parameterregistrene ER skrivbare (2026-08-15)
+
+Det siste store åpne spørsmålet er besvart. **CS50 godtar skriving til
+`0xC6`-parameterblokkene** via nøyaktig samme mekanisme som all annen
+skriving: som svar på en poll.
+
+## Forsøket
+
+Mål: **maks settpunkt**, bank `0x20` reg `0x00` ord 0 lav byte. Valgt fordi den
+er en ren visningsgrense uten driftskonsekvens, og fordi den kringkastes tilbake
+hvert sekund — resultatet er synlig umiddelbart.
+
+Metode: hele blokken speiles fra CS50s siste ramme, og **kun én byte endres**.
+Skulle CS50 skrive alle 14 ordene, skrives 13 av dem tilbake til nøyaktig de
+verdiene de allerede hadde. Rammen vi sender er `C6 05 1E 20 00 <28 byte>` —
+identisk med CS50s egen `C6 01 1E 20 00 …` bortsett fra nodenummeret og den ene
+byten.
+
+```
+før:      C6 01 1E 20 00  08 19  00 1E 02 1C 14 50 ... 00 1E   (0x19 = 25)
+etter:    C6 01 1E 20 00  08 18  00 1E 02 1C 14 50 ... 00 1E   (0x18 = 24)
+gjenoppr: C6 01 1E 20 00  08 19  00 1E 02 1C 14 50 ... 00 1E   (0x19 = 25)
+```
+
+CS50 begynte å kringkaste den nye verdien innen ett sekund, og gjenopprettingen
+gikk like rent.
+
+## Abortkriteriene — alle grønne
+
+| Kriterium | Resultat |
+|---|---|
+| Endret noe *annet* register seg? | Nei — `20 0E` og `20 1C` byte-identiske gjennom hele forsøket |
+| Endret vifte/settpunkt/alarm seg? | Nei — trinn 1, 18 °C, ingen alarmbit |
+| Steg «Rammer forkastet»? | Nei — 0 |
+| Steg «Anomalier»? | Nei — 0 |
+| Leste vi tilbake forventet verdi? | Ja, begge veier |
+| Ble ettervarmen rørt? | Nei — fortsatt aktivert |
+
+## Hva dette åpner
+
+- **Ur-lagringen (bank `0x21`)** kan nå dekodes ved å skrive ett felt og se hva
+  som flytter seg — den eneste metoden som var mulig, og som til nå krevde et
+  CS 500-panel med display.
+- **Utstyrskonfigurasjonen** kan i prinsippet leses ut ved samme metode. **Men
+  den skal ALDRI skrivetestes** — feltene styrer rotor/plate, el/vann og
+  forvarme/bypass, og en feilskriving omkonfigurerer aggregatet.
+- Alle parametere i manualens tabeller (filtertid, viftehastigheter,
+  kompenseringskurver, DCV-grenser) kan i prinsippet settes fra HA.
+
+## Sikkerhetsvurdering — les dette før du bruker det
+
+Blokkene er driftsparametere og ligger etter alt å dømme i EEPROM. Vi har ikke
+vist at en feilskriving kan angres med en strømsykling — vi har bare vist at en
+*riktig* skriving kan skrives tilbake. Derfor:
+
+1. **Speil alltid hele blokken.** Bygg aldri en parameterramme fra grunnen.
+2. **Én byte om gangen**, med kjent utgangsverdi notert først.
+3. **Les tilbake** i kringkastingsrunden før du gjør noe mer.
+4. **Dobbel gating i runtime.** Funksjonen ligger bak en egen
+   «Eksperimentmodus»-bryter med `restore_mode: DISABLED`, slik at den aldri er
+   påslått etter en omstart og et feiltrykk alene ikke gjør noe.
+5. **Aldri utstyrskonfigurasjonen.**
+
+Funksjonen ligger på grenen `eksperiment/parameterskriving` og er bevisst
+**ikke** slått sammen til hovedgrenen. Den hører hjemme i et verktøy for
+protokollarbeid, ikke i firmwaren som styrer husets ventilasjon til daglig.

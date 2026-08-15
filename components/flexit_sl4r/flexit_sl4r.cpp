@@ -352,12 +352,18 @@ void FlexitSL4RComponent::handle_int_frame_() {
   // 0xC6: payload[0] = bank, payload[1] = registerindeks (i ORD — den stepper
   // 0x00/0x0E/0x1C fordi hver ramme bærer 14 16-bit-ord). Ordene er BIG endian
   // (`00 19` = 25), i motsetning til floatene som er little endian.
-  if (this->int_register_sensors_.empty())
-    return;
   const uint8_t bank = this->frame_[FRAME_HEADER_LENGTH];
   const uint8_t reg_base = this->frame_[FRAME_HEADER_LENGTH + 1];
   const uint8_t *data = this->frame_.data() + FRAME_HEADER_LENGTH + 2;
   const size_t words = (this->frame_[FRAME_LEN_OFFSET] - 2) / 2;
+
+  // Speil blokken vi eventuelt skal skrive tilbake i skriveeksperimentet, slik
+  // at rammen vi sender er identisk med CS50s egen bortsett fra den ene byten.
+  if (bank == 0x20 && reg_base == 0x00)
+    this->last_param_block_.assign(data, data + words * 2);
+
+  if (this->int_register_sensors_.empty())
+    return;
 
   for (auto &irs : this->int_register_sensors_) {
     if (irs.bank != bank || irs.reg != reg_base || irs.index >= words)
@@ -731,6 +737,49 @@ void FlexitSL4RComponent::trigger_boost() {
 
   const std::array<uint8_t, 7> cmd_body{0xC1, n, 0x04, 0x20, 0x14, 0x31, 0x23};
   this->queue_raw_frame_(std::vector<uint8_t>(cmd_body.begin(), cmd_body.end()));
+}
+
+void FlexitSL4RComponent::set_param_write_enabled(bool on) {
+  this->param_write_enabled_ = on;
+  if (on) {
+    ESP_LOGW(TAG, "EKSPERIMENTMODUS PÅ - skriving til parameterregistrene er låst opp");
+  } else {
+    ESP_LOGI(TAG, "Eksperimentmodus av");
+  }
+}
+
+void FlexitSL4RComponent::write_max_setpoint_test(uint8_t celsius) {
+  if (!this->param_write_enabled_) {
+    ESP_LOGW(TAG, "Parameterskriving er IKKE låst opp - ignorerer. Slå på «Eksperimentmodus» først.");
+    return;
+  }
+  if (this->last_param_block_.size() < 2) {
+    ESP_LOGW(TAG, "Har ikke mottatt parameterblokken ennå - avbryter");
+    return;
+  }
+  if (celsius < 15 || celsius > 40) {
+    ESP_LOGW(TAG, "Urimelig maks settpunkt %u - avbryter", static_cast<unsigned>(celsius));
+    return;
+  }
+
+  // Kopier blokken slik CS50 sist kringkastet den, og endre KUN lav byte i
+  // ord 0. Alt annet skrives tilbake med nøyaktig samme verdi det hadde.
+  std::vector<uint8_t> block = this->last_param_block_;
+  const uint8_t was = block[1];
+  block[1] = celsius;
+
+  std::vector<uint8_t> body;
+  body.reserve(block.size() + 5);
+  body.push_back(TYPE_INT);
+  body.push_back(this->source_node_);
+  body.push_back(static_cast<uint8_t>(block.size() + 2));  // LEN teller fra bank-byten
+  body.push_back(0x20);
+  body.push_back(0x00);
+  body.insert(body.end(), block.begin(), block.end());
+
+  ESP_LOGW(TAG, "PARAMETERSKRIVING: maks settpunkt %u -> %u (%u byte)", static_cast<unsigned>(was),
+           static_cast<unsigned>(celsius), static_cast<unsigned>(body.size()));
+  this->queue_raw_frame_(std::move(body));
 }
 
 void FlexitSL4RComponent::cancel_boost() {
