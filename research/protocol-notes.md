@@ -1872,25 +1872,85 @@ avgjort flere spørsmål på én gang.
 
 ## Kan plasseringene utledes fra manualens rekkefølge?
 
-Prøvd 2026-08-15. **Nei, ikke direkte** — men forsøket ga et brukbart spor.
+Prøvd 2026-08-15. **Delvis** — menyrekkefølgen gjelder ikke, men strukturen
+lot seg avdekke.
 
-### Hvorfor det ikke går
+> **Rettelse.** Første forsøk sammenlignet bare mot de **13** parameterne
+> manualen merker som gjeldende for CS 50, konkluderte «for få til å dekke 62
+> verdier», og stoppet der. Det var feil sammenligningsgrunnlag: dokument
+> 94269 dekker **CS 50 *og* CS 500**, og hypotesen var nettopp at layouten er
+> CS 500 sin. Riktig sett å matche mot er derfor **hele** parameterlista,
+> inkludert de 11 som er merket «(ikke CS 50)». Avsnittene under er resultatet
+> av den matchingen.
 
-| | |
+### Hypotesen er nå bekreftet, ikke bare sannsynlig
+
+Fra hele lista trakk vi ut 38 parametertabeller med numerisk standardverdi og
+søkte etter dem i `C6` bank `0x20` (76 byte / 38 16-bits verdier).
+
+To av treffene avgjør spørsmålet:
+
+| Seksjon | Parameter | Standard | Gjelder | Funnet |
+|---|---|---:|---|---|
+| 4.39 | Min hastighet (kjøling) | 45 | **ikke CS 50** | `2D` i reg `0x1C` ✓ |
+| 4.38 | Tid mellom hver start (DX) | 180 | **ikke CS 50** | `B4` i reg `0x1C` ✓ |
+
+**Kortet vårt har ikke kjøling i det hele tatt** — ingen DX-maskin, ingen
+isvannsventil. Likevel ligger standardverdiene for kjølestyring i registrene.
+Det er direkte bevis for at registerkartet er CS 500 sitt, og at parametere
+vårt kort ikke bruker blir liggende igjen på fabrikkverdi. Tidligere var dette
+en slutning fra at «det er for mange felter»; nå er det et positivt funn.
+
+### Rekkefølgen er *ikke* menyrekkefølgen
+
+| Test | Resultat |
 |---|---|
-| Parametere manualen dokumenterer **for CS 50** | 13 |
-| Parametere merket **«(ikke CS 50)»** | 11 |
-| Verdier vi faktisk ser i `C6` + `C7` (bank `0x20`) | **62** |
+| Standardverdier gjenfunnet | **36 av 38 (94 %)** |
+| Nullkontroll (tilfeldige verdier fra samme tallpool) | 29 av 38 (76 %) |
+| Lengste sammenhengende delsekvens i menyrekkefølge | **4** (`20, 16, 35, 30`) |
+| Manualens **nabopar** som ligger som nabobyte | **17 av 37** |
 
-Registerplassen rommer fem ganger mer enn manualen beskriver for vårt kort.
-Forklaringen er at **CS 50 og CS 500 deler firmware** — dokumentet er felles —
-så layouten er trolig CS 500 sin, med parametere vårt kort ikke bruker liggende
-igjen på standardverdi.
+94 % mot 76 % nullkontroll er svakt alene — parameterverdier er små, runde tall
+og bytepoolen har bare 25 distinkte verdier, så enkelttreff betyr lite. Det er
+**naboparene** som bærer beviset, for de er ordnede og usannsynlige:
 
-Det forklarer også hvorfor **verdi-matching virket** mens **posisjons-matching
-ikke gjør det**: de doble standardverdiene lot seg gjenkjenne uansett hvor de
-lå, mens den korte CS-50-lista ikke dekker feltet, og den lange lista er i
-*meny*rekkefølge — som ikke er bevist å være *register*rekkefølge.
+```
+reg 0x00:  … 10 23  10 23  0F 02 …
+              16,35  16,35  15,2
+```
+
+Manualen har, i denne rekkefølgen: `Min tilluft 16` / `Maks tilluft 35`
+(4.19–4.20), samme par igjen (4.29–4.30), deretter `Utetemperatur 15` /
+`Avvik 2` (4.32–4.33). Tre etterfølgende par fra manualen ligger som seks
+etterfølgende bytes i registeret. Tilsvarende opptrer `(20, 80)` fire ganger —
+manualens fire `Min verdi` / `Maks verdi`-par for DCV-regulering.
+
+### Konklusjon: gruppert etter type, ikke etter meny
+
+Verdiene som hører sammen som **min/maks-par** ligger sammen, men parene selv
+står ikke i menyens rekkefølge. Reg `0x00` inneholder for eksempel alle
+DCV-grensene i klynge (`20/80` ×2, `20/100` ×2), og temperaturgrensene i en
+annen klynge (`16/35` ×2, `15/2`), mens manualen fletter sommer/vinter-verdiene
+inn mellom dem.
+
+Det betyr at vi kan navngi **klynger** med god sikkerhet, men ikke tildele
+enkeltnavn innenfor en klynge uten å skrive til et register og observere
+effekten. Klyngene vi mener å kjenne igjen:
+
+| Register | Bytes | Tolkning |
+|---|---|---|
+| `0x00` | `14 50` ×2 | DCV `Min verdi 20 %` / `Maks verdi 80 %` |
+| `0x00` | `14 64` ×2 | DCV `Min 20 %` / `Maks 100 %` |
+| `0x00` | `10 23` ×2 | `Min tilluft 16 °C` / `Maks tilluft 35 °C` |
+| `0x00` | `0F 02` | `Utetemperatur 15 °C` / `Avvik 2 °C` (kompensering) |
+| `0x0E` | `00 1E` | Motorvern forsinkelse, 30 s (4.84) |
+| `0x0E` | `00 B4` ×2 | Avstengingssekvens / forsinkelse, 180 s |
+| `0x1C` | `01 2C` ×2 | `Maks nivå 300` Pa/CO₂, med `00 00` som min |
+| `0x1C` | `2D`, `B4` | Kjøling: `Min hastighet 45 %`, `Forsinkelse 180 s` |
+
+De to standardverdiene vi **ikke** fant er `Min utetemp 18 °C` (4.37) og
+`Standard hastighet 3` (4.57) — begge plausibelt endret bort fra fabrikkverdi
+på vårt aggregat, eller lagret i `C7` som float.
 
 ### Sporet det likevel ga
 

@@ -113,21 +113,24 @@ aggregatet faktisk har.
       (bank+reg, ingen data) ble **0** etterfulgt av svar med samme bank/reg.
       Vi har dermed **ingen kjent måte å be om et bestemt register på**.
 - [x] ~~Let i `0xC6`-parameterblokkene.~~ **DELVIS DEKODET 2026-08-15.**
-      `0xC6` og `0xC7` er **manualens parametertabeller i menyrekkefølge**.
-      Bekreftede treff: min/maks-parene `(20,80)` og `(20,100)`, avstengings-
-      sekvensen `180` (to ganger), motorvern-forsinkelsen `30`, og maks nivå
-      `300` (to ganger, med `0` som min). Se «`0xC6` og `0xC7` er manualens
-      parametertabeller» i protokollnotatene.
+      `0xC6` og `0xC7` er **manualens parametertabeller**, men **ikke** i
+      menyrekkefølge — de er gruppert etter type (min/maks-par ligger sammen).
+      Matching mot **hele** CS 500-lista (ikke bare CS-50-delmengden) gjenfant
+      36 av 38 standardverdier, og 17 av 37 av manualens nabopar ligger som
+      nabobytes — bl.a. kjeden `16,35 / 16,35 / 15,2`. **Bekreftet at layouten
+      er CS 500 sin:** kjøleparameterne `45` og `180` («ikke CS 50») ligger i
+      registrene selv om kortet vårt ikke har kjøling. Se «Kan plasseringene
+      utledes fra manualens rekkefølge?» i protokollnotatene.
 - [ ] **Finn utstyrskonfigurasjonen blant restene.** Manualens seksjon **4.91
       «Komponenter»** er nettopp utstyrskonfigurasjonen, og den er én av de 13
       som gjelder CS 50. Den ligger mellom 4.84 (motorvern-forsinkelse, funnet
       som `00 1E`=30) og 4.92 (versjonsstrengen, funnet). Er registerrekkefølgen
       nær menyrekkefølgen, bør konfigurasjonen ligge kort etter motorvern-
       verdien i reg `0x0E` — nærmeste kandidater er `02 32` og `0F 01`.
-      **Posisjonsutledning fra manualen alene er utelukket:** registerplassen
-      rommer 62 verdier mot manualens 13 CS-50-parametere, fordi CS 50 og
-      CS 500 deler firmware og layout. Avgjøres bare ved å diffe mot et anlegg
-      med annen utrustning.
+      **NB:** registrene følger ikke menyrekkefølgen (se over), så «kort etter»
+      er en svak føring. Klyngestrukturen hjelper derimot: konfigurasjonen er
+      ikke et min/maks-par, så den skal ligge utenfor de identifiserte klyngene.
+      Avgjøres sikkert bare ved å diffe mot et anlegg med annen utrustning.
 - [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
       gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
 - [ ] **Finnes det en skrivevei til parameterregistrene?** Vi kan skrive
