@@ -1781,3 +1781,91 @@ på enhetssiden.
 firmwareversjoner. Alt i disse notatene er utledet fra **styrekort `R1A 2.8` og
 panel `R1A 1.2`** — og et avvik hos noen andre er første sted å lete hvis noe
 ikke stemmer for dem.
+
+# `0xC6` og `0xC7` er manualens parametertabeller
+
+Seriøst forsøk 2026-08-15. Metoden var å hente **standardverdiene fra Flexits
+egen parametertabell** og lete etter dem i blokkene. 29 slike verdier lot seg
+trekke ut av manualen, og treffene er for mange til å være tilfeldige.
+
+## `0xC6` — 16-bits heltall
+
+Verdiene leses dels som 16-bits big-endian, dels som **byte-par** `(min, maks)`.
+
+### Bank `0x20` reg `0x00`
+
+```
+00 19  00 1E  02 1C  14 50  14 50  00 FA  14 64  00 FA  14 64  10 23  10 23  0F 02  05 0C  00 1E
+```
+
+| Bytepar | Verdi | Manualens parameter |
+|---|---|---|
+| `14 50` | (20, 80) | **Min verdi 20 % / Maks verdi 80 %** ✓ |
+| `14 50` | (20, 80) | samme par for neste regulator ✓ |
+| `14 64` | (20, 100) | **Min 20 % / Maks 100 %** ✓ |
+| `14 64` | (20, 100) | ✓ |
+| `00 19` | 25 | maks settpunkt °C |
+| `00 1E` | 30 | tidsforsinkelse motorvern (std 30 S) |
+
+Manualen lister nettopp `20/80`, `20/80`, `20/100`, `20/100` for påfølgende
+regulatorer (side 27) — samme rekkefølge som her.
+
+### Bank `0x20` reg `0x0E`
+
+```
+0F 32  28 50  14 14  14 14  00 B4  00 06  00 1E  00 B4  32 4B  64 00  82 F2  02 32  0F 01  32 4B
+```
+
+| Verdi | Manualens parameter |
+|---|---|
+| `00 B4` = **180**, to ganger | **avstengingssekvens, std 180 S** ✓ |
+| `00 1E` = **30** | motorvern-forsinkelse ✓ |
+| `0F 32` | (15, 50) — 15 er min settpunkt |
+
+### Bank `0x20` reg `0x1C`
+
+```
+64 0F  00 00  00 00  01 2C  00 00  00 00  01 2C  01 2D  72 B4  00 64
+```
+
+| Verdi | Manualens parameter |
+|---|---|
+| `01 2C` = **300**, to ganger | **Maks nivå 0…9999, std 300** ✓ |
+| `00 00` foran hver | **Min nivå, std 0** ✓ |
+
+Manualen lister min/maks-nivå to ganger — for tilluft og avtrekk. Samme
+dobling finnes her.
+
+### Bank `0x21` — ukeprogram
+
+`08 00 10 00 06 00 30 14` gjentatt. Fire byte per oppføring, gjentatt for hver
+tidskanal. Ikke dekodet i detalj, men strukturen er tydelig.
+
+## `0xC7` — IEEE754 float
+
+| Bank/reg | Verdier | Tolkning |
+|---|---|---|
+| `20 00` | `0.01` ×4, `0.3` ×3 | regulatorparametere (forsterkning/integrasjon) |
+| `20 07` | `0.3` ×3, `2`, `1`, `30`, `25` | `25` = maks settpunkt |
+| `20 0E` | `-20`, `-30`, `2`, `0`, `0`, `0`, `0` | `-20`/`-30` = temperaturgrenser; **de fire nullene er trolig følerkorreksjonene** |
+| `20 15` | `0`, `0.1`, `0.1` | |
+
+Manualen har **fem følerkorreksjoner** — Termofuktvakt, Tilluft, Avtrekk,
+Uteluft, Returvann — alle med område `-5.0…5.0 °C` og **standardverdi `0.0`**.
+Rekken av nuller i float-blokkene passer med at ingen av dem er justert.
+
+## Hva dette betyr for feature-framen
+
+Blokkene ER lesbare, og de ER manualens parametertabell i menyrekkefølge. Da bør
+også utstyrskonfigurasjonen ligge der — `Gjenvinner: Rotor/plate`,
+`Varme: Elbat/vannbat`, `Avfrosting: Forvarme/Bypass` er tre små
+enumererte verdier.
+
+Kandidatene er de små tallene som ikke lot seg matche mot en parameter med
+standardverdi: `02 1C` = (2, 28), `10 23` = (16, 35), `0F 02` = (15, 2),
+`05 0C` = (5, 12) i reg `0x00`, og `00 06` = 6 i reg `0x0E`.
+
+**Men uten et anlegg med annen utrustning å diffe mot forblir det gjetting.**
+Det er den samme begrensningen som for `[2]` bit 1, og den samme løsningen:
+ett logguttrekk fra et aggregat med plateveksler eller vannbatteri ville
+avgjort flere spørsmål på én gang.

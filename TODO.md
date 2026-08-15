@@ -112,11 +112,17 @@ aggregatet faktisk har.
 - [x] ~~Er `C0` en leseforespørsel?~~ **NEI — testet og avvist.** Av 27 `C0`-rammer
       (bank+reg, ingen data) ble **0** etterfulgt av svar med samme bank/reg.
       Vi har dermed **ingen kjent måte å be om et bestemt register på**.
-- [ ] **Let i `0xC6`-parameterblokkene.** Aldri dekodet. Bank `0x20` reg `0x00`,
-      `0x0E`, `0x1C` inneholder 16-bits parametere — `0x0F`=15 og `0x19`=25 er
-      gjenkjennelige som settpunktgrensene, så blokka ER lesbar. De tre
-      mikrobryterne (veksler rotor/plate, varme el/vann, avfrosting) må stå
-      et sted, og dette er det mest sannsynlige stedet.
+- [x] ~~Let i `0xC6`-parameterblokkene.~~ **DELVIS DEKODET 2026-08-15.**
+      `0xC6` og `0xC7` er **manualens parametertabeller i menyrekkefølge**.
+      Bekreftede treff: min/maks-parene `(20,80)` og `(20,100)`, avstengings-
+      sekvensen `180` (to ganger), motorvern-forsinkelsen `30`, og maks nivå
+      `300` (to ganger, med `0` som min). Se «`0xC6` og `0xC7` er manualens
+      parametertabeller» i protokollnotatene.
+- [ ] **Finn utstyrskonfigurasjonen blant restene.** Kandidater som ikke lot seg
+      matche mot en kjent parameter: `02 1C`, `10 23`, `0F 02`, `05 0C` i reg
+      `0x00`, og `00 06` i reg `0x0E`. Tre av dem bør være rotor/plate,
+      el/vann og forvarme/bypass — men det krever et anlegg med annen
+      utrustning å diffe mot.
 - [ ] **Sammenlign med et annet anlegg.** Uten en fasit å diffe mot er det
       gjetting. To anlegg med ulik utrustning ville avslørt feltene direkte.
 - [ ] **Finnes det en skrivevei til parameterregistrene?** Vi kan skrive
