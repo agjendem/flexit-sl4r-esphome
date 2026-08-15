@@ -74,15 +74,22 @@ bygges om fra bunnen.
 
 **Måling**
 
-Tilluftstemperatur · viftepådrag tilluft/avtrekk (%) · viftetrinn kjørende og
-retur · settpunkt lest fra bussen · ledige følerinnganger (skjuler seg selv når
-de ikke er tilkoblet).
+Tilluftstemperatur · **varmepådrag** (0–100, styrer rotorens hastighet) ·
+viftepådrag tilluft/avtrekk (%) · viftetrinn kjørende og retur · settpunkt lest
+fra bussen · ledige følerinnganger (skjuler seg selv når de ikke er tilkoblet).
 
 **Tilstand og alarm**
 
-Filteralarm · ettervarme aktivert · ettervarme varmer nå · forsering aktiv.
+Filteralarm · ettervarme aktivert · ettervarme varmer nå · forsering aktiv ·
+**varmegjenvinner går** (rotoren snurrer faktisk, ikke bare at det finnes et
+behov) · **bypass (antatt)**.
+
 De to ettervarme-entitetene svarer til panelets to lysdioder, og kan verifiseres
 mot dem direkte.
+
+«Bypass (antatt)» er en åpen gjetning, og navnet sier det: biten er aldri
+observert satt på vårt rotoraggregat. Hypotesen er at den koder bypass på
+plateveksleraggregater. Endrer den seg, logges det som anomali med full ramme.
 
 **Diagnostikk**
 
