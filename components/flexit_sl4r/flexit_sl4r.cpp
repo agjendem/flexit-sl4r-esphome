@@ -52,7 +52,7 @@ void FlexitSL4RComponent::dump_config() {
   LOG_NUMBER("  ", "Settpunkt varmeveksler", this->heat_exchanger_setpoint_number_);
 #endif
 #ifdef USE_BINARY_SENSOR
-  LOG_BINARY_SENSOR("  ", "Forvarme aktiv", this->afterheat_active_binary_sensor_);
+  LOG_BINARY_SENSOR("  ", "Ettervarme aktiv", this->afterheat_active_binary_sensor_);
   LOG_BINARY_SENSOR("  ", "Kommunikasjon OK", this->communication_binary_sensor_);
 #endif
 }

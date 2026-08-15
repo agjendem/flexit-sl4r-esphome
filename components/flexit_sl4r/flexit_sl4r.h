@@ -44,15 +44,6 @@ static constexpr uint32_t COMMAND_GIVE_UP_MS = 5000;
 // Hvor lenge vi kan være upollet før vi regner oss som droppet fra bussen.
 // Observert pollintervall til oss er ~0,2 s, så 30 s er svært romslig.
 static constexpr uint32_t ENUMERATION_TIMEOUT_MS = 30000;
-// Hvor mange ganger hver kommando sendes, hver gang i sitt eget stille vindu.
-//
-// Vongravens original gjør nøyaktig dette: `do { ... } while (repeats<5)`.
-// Grunnen er verdt å merke seg — lengdesjekken hans, `if (3 < Length <33)`,
-// evalueres i C som `(3 < Length) < 33` og er dermed ALLTID sann, og han har
-// samme off-by-one i header-hoppet som vi hadde. Timingen hans var altså like
-// gal som vår var; han kompenserte med gjentakelse. Brute force, ikke presisjon.
-static constexpr uint8_t COMMAND_REPEATS = 5;
-
 // --- Generell rammestruktur (målt 2026-08-13, se research/protocol-notes.md) ---
 //   C3 b1 b2 b3 b4 TYPE b6 LEN [LEN databyte] CK1 CK2
 // Sjekksumvindu er [5 .. 8+LEN). Validert mot 23 708 avlyttede byte: 766 rammer,
@@ -70,21 +61,18 @@ static constexpr uint8_t TYPE_PARAM = 0xC7;    // IEEE754 float-parametere/grens
 // Verdi CS50 rapporterer for en følerinngang som ikke er tilkoblet.
 static constexpr float SENSOR_DISCONNECTED = -55.0f;
 
-// --- payload[6]: ettervarme, bitfelt (MÅLT 2026-08-14) ---
-// Panelet har to lysdioder for ettervarme, og feltet har to bit som svarer til
-// dem: «°C» = elementet varmer nå, «+» = ettervarme aktivert av bruker.
-//   bit0 (0x01) = elementet varmer NÅ
-//   bit7 (0x80) = ettervarme DEAKTIVERT  (merk: invertert!)
-// Vongraven tolket 128 som «på». Det er motsatt: verifisert ved å slå
-// ettervarmen av og på fra panelet mens bussen ble logget.
+// --- payload[6] bit0 (MÅLT 2026-08-14, RE-TOLKET i fase 0 2026-08-15) ---
+// Først tolket som «elementet varmer nå» (panelets «°C»-lampe). Fase 0-analysen
+// viste at eneste bit0=1-observasjon i opptakene er forseringsperioden — og
+// ettervarmen var da DEAKTIVERT. Ny hypotese: bit0 = forsering/max-timer aktiv.
+// Avgjøres live (se TODO). Bit7 er IKKE et enable-flagg (tidligere feiltolkning).
 static constexpr uint8_t AFTERHEAT_HEATING = 0x01;
 
 // --- Ettervarme AV/PÅ ligger i PANELETS tilstandsramme, ikke i statusen ---
-// `data[2]` i node 4-rammen (`20 0F ...`): 0x02 = aktivert, 0x00 = deaktivert.
-// Målt: feltet gikk 0x02 -> 0x00 da brukeren slo ettervarmen av fra panelet, og
-// kom ikke tilbake. Status-`[6]` bit7 ble først antatt å være enable-flagget —
-// det var FEIL; den verdien opptrer også når ettervarmen er aktivert.
-// `data[4]` bit7 i panelets ramme. Bit6 er en kortvarig knappebit.
+// `data[4]` bit7 i node 4-rammen (`20 0F ...`): satt = aktivert. Verifisert
+// begge veier mot panelets «+»-lampe 2026-08-15. (To tidligere kandidater —
+// status-`[6]` bit7 og panelets `data[2]` — ble begge avkreftet.)
+// Bit6 i samme byte er en kortvarig knappebit.
 static constexpr uint8_t AFTERHEAT_ENABLED_BIT = 0x80;
 static constexpr uint8_t PANEL_BUTTON_BIT = 0x40;
 
@@ -125,8 +113,8 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_NUMBER(heat_exchanger_setpoint)
 #endif
 #ifdef USE_BINARY_SENSOR
-  SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — elementet varmer NÅ
-  SUB_BINARY_SENSOR(afterheat_enabled)   // payload[6] bit7 invertert — aktivert av bruker
+  SUB_BINARY_SENSOR(afterheat_active)    // payload[6] bit0 — betydning under re-verifisering (forsering?)
+  SUB_BINARY_SENSOR(afterheat_enabled)   // panelramme data[4] bit7 — aktivert av bruker
   SUB_BINARY_SENSOR(filter_alarm)        // payload[4] bit1 — filtertid utløpt
   SUB_BINARY_SENSOR(heat_recovery_active)  // payload[2] bit0 — rotoren går
   SUB_BINARY_SENSOR(bypass_active)         // payload[2] bit1 — ANTATT bypass, aldri observert
@@ -155,7 +143,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // bank 0x22 reg 0x00 — begge som 8 byte ASCII. Tilsvarer manualens
   // «Test → Informasjon → Main board / CS50 panel 1: Programvare rev.»
   SUB_TEXT_SENSOR(controller_firmware)
-  SUB_TEXT_SENSOR(panel_firmware)                    // antall uventede hendelser siden oppstart
+  SUB_TEXT_SENSOR(panel_firmware)
 #endif
 
  public:
@@ -270,7 +258,6 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   uint32_t last_valid_telegram_ms_{0};
   uint32_t last_rx_byte_ms_{0};    // for deteksjon av stille buss før sending
   uint32_t command_queued_ms_{0};  // for å gi opp en kommando som aldri får plass
-  uint8_t command_repeats_left_{0};
   // Teller rammer som feilet sjekksum. Disse forkastes stille i parseren (en
   // 0xC3 inne i en payload treffer den grenen helt normalt), men da blir ekte
   // korrupsjon også usynlig. Uten denne telleren kan man ikke måle om VÅR

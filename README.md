@@ -187,17 +187,20 @@ cp secrets.yaml.example secrets.yaml   # fyll inn wifi + generer api-nøkkel/ota
 
 ## Videre plan
 
-Kartleggingen fortsetter i [`TODO.md`](TODO.md). De største åpne punktene:
+Kartleggingen fortsetter i [`TODO.md`](TODO.md). Rotorpådraget (`[11]`),
+filteralarmen (`[4]` bit1) og til og med driftstimetellerne er funnet — de
+største åpne punktene nå:
 
-1. **Rotorpådraget.** Flexit oppgir utgang EB1 (rotor, 0–10 V), og settpunktet
-   vi nå styrer ER rotorens reguleringsmål — men pådragsverdien er ikke funnet.
-   Best jaktet når rotoren faktisk må jobbe, altså i fyringssesongen.
-2. **Filtervakt-alarmen.** Fanges ved neste filterbytte: opptak før og etter
-   reset gir både alarmbyten og reset-kommandoen. Alarmflagget er trolig mer
-   verdt enn resetknappen — et filtervarsel i HA er reell nytte.
-3. **Forvarme-skriving**, når flagg-byten er avklart.
-4. **De ukjente statusfeltene** ligger eksponert som diagnostikk, så HAs
-   recorder bygger historikk å korrelere mot uten nye bussopptak.
+1. **Climate-entitet** («Ventilasjon») som samler settpunkt, viftetrinn,
+   forsering og ettervarme i én termostat-modell i HA.
+2. **Parametersensorer fra `C6`/`C7`-registrene** — filtertid-telleren gir
+   «timer siden filternullstilling» rett i HA.
+3. **`[6]` bit0-re-verifisering** (forsering vs. ettervarme-element) og de
+   siste ukjente statusfeltene (`[15]`/`[20]`-betydning, rød alarm-LED-bits).
+4. **Skrivevei til parameterregistrene?** Testes aller sist, med full
+   sikkerhetsprotokoll — se TODO.
+5. **Bidrag fra andre anlegg** (plateveksler, CS 500) for bypass-bitene,
+   utstyrskonfigurasjonen og ur-lagringen.
 
 ## Hvor koden kjører
 

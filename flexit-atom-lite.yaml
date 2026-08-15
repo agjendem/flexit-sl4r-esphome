@@ -307,10 +307,12 @@ binary_sensor:
     # Ettervarme = el-batteriet som varmer tillufta opp til settpunktet.
     # Het tidligere «Forvarme», som var arvet fra Vongraven og feil: forvarme
     # er en plateveksler-funksjon og finnes ikke på et rotoraggregat.
-    # payload[6] bit0 — elementet varmer akkurat nå (panelets «°C»-lampe)
+    # payload[6] bit0 — betydning under re-verifisering: eneste bit0=1 i
+    # opptakene falt sammen med FORSERING (med ettervarmen deaktivert), så
+    # «elementet varmer nå»-tolkningen er trolig feil. Se TODO.
     afterheat_active:
       name: "Ettervarme aktiv"
-    # payload[6] bit7 invertert — aktivert av bruker (panelets «+»-lampe).
+    # panelrammens data[4] bit7 — aktivert av bruker (panelets «+»-lampe).
     # Slås av/på ved å holde inne − og trykke + på panelet.
     afterheat_enabled:
       name: "Ettervarme aktivert"

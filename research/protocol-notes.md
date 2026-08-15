@@ -273,16 +273,16 @@ Indeksene under er inn i **databytene** (det koden kaller `raw_status_`).
 |-----|---------|--------|
 | 0 | `0x20` — bank | konstant |
 | 1 | `0x0E` — registeroffset | konstant |
-| 2 | `0 / 36 / 72 / 144` | **ukjent**, varierer |
+| 2 | bit0 = **gjenvinneren går**; bit 2–4 / 5–7 = viftereléenes one-hot-grupper (trinn 3/2/1 per vifte); bit1 antatt bypass (aldri sett) | målt |
 | 3 | `0x80` | konstant |
 | 4 | **Alarmbitfelt** — bit1 (`0x02`) = **filteralarm** | målt |
 | 5 | **Viftetrinn**, to nibler: høy = trinnet som kjører, lav = returtrinn. `0x31` = forsering | målt |
-| 6 | **Ettervarme**, bit0 (`0x01`) = elementet varmer nå. **Bit7 er IKKE enable-flagget** — det ligger i panelets `data[4]` bit7 | delvis |
+| 6 | bit0 (`0x01`) flipper ved **forsering** — «elementet varmer»-tolkningen røk i fase 0-analysen, re-verifiseres. **Bit7 er IKKE enable-flagget** — det ligger i panelets `data[4]` bit7 | delvis |
 | 7 | `0x04` | konstant |
 | 8 | `0x00` | konstant |
 | 9 | **Settpunkt varmeveksler**, °C (15–25) | målt |
 | 10 | `0` | konstant hos oss |
-| 11 | `0 / 1` | **ukjent**, varierer |
+| 11 | **Varmepådrag** 0–100 — driver rotoren (J5 pin 11,12) | målt |
 | 12 | `0` | konstant |
 | 13 | **Viftepådrag tilluft**, % (49 / 74 / 100) | målt |
 | 14 | **Viftepådrag avtrekk**, % | målt |
@@ -1699,8 +1699,8 @@ fra og med bank-byten, så nyttelasten er `LEN − 2` byte.
 | `0xC0` | ingen data — kun bank/reg | 0 byte | ikke tolket; ser ut som «ingenting nytt» |
 | `0xC1` | byte-verdier | 1 byte per felt | **statustelegram** og **panelets tilstandsramme** |
 | `0xC2` | IEEE754 float, little endian | 4 byte | **målinger** (tilluft, settpunkt) |
-| `0xC6` | 16-bits heltall | 2 byte | parametere og ukeprogram — **ikke dekodet** |
-| `0xC7` | IEEE754 float | 4 byte | parametere og grenser — **ikke dekodet** |
+| `0xC6` | 16-bits heltall | 2 byte | **parametertabellene** (CS 500-layout) + ur-lagringen i bank `0x21` — delvis dekodet |
+| `0xC7` | IEEE754 float | 4 byte | float-parametere: sommer-/vinterkompensering + regulatorforsterkninger |
 
 `C2` og `C7` bærer begge float. Forskjellen er ikke avklart; `C2` har vist seg å
 inneholde målinger som endrer seg, `C7` verdier som har stått konstante over
@@ -2151,3 +2151,9 @@ regulatorforsterkninger (P/I for temperaturreguleringen — fabrikknivå-menyen
 - Ukeprogram: parkeres — krever CS 500-logg eller skriving.
 - Forseringens «Standardtid 30» (s. 49) kolliderer med motorvern-30-matchen
   for `00 1E` — én av dem er feil, avgjøres ikke uten skriving.
+
+## Rettelser i referansetabellene (2026-08-15)
+
+Feltkart-tabellen (`[2]`, `[6]`, `[11]`) og rammetypetabellen (`C6`/`C7`) er
+oppdatert på stedet så de speiler fase 0-funnene over — de er levende
+referanser, ikke historikk.
