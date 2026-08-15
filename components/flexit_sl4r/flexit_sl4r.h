@@ -15,6 +15,9 @@
 #ifdef USE_SENSOR
 #include "esphome/components/sensor/sensor.h"
 #endif
+#ifdef USE_TEXT_SENSOR
+#include "esphome/components/text_sensor/text_sensor.h"
+#endif
 
 #include <array>
 #include <cstdint>
@@ -145,7 +148,14 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_SENSOR(frames_discarded)             // rammer forkastet på sjekksum — gjør busskorrupsjon målbar
   SUB_SENSOR(status_interval)              // sekunder mellom to statustelegram — se under
   SUB_SENSOR(heat_demand)                  // payload[11] — varmepådrag, driver rotoren
-  SUB_SENSOR(anomalies)                    // antall uventede hendelser siden oppstart
+  SUB_SENSOR(anomalies)
+#endif
+#ifdef USE_TEXT_SENSOR
+  // Firmwareversjoner. CS50 sender sin i bank 0x20 reg 0x00, panelet sin i
+  // bank 0x22 reg 0x00 — begge som 8 byte ASCII. Tilsvarer manualens
+  // «Test → Informasjon → Main board / CS50 panel 1: Programvare rev.»
+  SUB_TEXT_SENSOR(controller_firmware)
+  SUB_TEXT_SENSOR(panel_firmware)                    // antall uventede hendelser siden oppstart
 #endif
 
  public:
@@ -232,6 +242,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Brukes av engangs-kommandoer som ikke passer i command_template-modellen.
   void queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint);
   void handle_panel_frame_();
+  void publish_firmware_(bool controller);
   void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats = 1);
   void send_queued_frame_();
 

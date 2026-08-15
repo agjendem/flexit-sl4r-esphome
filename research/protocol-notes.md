@@ -1754,3 +1754,30 @@ svar med samme bank/register. `C0` er altså ikke en forespørsel.
 
 Dermed har vi **ingen kjent måte å be om et bestemt register på**. CS50 sender
 sin faste runde, og vi leser det som kommer.
+
+## Firmwareversjoner — to ASCII-strenger på bussen
+
+Begge nodene oppgir programvareversjon som **8 byte ASCII** i sin `C1`-ramme:
+
+| Node | Bank/reg | Innhold | Vårt anlegg |
+|---|---|---|---|
+| 1 (CS50) | `20 00` | styrekortets firmware | `R1A 2.8` |
+| 4 (CI50) | `22 00` | panelets firmware | `R1A 1.2` |
+
+Det tilsvarer manualens `Test → Informasjon → Main board` og
+`Test → Informasjon → CS50 panel 1: Programvare rev.` — verdier man ellers bare
+får se på et CI 500-panel med display.
+
+Eksponert som `text_sensor`, kategori **diagnostikk**. Rammene gjentas ~850
+ganger per opptak, så det publiseres kun ved endring.
+
+**Hvorfor entitet og ikke enhetsinformasjon:** HA-enhetens `sw_version` tilhører
+ESPHome-noden og settes ved kompilering. CS50 og CI50 er *andre* fysiske enheter
+som HA ikke modellerer — vi er kun en bro. Diagnostikk-kategorien er ESPHomes
+konvensjonelle plass for slikt, og entitetene havner i egen «Diagnostikk»-seksjon
+på enhetssiden.
+
+**Hvorfor det er verdt å ha:** protokolldetaljer kan variere mellom
+firmwareversjoner. Alt i disse notatene er utledet fra **styrekort `R1A 2.8` og
+panel `R1A 1.2`** — og et avvik hos noen andre er første sted å lete hvis noe
+ikke stemmer for dem.

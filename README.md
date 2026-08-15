@@ -87,7 +87,11 @@ mot dem direkte.
 **Diagnostikk**
 
 Kommunikasjon OK · enumerert på bussen · anomalier · statusintervall · rammer
-forkastet · resetårsak · oppetid · rå statusbyte for felt som ennå ikke er tydet.
+forkastet · resetårsak · oppetid · rå statusbyte for felt som ennå ikke er tydet
+· **firmwareversjon for styrekort og panel**.
+
+Firmwareversjonene leses rett fra bussen, og er verdt å oppgi i feilrapporter:
+alt i protokollnotatene er utledet fra styrekort `R1A 2.8` og panel `R1A 1.2`.
 
 ## Hvordan skriving oppfører seg
 
@@ -226,6 +230,9 @@ Konkret er dette mest verdifullt:
   filteralarmen ble knekt.
 - **Hvilken utrustning aggregatet ditt har** — veksler, varmebatteri,
   ettervarme, avfrosting.
+- **Firmwareversjonene dine** (entitetene «Styrekort-firmware» og
+  «Panel-firmware»). Avviker de fra våre, er det første sted å lete hvis noe
+  ikke stemmer.
 - **Har du plateveksler i stedet for rotor?** Da er du særlig interessant. Ett
   bit i statustelegrammet (`[2]` bit 1) har aldri vært satt hos oss, og
   strukturen tyder på at det koder bypass-tilstand — noe bare et

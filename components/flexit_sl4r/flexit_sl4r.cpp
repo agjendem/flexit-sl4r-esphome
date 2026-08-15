@@ -312,6 +312,21 @@ void FlexitSL4RComponent::dispatch_frame_() {
     return;
   }
 
+  // Firmwarestrenger: CS50 i bank 0x20 reg 0x00, panelet i bank 0x22 reg 0x00.
+  if (type == TYPE_STATUS && this->frame_.size() > FRAME_HEADER_LENGTH + 9) {
+    const uint8_t node = this->frame_[1];
+    const uint8_t bank = this->frame_[FRAME_HEADER_LENGTH];
+    const uint8_t reg = this->frame_[FRAME_HEADER_LENGTH + 1];
+    if (node == 1 && bank == 0x20 && reg == 0x00) {
+      this->publish_firmware_(true);
+      return;
+    }
+    if (bank == 0x22 && reg == 0x00) {
+      this->publish_firmware_(false);
+      return;
+    }
+  }
+
   // Panelets egen tilstandsramme. Vi leste den ikke før — men ettervarmens
   // av/på-tilstand finnes KUN her, ikke i statustelegrammet.
   if (type == TYPE_STATUS && len == 8 && this->frame_.size() > FRAME_HEADER_LENGTH + 2 &&
@@ -322,6 +337,26 @@ void FlexitSL4RComponent::dispatch_frame_() {
 
   if (type == TYPE_FLOAT || type == TYPE_PARAM)
     this->handle_float_frame_();
+}
+
+void FlexitSL4RComponent::publish_firmware_(bool controller) {
+#ifdef USE_TEXT_SENSOR
+  auto *sens = controller ? this->controller_firmware_text_sensor_ : this->panel_firmware_text_sensor_;
+  if (sens == nullptr)
+    return;
+  // 8 byte ASCII rett etter bank/reg. Trimmes for etterfølgende blanke og nuller.
+  std::string v;
+  for (size_t k = FRAME_HEADER_LENGTH + 2; k < FRAME_HEADER_LENGTH + 10 && k < this->frame_.size(); k++) {
+    const char c = static_cast<char>(this->frame_[k]);
+    if (c >= 32 && c < 127)
+      v.push_back(c);
+  }
+  while (!v.empty() && v.back() == ' ')
+    v.pop_back();
+  // Publiser kun ved endring — rammen gjentas ~850 ganger per opptak.
+  if (!v.empty() && v != sens->get_state())
+    sens->publish_state(v);
+#endif
 }
 
 void FlexitSL4RComponent::handle_panel_frame_() {

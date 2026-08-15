@@ -82,6 +82,17 @@ text_sensor:
     reset_reason:
       name: "Resetårsak"
 
+  # Firmwareversjoner, lest rett fra bussen som 8 byte ASCII. Tilsvarer
+  # manualens «Test → Informasjon → Main board / CS50 panel 1: Programvare
+  # rev.» — nyttig i feilrapporter, siden protokolldetaljer kan variere
+  # mellom versjoner.
+  - platform: flexit_sl4r
+    flexit_sl4r_id: flexit_sl4r_hub
+    controller_firmware:
+      name: "Styrekort-firmware"
+    panel_firmware:
+      name: "Panel-firmware"
+
 flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
