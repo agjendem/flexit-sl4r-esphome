@@ -2,14 +2,27 @@
 #include "esphome/core/log.h"
 
 #include <cmath>
+#include <cstring>
 
 namespace esphome::flexit_sl4r {
 
 // Viftetrinnene som custom fan modes. Må være statiske const char* — ESPHome
 // lagrer peker, ikke kopi, og sammenligner identitet i tillegg til innhold.
-static const char *const FAN_MODE_1 = "1";
-static const char *const FAN_MODE_2 = "2";
-static const char *const FAN_MODE_3 = "3";
+//
+// Navnene er Flexits egne, hentet fra CI 50-manualen (110191N-07 s. 5), som
+// beskriver hvert trinn i klartekst:
+//   trinn 1 — «lavere ventilasjonsbehov enn normalt. Skal ikke benyttes når
+//             boligen er i bruk»
+//   trinn 2 — «normal driftsventilasjon. I denne stilling kjøres anlegget til
+//             daglig»
+//   trinn 3 — «økt (forsert) ventilasjon i våtrom», f.eks. under dusjing
+// «Økt» er valgt framfor manualens «forsert» for trinn 3, fordi «Forsering»
+// allerede er navnet på den TIDSSTYRTE maks-funksjonen (BOOST-presetet).
+// `select`-entiteten «Viftetrinn» beholder tallene 1/2/3 — den speiler
+// panelets tre lysdioder direkte.
+static const char *const FAN_MODE_1 = "Redusert";
+static const char *const FAN_MODE_2 = "Normal";
+static const char *const FAN_MODE_3 = "Økt";
 
 climate::ClimateTraits FlexitClimate::traits() {
   climate::ClimateTraits traits;
@@ -42,8 +55,18 @@ void FlexitClimate::control(const climate::ClimateCall &call) {
     this->parent_->set_afterheat_enabled(*call.get_mode() == climate::CLIMATE_MODE_HEAT);
 
   const auto fm = call.get_custom_fan_mode();
-  if (!fm.empty() && fm.size() == 1 && fm.c_str()[0] >= '1' && fm.c_str()[0] <= '3')
-    this->parent_->set_fan_level(static_cast<uint8_t>(fm.c_str()[0] - '0'));
+  if (!fm.empty()) {
+    uint8_t level = 0;
+    if (strcmp(fm.c_str(), FAN_MODE_1) == 0) {
+      level = 1;
+    } else if (strcmp(fm.c_str(), FAN_MODE_2) == 0) {
+      level = 2;
+    } else if (strcmp(fm.c_str(), FAN_MODE_3) == 0) {
+      level = 3;
+    }
+    if (level != 0)
+      this->parent_->set_fan_level(level);
+  }
 
   if (call.get_preset().has_value()) {
     if (*call.get_preset() == climate::CLIMATE_PRESET_BOOST) {

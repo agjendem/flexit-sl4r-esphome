@@ -24,8 +24,11 @@ bekreftet at parameterregistrene kan skrives (15. august).
 - **Skriving:** viftetrinn, settpunkt, forsering, avbryt forsering, ettervarme
   av/på og filterreset — alt verifisert mot CS50s egne kringkastede verdier,
   ikke bare mot vår egen UI-tilstand.
-- **`climate`-entitet** «Ventilasjon» samler settpunkt, viftemodus 1/2/3,
+- **`climate`-entitet** «Ventilasjon» samler settpunkt, viftemodus,
   BOOST-preset og HEAT/FAN_ONLY (ettervarme) i én termostat-modell.
+  Viftemodusene bruker Flexits egne navn fra CI 50-manualen —
+  **Redusert / Normal / Økt** — ikke trinnummer. `select`-entiteten
+  «Viftetrinn» beholder 1/2/3, siden den speiler panelets tre lysdioder.
 - **Driftsdiagnostikk:** `Enumerert på bussen` viser om CS50 fortsatt poller
   oss. Går den av, feiler skriving *stille*, og aggregatet må strømsykles.
   `Kommunikasjon OK` dekker mottakssiden, og `Statusintervall` viser hvor ofte

@@ -2438,3 +2438,28 @@ vist at en feilskriving kan angres med en strømsykling — vi har bare vist at 
 Funksjonen ligger på grenen `eksperiment/parameterskriving` og er bevisst
 **ikke** slått sammen til hovedgrenen. Den hører hjemme i et verktøy for
 protokollarbeid, ikke i firmwaren som styrer husets ventilasjon til daglig.
+
+## Viftetrinnenes navn (2026-08-15)
+
+CS 50-manualen bruker gjennomgående «Hastighet 1/2/3» uten kallenavn, men
+**CI 50-manualen (110191N-07 s. 5) beskriver hvert trinn i klartekst**:
+
+| Trinn | Flexits beskrivelse |
+|---|---|
+| 1 | «Brukes ved lavere ventilasjonsbehov enn normalt. Skal ikke benyttes når boligen er i bruk. Må ikke benyttes det første driftsåret.» |
+| 2 | «Normal driftsventilasjon. I denne stilling kjøres anlegget til daglig.» |
+| 3 | «Brukes når det er behov for økt (forsert) ventilasjon i våtrom eller i hele lokalet.» |
+
+`climate`-entiteten bruker derfor **Redusert / Normal / Økt**. «Økt» er valgt
+framfor manualens «forsert» for trinn 3, siden «Forsering» allerede er navnet på
+den *tidsstyrte* maks-funksjonen (30/60/90 min) — som forøvrig også kjører på
+trinn 3, men med automatisk retur til forrige trinn.
+
+`select`-entiteten «Viftetrinn» beholder 1/2/3: den speiler panelets tre
+lysdioder direkte, og tallene er det brukeren ser på veggen.
+
+Sidenote fra samme gjennomgang: CI 50-manualens paneloversikt bekrefter
+lysdiode 6 som «Indikering ettervarme aktiv (element varmer)» og 7 som
+«Indikering ettervarme AV/PÅ». Vi har fortsatt ingen bussverdi for nr. 6 —
+`[6]` bit0 viste seg å være forsering — så «element varmer» er et reelt felt
+som finnes på panelet, men som vi ikke har funnet i telegrammet.
