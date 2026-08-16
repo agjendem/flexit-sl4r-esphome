@@ -364,7 +364,7 @@ never has to be opened.
 |---|---|
 | [M5Stack ATOM Lite](https://shop.m5stack.com/products/atom-lite-esp32-development-kit) ([docs](https://docs.m5stack.com/en/core/ATOM%20Lite)) | ESP32-PICO. Any ESP32 works, but the Tail485 is built for this form factor |
 | [M5Stack ATOM Tail485](https://shop.m5stack.com/products/atom-tail485) ([docs](https://docs.m5stack.com/en/atom/tail485)) | SKU T002. SP485EEN-L transceiver plus a 9–24 V buck converter, so the bus powers the node. No DE/RE line — direction is handled on the module |
-| A 4P4C telephone cable | Cut in half; you need one plug and four wires. Sometimes sold as an RJ9/RJ10 handset cord |
+| A 4P4C cable | Cut in half — you need one plug and four wires. Search for "4P4C", "RJ9/RJ10/RJ22" or "handset cord"; [this 2 m one](https://www.teknikkdeler.no/produkt/modulaerkabel-4p4c-rj9rj10rj22-2m-svart) is the right thing, at about 60 NOK |
 
 ![The ATOM Lite stacked on the Tail485, with the RS485 wires attached](docs/images/atom-lite-tail485.jpg)
 
@@ -388,8 +388,10 @@ switch 3 is the panel 1 / panel 2 selector discussed in `PROTOCOL.md` §3.1.*
 Pinout at the socket: **1 = GND, 2 = B, 3 = A, 4 = +V** (measured 11.8 V).
 
 > **Check polarity with a meter before plugging in.** The buck converter has no
-> reverse-polarity protection, and 4P4C cables exist in mirrored variants, so
-> the wire order at one plug may be reversed at the other.
+> reverse-polarity protection, and 4P4C cables come in both straight and
+> *reversed* wiring — handset cords are usually reversed, and shops rarely say
+> which they are selling. Whichever you buy, ring out the cut end against the
+> plug rather than trusting the wire colours.
 
 Flash over USB-C with the 4P4C **disconnected**. USB power and bus power must
 never be connected at the same time.
