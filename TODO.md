@@ -44,13 +44,16 @@ here.
 
 ### The bus
 
-- [ ] **Who is node `0x41` (65)?** On 16 August the anomaly log caught a single
-      checksum-valid poll to node `0x41`, about 7.5 minutes after a restart, and
-      never again in the 21 hours that followed. Until then the master had only
-      ever been seen polling nodes 2, 3 and 5. One sample is not a pattern:
-      it could be a rare periodic sweep, something tied to the restart, or a
-      node type we have not met. The anomaly log will catch the next one — the
-      question is what makes it happen.
+- [ ] **Who is node `0x41` (65)?** Checksum-valid polls to `0x41` have been
+      caught twice on 16 August, each a few minutes after our node restarted
+      (7.5 and 3.9 min). Until then the master had only been seen polling nodes
+      2, 3 and 5.
+      **The anomaly log cannot answer this one.** It reports a signature only on
+      its first appearance per boot, so it is blind to every repeat — which
+      means "seen twice" says nothing about frequency, and an earlier note here
+      wrongly read it as evidence of rarity. Settle it with **raw frame logging
+      left on for an hour** and count the `C3 41` polls: regular member of the
+      poll round, periodic sweep, or genuinely tied to our restarts.
 
 ### Status telegram
 

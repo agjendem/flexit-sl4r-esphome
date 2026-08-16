@@ -2802,3 +2802,27 @@ når den slutter. Bare forseringer vi selv starter har en varighet vi kjenner.
 
 Motsatt vei er det derimot åpent: siden aggregatet blir stående i forsering til
 noe avbryter, kan VI tilby 30/60/90 med vår egen timer. Lagt i TODO.
+
+## Metodefeil: anomaliloggen kan ikke måle frekvens (2026-08-16)
+
+Etter dagens siste omstart dukket `C3 41 00` opp igjen — node 0x41, denne gangen
+3,9 min etter boot (forrige gang 7,5 min). Jeg hadde skrevet at den var «sett én
+gang, aldri gjentatt på 21 timer», og brukt det som argument for at den er
+sjelden.
+
+**Det var feil, og feilen lå i mitt eget verktøy.** `note_anomaly_("new frame
+type")` fyrer bare når signaturen ikke finnes i `seen_signatures_`, og
+signaturen legges inn ved første forekomst. Anomaliloggen *kan altså ikke*
+rapportere gjentakelser. «Ikke gjentatt» var en egenskap ved detektoren, ikke en
+observasjon av bussen.
+
+Riktig framgangsmåte for å karakterisere 0x41: rå rammelogging på i en time og
+tell forekomstene. Lagt i TODO.
+
+De to andre anomaliene i samme dump var godartede: panelets tilstandsramme med
+vifte `0x31` og avbrytelseskommandoen `20 14 64 30` fra forseringen kl. 17:22 —
+begge signaturer noden ikke hadde sett siden den bootet 15:39, altså detektoren
+som virker etter hensikten.
+
+Lærdom å ta med: et verktøy som filtrerer bort gjentakelser er utmerket til å
+oppdage noe nytt, og ubrukelig til å si hvor ofte noe skjer. Ikke bland de to.

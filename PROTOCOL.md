@@ -116,14 +116,22 @@ they are. ✅
 | 2, 3 | Probed at startup, unused on our installation |
 | 4 | CI50 panel 1 |
 | 5 | Panel 2 — the identity dipswitch 3 selects on a physical panel |
-| 0x41 (65) | Seen **once**, unexplained — see below 🟡 |
+| 0x41 (65) | Polled, unexplained — see below ❓ |
 
-The address space is not closed at 5. On 2026-08-16 a single checksum-valid
-poll to node `0x41` was captured, roughly 7.5 minutes after a restart, and not
-repeated in the 21 hours that followed. One sample supports no conclusion about
-whether it is periodic, restart-related or a different device class; it is
-recorded here so the next observer recognises it rather than dismissing it as
-line noise. It is harmless — we answer only for our own node.
+The address space is not closed at 5. Checksum-valid polls to node `0x41` have
+been captured twice, each a few minutes after a restart of our node (at 7.5 and
+3.9 minutes).
+
+**Do not read "twice" as "rare".** Both sightings came from the anomaly log,
+which reports a frame signature only on its *first* appearance after each boot —
+so a second occurrence is something it cannot report by construction. The
+honest statement is that `C3 41` is polled at least occasionally and may well be
+a regular member of the poll round; characterising it needs raw frame logging
+over a stretch of time, not the anomaly log. An earlier draft of this document
+claimed it was "not repeated in the 21 hours that followed", which was an
+artefact of the detector rather than an observation.
+
+It is harmless either way — we answer only for our own node.
 
 ### 3.2 Enumeration — and why it matters
 
