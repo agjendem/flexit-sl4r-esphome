@@ -65,8 +65,7 @@ take what you need, name it what you like.
 |---|---|---|
 | Fan level | `select` | 1–3. Setting a level cancels an active boost |
 | Heat exchanger setpoint | `number` | 15–25 °C |
-| Boost | `button` | "Max fan" — the unit falls back on its own |
-| Cancel boost | `button` | Writes the return level |
+| Boost | `switch` | "Max fan". The unit times the period itself (30 min on a single press) and falls back, so the switch returns to off on its own. Off writes the return level |
 | Afterheater | `switch` | Writes the flag directly — unlike the panel gesture, it cannot trigger a filter reset |
 | Reset filter timer | `button` | Runs the manual's full procedure automatically |
 | Ventilation | `climate` | All of the above in one thermostat model |

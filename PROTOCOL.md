@@ -427,6 +427,45 @@ interval it gives "time until filter change", and — more importantly — a
 *measurable* check on whether a filter reset actually worked, instead of
 waiting days to see whether the alarm returns.
 
+#### The fan duty parameters do not control our fans
+
+`0x0E` words 8 and 9 read 50 / 75 / 100 %, and the broadcast duty `[13]`/`[14]`
+follows them (49 / 74 / 100 — consistent with the percentage being scaled
+through a byte and back). It is tempting to conclude that writing them would
+re-balance the ventilation. **On this unit it would not**, and the reason is
+worth recording before anyone tries.
+
+The CS 50/CS 500 manual (94269N-02 §4.49–4.51) attaches an explicit condition
+to these parameters: *"Dette gjelder bare for aggregater som har trinnløst
+regulering av viftene"* — they apply only to units with **stepless** fan
+control. The SL4 R is transformer-regulated: the CI 50 manual (110191N-07 p. 5)
+balances it with a **physical switch on the transformer**, set per fan, with
+voltage taps (120/150/170 V on level 2), and states that levels 1 and 3 have
+*fixed* transformer settings that can only be changed by rewiring the
+transformer itself.
+
+Our own capture data says the same thing independently: `[2]` is one-hot
+**relay** feedback for supply and extract fan speed (§5.3, 592 telegrams, zero
+mismatches), and the CS 50 terminal list has matching relay outputs
+("Tilluftsvifte hastighet 1/2/3, Relè utgang"). Relay-switched taps, not a
+modulated signal. So `[13]`/`[14]` is a *nominal* figure derived from the
+parameter, not a measurement of what the fans are doing.
+
+Two conclusions follow. First, on a transformer-regulated unit these registers
+are inert CS 500 heritage — writing them would change a reported number at
+best. Second, even on a stepless unit they should be left alone: they are
+**commissioning data**, the balance point of the whole duct system, which the
+CI 50 manual requires to be set from *"Dokumentasjon av ventilasjonsdata"*
+supplied by the design engineer. That is not a runtime control.
+
+Recorded here so the factory values survive any future experiment:
+
+| Level | Supply | Extract | Reported duty `[13]`/`[14]` |
+|---|---|---|---|
+| 1 | 50 % | 50 % | 49 % |
+| 2 | 75 % | 75 % | 74 % |
+| 3 | 100 % | 100 % | 100 % |
+
 ### 9.4 `0xC7` floats
 
 | Reg | Slot | Meaning |

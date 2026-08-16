@@ -2511,3 +2511,93 @@ flere nodetyper; noe som henger sammen med at vi selv nettopp hadde restartet;
 eller en adresse for en helt annen enhetsklasse (0x41 = 'A' i ASCII, men det
 er antagelig tilfeldig — de øvrige nodeadressene er små tall). Ufarlig for oss
 uansett: vi svarer kun på node 5. Neste forekomst fanges automatisk.
+
+## Viftehastighetene er IKKE skrivbare hos oss — trafo, ikke trinnløs (2026-08-16)
+
+Hypotesen var rimelig: CI 50-manualen har et avsnitt om innregulering av
+viftehastighet, panelet kan altså justere dem, og parameterregistrene er
+bekreftet skrivbare — ergo burde 50/75/100 kunne skrives fra bussen.
+
+**Premisset holder ikke.** Manualens innreguleringsavsnitt (110191N-07 s. 5)
+beskriver ikke en panelfunksjon, men en **fysisk bryter på trafoen** inne i
+aggregatet: «Lokaliser innreguleringsbryteren … Still bryteren i ønsket stilling
+til hver vifte», med spenningstrinn (trinn 2: 120/150/170 V) og eksplisitt
+«Trinn 1 og 3 har faste trafoinnstillinger … kan også endres ved å koble om, men
+da direkte på trafo».
+
+CS 50/CS 500-manualen (94269N-02 §4.49–4.51) har riktignok «Hastighet trinn 1/2/3
+tilluft/avtrekk» som menyparametere, 0–100 %, standard 50/75/100 — men med
+forbeholdet: **«Dette gjelder bare for aggregater som har trinnløst regulering
+av viftene.»** SL4 R er ikke det.
+
+Vårt eget opptak sier det samme uavhengig av manualene: `[2]` er one-hot
+**reléretur** for tilluft og avtrekk (592 telegrammer, null avvik), og CS
+50-terminallista har nettopp «Tilluftsvifte hastighet 1/2/3. Relè utgang».
+Relébrutte trafouttak — ikke et modulert signal.
+
+Konsekvens for tolkningen av `[13]`/`[14]`: pådragsprosenten er **avledet** fra
+parameteren, ikke målt. 49/74 mot parameterens 50/75 stemmer med skalering
+gjennom en byte (50 % → 127/255 = 49,8 %). Sensorene «Viftepådrag tilluft/avtrekk»
+bærer altså ingen informasjon utover viftetrinnet på dette aggregatet.
+
+Fabrikkverdiene er notert i PROTOCOL.md §9.3 slik at de overlever et eventuelt
+framtidig eksperiment. Men de skal ikke skrives: på et trinnløst anlegg er de
+**innreguleringsdata** — hele kanalsystemets balansepunkt, som manualen krever
+hentet fra «Dokumentasjon av ventilasjonsdata» fra prosjekterende. Det er ikke
+en driftskontroll.
+
+Metodenotat: dette er tredje gang et rimelig resonnement om dette anlegget viste
+seg å hvile på et premiss ingen hadde sjekket. Mønsteret er verdt å legge merke
+til — det er alltid billigere å lese manualen én gang til enn å skrive til
+bussen.
+
+## Forsering som bryter i stedet for to knapper (2026-08-16)
+
+Ettervarme var av/på, forsering var to knapper — inkonsekvent uten grunn.
+Forsering er nå en template-bryter etter samme mønster, med ny hub-getter
+`get_boost_active()` (høy nibbel != lav nibbel av `[5]`).
+
+Det som gjør bryteren riktig her er at tilstanden **leses fra bussen**:
+forseringen er tidsstyrt av aggregatet selv, og når perioden løper ut faller
+bryteren tilbake til «av» uten at vi teller tid. To knapper kunne aldri vise
+om forsering var aktiv.
+
+`restore_mode: DISABLED` er like kritisk som for ettervarmen — uten den ville
+noden forsert (eller avbrutt) ved hver eneste oppstart.
+
+Begrensning som består: vi kan bare sende ETT trykk (30 min). Panelets 2–3 trykk
+for 60/90 min er en annen kommando vi ikke har fanget. En bryter skjuler den
+begrensningen; det er dokumentert i TODO.
+
+## Forseringens varighet: 30/60/90 — og en mulig feilmerking (2026-08-16)
+
+CI 50-manualen (110191N-07 s. 5) er eksplisitt på varigheten: ett trykk = 30
+min, to = 60, tre = 90, og aggregatet går tilbake til forrige trinn selv. Under
+forsering står det på trinn 3.
+
+CS 50/CS 500-manualen har i tillegg tre parametere under Vifteregulering →
+Forsert ventilasjon, **ingen av dem merket «ikke CS 50»**:
+
+| § | Parameter | Område | Standard |
+|---|---|---|---|
+| 4.56 | Aktivere | PÅ/AV | AV |
+| 4.57 | Standard hastighet | 0–3 | 3 |
+| 4.58 | **Standardtid** | 0–360 | **30** |
+
+4.57 stemmer med det vi ser: forsering kjører trinn 3.
+
+**Problemet:** vi har merket `0x0E[6]` = 30 som «Motorvern forsinkelse», fordi
+§4.84 gir motorvern standard 30 s. Men §4.58 gir forseringstid standard 30 også.
+De to er **ikke til å skille fra hverandre på fabrikkverdi**, og vi har ingen
+positiv kontroll. Det er nøyaktig samme feilmodus som kostet oss dager på `[6]`
+og på den innbilte timetelleren — en plausibel merkelapp uten måling bak.
+
+**Eksperimentet som avgjør det, og det er skrivefritt:** slå på rå rammelogging,
+trykk forsering **to ganger** på panelet (60 min), og se hvilket parameterord
+som går til 60. Skjer det, er det ordet forseringstiden — og da kan varigheten
+settes ved å skrive parameteren i stedet for å spille av en lengre
+trykksekvens. Skjer det ingenting, ligger trykktallet i selve kommandoen, og vi
+trenger opptak av dobbelt- og trippeltrykk.
+
+Merk at dette også er den ryddigste veien ut av bryterens begrensning: én bryter
++ én `number` for varighet er en bedre modell enn tre knapper.

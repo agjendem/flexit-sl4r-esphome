@@ -215,6 +215,14 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void set_afterheat_enabled(bool on);
   bool get_afterheat_enabled() const { return this->afterheat_enabled_; }
 
+  // Boost is on when the unit is running a level other than the one it will
+  // fall back to. Reading the state from the bus like this is what lets boost
+  // be a switch rather than a pair of buttons: the period is timed by the
+  // unit, so when it expires the switch follows by itself.
+  bool get_boost_active() const {
+    return (this->last_raw_fan_level_ >> 4) != (this->last_raw_fan_level_ & 0x0F);
+  }
+
   // Dumps the boot capture to the log. Necessary because the most interesting
   // bytes - the CS50 registering its panels - arrive within the first seconds
   // after the bus is powered, long before WiFi and the API are up and the log

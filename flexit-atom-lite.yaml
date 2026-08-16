@@ -160,6 +160,26 @@ switch:
     turn_off_action:
       - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(false);'
 
+  # Forsering («Max vifte») som av/på i stedet for to knapper — samme modell
+  # som Ettervarme over. Det fungerer nettopp fordi tilstanden LESES fra
+  # bussen: forseringen er tidsstyrt av aggregatet selv (30 min ved ett trykk),
+  # og når perioden er over faller bryteren tilbake til «av» av seg selv, uten
+  # at vi trenger å telle tid. Av-slaget skriver returtrinnet (lav nibbel
+  # av [5]) — altså trinnet aggregatet uansett skulle tilbake til.
+  - platform: template
+    name: "Forsering"
+    id: boost_switch
+    icon: "mdi:fan-plus"
+    # Samme fallgruve som for Ettervarme: uten dette ville ESPHome gjenopprettet
+    # bryteren ved hver oppstart og dermed forsert (eller avbrutt) aggregatet
+    # hver gang noden booter. Tilstanden kommer fra bussen.
+    restore_mode: DISABLED
+    lambda: 'return id(flexit_sl4r_hub)->get_boost_active();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->trigger_boost();'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->cancel_boost();'
+
   # Rå logging av HVER validerte ramme. Skrus av/på i drift uten reflash —
   # det gamle `uart: debug:` krevde ny firmware hver gang. Bruk denne når du
   # skal fange en hendelse i sin helhet. Slå AV igjen etterpå; den er ordrik.
@@ -215,15 +235,10 @@ climate:
 button:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
-    boost:
-      name: "Forsering"
-      icon: "mdi:fan-plus"
-    # Avbryter forseringen ved å skrive RETURTRINNET (lav nibbel av [5]) —
-    # altså trinnet aggregatet uansett faller tilbake til. Verifisert
-    # mekanisme: en trinnskriving avslutter forseringen (pådrag 100 -> 49 %).
-    cancel_boost:
-      name: "Avbryt forsering"
-      icon: "mdi:fan-off"
+    # Forsering ligger IKKE her lenger, men som bryter under `switch:` —
+    # aggregatet melder tilstanden på bussen, så av/på er riktigere modell enn
+    # to knapper. Komponenten har fortsatt `boost:`/`cancel_boost:`-knapper for
+    # den som vil ha dem.
     # Dumper de første 6 kB fra bussen etter oppstart. Registreringen av
     # paneler skjer i løpet av sekunder etter at CS50 får strøm — lenge før
     # WiFi og API er oppe — så den må bufres i RAM og hentes ut etterpå.

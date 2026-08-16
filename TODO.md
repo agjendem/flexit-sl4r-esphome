@@ -86,6 +86,41 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       and `0x00` word 0 high). Both are logged; look for a pattern over days.
 - [ ] `0xC7` register `0x15`: `0`, `0.1`, `0.1` — still unexplained.
 
+### Boost duration — and a register we may have mislabelled
+
+The CI 50 manual (110191N-07 p. 5) gives the periods: one press = 30 min, two
+= 60, three = 90, and the unit returns to the previous level by itself. The
+CS 50/CS 500 manual adds three parameters, **none of them marked "not CS 50"**:
+
+| § | Parameter | Range | Default |
+|---|---|---|---|
+| 4.56 | Forced ventilation → Enable | on/off | off |
+| 4.57 | Forced ventilation → Standard speed | 0–3 | **3** |
+| 4.58 | Forced ventilation → **Standard time** | 0–360 | **30** |
+
+- [ ] **Find the boost-time register — and re-check `0x0E[6]`.** We labelled
+      `0x0E` word 6 "motor protection delay" because it reads 30 and the manual
+      gives motor protection a default of 30 s (§4.84). But boost standard time
+      *also* defaults to 30 (§4.58). **The two are indistinguishable at their
+      factory values**, and we never had a positive control — exactly the
+      failure mode that cost us days on `[6]` and on the fake hour counter.
+      The ranges differ (0–180 s vs 0–360), which does not help while both sit
+      at 30.
+- [ ] **Capture all three boost durations off the panel (agreed, read-only).**
+      Turn on raw frame logging and press the panel's boost button once, then
+      twice, then three times, letting the bus settle between each and noting
+      what the panel shows. Two things to look for in the diff:
+      1. **Does a parameter word change to 30 / 60 / 90?** If so, that word is
+         the boost time (§4.58), `0x0E[6]` loses its "motor protection" label,
+         and the duration becomes settable by writing the parameter — one
+         switch plus one `number` instead of three buttons.
+      2. **Or does the command frame itself differ between the presses?** We
+         have only ever captured the single press
+         (`20 14 31 23`). If the press count is encoded there, we need all
+         three command variants and the integration offers them as a `select`.
+      Either outcome is worth having; they lead to different implementations,
+      which is exactly why this must be measured rather than assumed.
+
 ## Verification
 
 - [ ] **Confirm the filter reset actually restarts the timer.** Now measurable:
@@ -137,3 +172,4 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
 | Is `0xC0` a read request? | No — tested and rejected, 0 of 27 |
 | Can the parameter registers be written? | **Yes** — confirmed. See PROTOCOL.md §9.6 before trying |
 | Does the node survive a house-wide power cut? | Yes — measured. The CS50 boots slower than the ESP32, so we answer within the enumeration window |
+| Can the fan duty per level (50/75/100) be written to re-balance the fans? | **No, not on this unit.** It is transformer-regulated with relay-switched taps; those parameters apply only to stepless units. See PROTOCOL.md §9.3 |

@@ -167,15 +167,11 @@ button:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
 
-    # "Max fan" for showering or cooking. The unit runs level 3 for a period and
-    # falls back to the previous level on its own.
-    boost:
-      name: "Boost"
-
-    # Cancels boost by writing the return level. A plain fan-level write does
-    # the same thing; this button just makes it obvious.
-    cancel_boost:
-      name: "Cancel boost"
+    # Boost is configured as a SWITCH further down instead of as buttons here,
+    # because the unit reports the state on the bus. These two buttons remain
+    # available if you prefer them:
+    #   boost:        { name: "Boost" }
+    #   cancel_boost: { name: "Cancel boost" }
 
     # Runs the CI 50 manual's full reset procedure automatically: setpoint to
     # 20 degrees, the reset gesture, then back to your setpoint. The 20-degree
@@ -219,6 +215,25 @@ switch:
       - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(true);'
     turn_off_action:
       - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(false);'
+
+  # Boost ("max fan") as on/off rather than as two buttons — the same model as
+  # the afterheater above, and it works for the same reason: the state is READ
+  # from the bus. Boost is timed by the unit itself (30 minutes on a single
+  # press), so when the period ends the switch returns to "off" on its own, with
+  # no timer on our side. Turning it off writes the return level, which is the
+  # level the unit was going back to anyway.
+  - platform: template
+    name: "Boost"
+    id: boost_switch
+    icon: "mdi:fan-plus"
+    # Same trap as the afterheater: without this, ESPHome restores the switch at
+    # every boot and would boost — or cancel — on every restart.
+    restore_mode: DISABLED
+    lambda: 'return id(flexit_sl4r_hub)->get_boost_active();'
+    turn_on_action:
+      - lambda: 'id(flexit_sl4r_hub)->trigger_boost();'
+    turn_off_action:
+      - lambda: 'id(flexit_sl4r_hub)->cancel_boost();'
 
   # Logs every validated frame as hex, toggled at runtime without a reflash.
   # Use it to capture a whole sequence of events. Verbose — switch it off after.
