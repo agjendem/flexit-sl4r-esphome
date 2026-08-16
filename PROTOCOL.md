@@ -23,8 +23,8 @@ Other firmware revisions may differ; please report if they do.
 
 ## 1. Physical layer
 
-| Property | Value |
-|---|---|
+| Property | Value | Confidence |
+|---|---|---|
 | Signalling | RS485, half duplex, 2-wire | ✅ |
 | Baud rate | 19200, 8 data bits, no parity, 1 stop bit | ✅ |
 | Topology | Multi-drop. The CI50's two 4P4C sockets are the **same** bus segment | ✅ |
