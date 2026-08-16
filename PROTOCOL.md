@@ -278,6 +278,27 @@ lack. Both predict "never set so far", so only a measurement separates them:
 run the afterheater with a real heat demand and see whether bit1 sets. See
 TODO.md.
 
+### 5.4 `[15]` — two nibbles, and the low one is boost
+
+`[15]` was long the only status field with no known correlate, "varying between
+32/35/48/51". Those are `0x20`, `0x23`, `0x30`, `0x33`: it is **two nibbles**,
+not four arbitrary values. ✅
+
+**Low nibble = boost. `3` while boost is running, `0` otherwise.** Verified
+across a full boost lifecycle on 2026-08-16, both when started from the panel
+and when started from the bus, and in both directions.
+
+The high nibble takes `2` or `3` and is not settled. It stayed `3` throughout a
+capture in which the afterheater was on the whole time, and the one archived
+command frame carrying `2` comes from the period when our own mirroring bug was
+switching the afterheater off — so "high nibble = afterheater" fits the
+evidence, but no controlled test has been run. ❓
+
+**`[15]` is not merely a mirror of `[6]` bit0.** It is owned by the command in
+§7.4, not by the fan state: writing a fan level ends a boost and clears `[6]`
+bit0, yet leaves `[15]` at `0x33` indefinitely. That discrepancy is what
+revealed the command in the first place.
+
 ---
 
 ## 6. The panel state frame
@@ -358,6 +379,37 @@ between telegrams are 20–55 ms.
 
 When answering polls, respond immediately on recognising the poll — do not
 wait for a quiet window, you already have one.
+
+### 7.4 Boost is register `0x14`, and the timer is in the PANEL
+
+Boost on and off are the same 4-byte command with one nibble different: ✅
+
+```
+C1 <node> 04 20 14 <duty> <flags>      duty   = current fan duty (0x31/0x64)
+                                       flags  = [15] with low nibble 3=on 0=off
+```
+
+Both bytes are mirrored from the live status telegram. Writing a **fan level**
+also ends a boost — that is what this integration used to do — but it leaves
+`[15]` stuck at `0x33`, because only this command clears it.
+
+**The 30-minute period is timed by the CI 50 panel, not by the CS 50.**
+Measured 2026-08-16 with two runs that differ in exactly one thing:
+
+| Boost started by | Duration | How it ended |
+|---|---|---|
+| the panel (one press) | **30 min 24 s** | the **panel** sent `20 14 64 30` itself |
+| us, over the bus | **36 min, still running** | never — we cancelled it manually |
+
+In the second run the panel transmitted nothing at all for 37 minutes: no state
+frame, no command. It does not time what it did not start.
+
+Two consequences for anyone implementing this. **A boost you start over the bus
+runs until something cancels it** — you must keep your own timer, or the fans
+stay at maximum indefinitely. And the press count for 60/90 minutes is *not on
+the bus*: the panel counts presses locally and transmits only on/off, which is
+why no parameter register moves and why every "on" command is byte-identical
+regardless of how many times the button was pressed.
 
 ---
 
@@ -568,7 +620,7 @@ Contributions that would settle these are very welcome; see the README.
 |---|---|---|
 | 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
 | 2 | Is `[2]` bit1 bypass — or the heating relay? | A plate-exchanger capture, **or** our own afterheater test firing the element (§5.3) |
-| 3 | What is `[15]`? | Unknown correlate; varies 32/35/48/51 independently of boost and afterheater |
+| 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.4). The high nibble takes 2 or 3; it was 3 throughout a capture with the afterheater on, and the one archived frame with 2 dates from a period when our own bug kept switching the afterheater off — suggestive, not settled |
 | 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | Heating season, with a real heat demand |
 | 5 | Where is the equipment configuration? | A capture from a unit with **different equipment** — diffing two installations would expose it immediately |
 | 6 | What do the two moving high-byte fields in `0xC6` mean? | Long-term logging |

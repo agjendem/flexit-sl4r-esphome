@@ -93,6 +93,14 @@ void FlexitSL4RComponent::loop() {
     }
   }
 
+  // Time out a boost we started ourselves. The CI50 never does it for us; see
+  // trigger_boost(). Comparing the difference against the period rather than
+  // the deadline against millis() keeps this correct across the 49-day wrap.
+  if (this->boost_deadline_ms_ != 0 && static_cast<int32_t>(millis() - this->boost_deadline_ms_) >= 0) {
+    ESP_LOGI(TAG, "Boost period elapsed - cancelling");
+    this->cancel_boost();  // clears the deadline
+  }
+
   // Are we still in the CS50's poll round? If this goes away, every write
   // fails silently - the unit must then be power-cycled to re-enumerate us.
   if (this->respond_to_polls_) {
@@ -293,6 +301,7 @@ void FlexitSL4RComponent::dispatch_frame_() {
       this->raw_status_[i] = this->frame_[FRAME_HEADER_LENGTH + i];
     this->raw_status_[22] = this->frame_[this->frame_.size() - 2];
     this->raw_status_[23] = this->frame_[this->frame_.size() - 1];
+    this->have_status_ = true;
     // Fields we believe to be constant. If one of them changes, that is
     // exactly the event we want full context around - and the alarm field is
     // always reported.
@@ -528,6 +537,12 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     if (this->fan_level_return_sensor_ != nullptr)
       this->fan_level_return_sensor_->publish_state(return_level);
 #endif
+    // If boost has ended by any other route - the panel cancelled it, someone
+    // wrote a fan level - our timer must not survive it. Leaving it armed would
+    // mean a later boost started FROM THE PANEL gets cancelled by our stale
+    // deadline, which is both wrong and hard to explain from the panel's side.
+    if (running_level == return_level)
+      this->boost_deadline_ms_ = 0;
 #ifdef USE_BINARY_SENSOR
     // Boost = the unit is running a different level than the one it will fall
     // back to. A precise indicator, free from data we already have.
@@ -731,24 +746,44 @@ void FlexitSL4RComponent::trigger_boost() {
   // send as node 5, b6 must be 5 too, or the frame is inconsistent.
   this->queue_state_frame_(this->last_raw_fan_level_, 0x01, this->last_raw_heat_exchanger_temp_);
 
-  const uint8_t n = this->source_node_;
+  this->queue_boost_command_(true);
 
-  const std::array<uint8_t, 7> cmd_body{0xC1, n, 0x04, 0x20, 0x14, 0x31, 0x23};
-  this->queue_raw_frame_(std::vector<uint8_t>(cmd_body.begin(), cmd_body.end()));
+  // The CS50 does NOT time our boost. Measured 2026-08-16: a boost started from
+  // the panel was ended after exactly 30 minutes by a cancel command the PANEL
+  // sent (node 4); a boost started from the bus ran 36 minutes with the panel
+  // silent throughout, and would have run indefinitely. The timer lives in the
+  // CI50, and the CI50 only times what it started itself. So we keep our own.
+  this->boost_deadline_ms_ = millis() + BOOST_PERIOD_MS;
 }
 
 void FlexitSL4RComponent::cancel_boost() {
-  // Writing the current fan level cancels boost (verified: duty fell
-  // 100 -> 49 %). We write the RETURN LEVEL (low nibble), that is, exactly the
-  // level the unit is going back to when the period ends - not the high nibble,
-  // which during boost is 3.
-  const uint8_t return_level = this->last_raw_fan_level_ & 0x0F;
-  if (return_level < 1 || return_level > 3) {
-    ESP_LOGW(TAG, "Return level not known yet - not cancelling boost");
+  if (!this->have_status_) {
+    ESP_LOGW(TAG, "No status yet - not cancelling boost");
     return;
   }
-  ESP_LOGI(TAG, "Cancelling boost: writing return level %u", static_cast<unsigned>(return_level));
-  this->set_fan_level(return_level);
+  ESP_LOGI(TAG, "Cancelling boost");
+  this->queue_boost_command_(false);
+  this->boost_deadline_ms_ = 0;
+}
+
+// Boost on and off are the SAME command with one nibble different, which is why
+// they share a builder. Captured from the panel:
+//   on   20 14 31 33     off  20 14 64 30
+// data[0] is the current fan duty, data[1] carries status byte [15], whose LOW
+// NIBBLE is the boost flag (3 = on, 0 = off).
+//
+// Both bytes are mirrored from the live status telegram rather than hardcoded.
+// That is not stylistic: our old cancel wrote a fan LEVEL instead of this
+// command, which did return the fan but left [15] stuck at 0x33 afterwards -
+// visible for 36 minutes in the 2026-08-16 capture. Writing a value we have not
+// decoded, or failing to write one we should, has now bitten this project five
+// times. Mirror, then change one thing.
+void FlexitSL4RComponent::queue_boost_command_(bool on) {
+  const uint8_t duty = this->raw_status_[13];
+  const uint8_t flags = static_cast<uint8_t>((this->raw_status_[15] & 0xF0) | (on ? 0x03 : 0x00));
+
+  const std::array<uint8_t, 7> cmd_body{0xC1, this->source_node_, 0x04, 0x20, 0x14, duty, flags};
+  this->queue_raw_frame_(std::vector<uint8_t>(cmd_body.begin(), cmd_body.end()));
 }
 
 void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {

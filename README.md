@@ -65,7 +65,7 @@ take what you need, name it what you like.
 |---|---|---|
 | Fan level | `select` | 1–3. Setting a level cancels an active boost |
 | Heat exchanger setpoint | `number` | 15–25 °C |
-| Boost | `switch` | "Max fan". The unit times the period itself (30 min on a single press) and falls back, so the switch returns to off on its own. Off writes the return level |
+| Boost | `switch` | "Max fan", 30 minutes. **We time it ourselves** — see below. Off sends the panel's own cancel command |
 | Afterheater | `switch` | Writes the flag directly — unlike the panel gesture, it cannot trigger a filter reset |
 | Reset filter timer | `button` | Runs the manual's full procedure automatically |
 | Ventilation | `climate` | All of the above in one thermostat model |
@@ -103,6 +103,26 @@ log.
 been observed set on our rotary unit. If it ever changes, it is logged as an
 anomaly with the full frame. It may not be bypass at all — see
 [`PROTOCOL.md` §5.3](PROTOCOL.md).
+
+### Boost: the timer lives in the panel, so we keep our own
+
+Worth knowing if you build on this, because it is easy to assume otherwise —
+we did, and shipped it in this README for a day.
+
+The CI 50 panel times its own boost: press once, and **30 minutes later the
+panel itself** puts the unit back, by sending a cancel command over the bus. The
+CS 50 does not run that clock. So a boost started **from the bus** is never
+timed by anything: measured, it ran 36 minutes with the panel silent throughout,
+and would have run until someone intervened.
+
+This integration therefore arms its own 30-minute timer whenever *it* starts a
+boost, and disarms it the moment boost ends by any other route — so a boost
+you start at the panel is still the panel's to time, not ours.
+
+For the same reason the panel's 60- and 90-minute options (two and three
+presses) cannot be reached from the bus at all: the panel counts the presses
+locally and transmits only on/off. Every "on" command is byte-identical no
+matter how many times the button was pressed.
 
 ### One word about naming the afterheater
 

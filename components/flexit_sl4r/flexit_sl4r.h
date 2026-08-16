@@ -86,6 +86,13 @@ static constexpr float SENSOR_DISCONNECTED = -55.0f;
 // Verified both ways: enable -> 0x80, disable -> 0x00, boost -> 0x01.
 // Vongraven's original "0=off, 128=on" was right all along.
 static constexpr uint8_t STATUS_BOOST_ACTIVE = 0x01;
+
+// How long a boost we started ourselves is allowed to run before we cancel it.
+// The CI50 times its OWN boost at 30 minutes for a single press (measured
+// 2026-08-16: 30 min 24 s) and sends the cancel itself. It does not time a
+// boost started from the bus, so we match its behaviour rather than leave the
+// fans at maximum indefinitely.
+static constexpr uint32_t BOOST_PERIOD_MS = 30UL * 60UL * 1000UL;
 static constexpr uint8_t STATUS_AFTERHEAT_ENABLED = 0x80;
 
 // The same flag in the PANEL's state frame (`data[4]` of the node 4 frame
@@ -277,6 +284,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // --- Transmit ---
   // Queues a complete frame (without checksum - that is computed at send time).
   void queue_state_frame_(uint8_t fan, uint8_t flag, uint8_t setpoint);
+  // Builds the panel's own boost command (reg 0x14), mirroring the live duty
+  // and status byte [15] and changing only [15]'s low nibble.
+  void queue_boost_command_(bool on);
   void handle_panel_frame_();
   void publish_firmware_(bool controller);
   void queue_raw_frame_(std::vector<uint8_t> frame_without_checksum, uint8_t repeats = 1);
@@ -352,6 +362,11 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // back.
   bool afterheat_enabled_{false};
   bool have_afterheat_state_{false};
+  // Set once a status telegram has been parsed, i.e. once raw_status_ holds
+  // real bytes. Commands that mirror status fields must not run before this.
+  bool have_status_{false};
+  // millis() deadline for a boost WE started; 0 = no boost of ours pending.
+  uint32_t boost_deadline_ms_{0};
   // PRINCIPLE: everything we do not understand is mirrored from the panel's
   // last frame, so that a write changes only what we ACTUALLY mean to change.
   // We once hardcoded fields we believed constant and thereby switched off the

@@ -27,9 +27,13 @@ unit into a state it will not reach on its own, and diff the bus against a
 known-good capture. They are written up in place below rather than duplicated
 here.
 
-1. **[Boost — capture all three durations](#boost-duration--and-a-register-we-may-have-mislabelled)**
-   off the panel (1×/2×/3× = 30/60/90 min). May also prove `0x0E[6]` is
-   mislabelled. Can be done any time.
+1. ~~Boost — capture all three durations off the panel.~~ **Done 2026-08-16,
+   and the answer was that there is nothing to capture:** the panel counts
+   presses locally and transmits only on/off, so 60 and 90 minutes are
+   unreachable from the bus. It also settled the duration (30 min 24 s
+   measured) and located the timer in the panel. See PROTOCOL.md §7.4.
+   `0x0E[6]` never moved, so its "motor protection" label survives — still
+   without a positive control.
 2. **[Afterheater — provoke "Ettervarme varmer"](#the-afterheater-when-does-the-element-actually-heat)**
    with the setpoint at maximum through a cold night. **Needs the heating
    season**; it cannot succeed while heat demand never reaches 100.
@@ -57,8 +61,11 @@ here.
       `unknown alarm` entity plus the anomaly log will capture whichever fires
       first — **a capture from any installation with an active alarm would
       settle this immediately.**
-- [ ] **`[15]`** — varies between 32/35/48/51, independently of both boost and
-      the afterheater. The only status field with no known correlate.
+- [ ] **`[15]` high nibble** — the low nibble turned out to be boost
+      (PROTOCOL.md §5.4), which leaves only the high nibble, taking 2 or 3.
+      "Afterheater" fits the evidence but has never been tested directly.
+      **One controlled toggle of the afterheater while watching `[15]` settles
+      it** — cheap, and safe while there is no heat demand.
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
       but what the value itself encodes is unknown.
 - [ ] **`[2]` bit 1** — assumed bypass, never observed set on our rotary unit.
@@ -137,40 +144,27 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       and `0x00` word 0 high). Both are logged; look for a pattern over days.
 - [ ] `0xC7` register `0x15`: `0`, `0.1`, `0.1` — still unexplained.
 
-### Boost duration — and a register we may have mislabelled
+### Boost — answered 2026-08-16
 
-The CI 50 manual (110191N-07 p. 5) gives the periods: one press = 30 min, two
-= 60, three = 90, and the unit returns to the previous level by itself. The
-CS 50/CS 500 manual adds three parameters, **none of them marked "not CS 50"**:
+The press count is **not on the bus**. The panel counts presses locally and
+transmits only on/off, so the 60- and 90-minute options cannot be reached from
+the bus; every "on" command is byte-identical. The 30-minute period was measured
+at 30 min 24 s, and the timer turned out to live in the CI 50 panel, which sends
+the cancel itself. Full write-up in PROTOCOL.md §7.4; the integration now keeps
+its own timer for boosts it starts.
 
-| § | Parameter | Range | Default |
-|---|---|---|---|
-| 4.56 | Forced ventilation → Enable | on/off | off |
-| 4.57 | Forced ventilation → Standard speed | 0–3 | **3** |
-| 4.58 | Forced ventilation → **Standard time** | 0–360 | **30** |
+Two loose ends survived:
 
-- [ ] **Find the boost-time register — and re-check `0x0E[6]`.** We labelled
-      `0x0E` word 6 "motor protection delay" because it reads 30 and the manual
-      gives motor protection a default of 30 s (§4.84). But boost standard time
-      *also* defaults to 30 (§4.58). **The two are indistinguishable at their
-      factory values**, and we never had a positive control — exactly the
-      failure mode that cost us days on `[6]` and on the fake hour counter.
-      The ranges differ (0–180 s vs 0–360), which does not help while both sit
-      at 30.
-- [ ] **Capture all three boost durations off the panel (agreed, read-only).**
-      Turn on raw frame logging and press the panel's boost button once, then
-      twice, then three times, letting the bus settle between each and noting
-      what the panel shows. Two things to look for in the diff:
-      1. **Does a parameter word change to 30 / 60 / 90?** If so, that word is
-         the boost time (§4.58), `0x0E[6]` loses its "motor protection" label,
-         and the duration becomes settable by writing the parameter — one
-         switch plus one `number` instead of three buttons.
-      2. **Or does the command frame itself differ between the presses?** We
-         have only ever captured the single press
-         (`20 14 31 23`). If the press count is encoded there, we need all
-         three command variants and the integration offers them as a `select`.
-      Either outcome is worth having; they lead to different implementations,
-      which is exactly why this must be measured rather than assumed.
+- [ ] **`0x0E[6]` still lacks a positive control.** It never moved during the
+      test, so "motor protection delay" stands — but the rival reading (§4.58
+      boost standard time) was never *disproved*, only left untested, since the
+      panel does not write the duration anywhere. Both default to 30. If a
+      register write is ever attempted on the experiment branch, this is the
+      one to change and watch.
+- [ ] **Could we send 60/90 minutes ourselves?** Nothing stops us running our
+      own timer for longer than 30 minutes — the unit stays in boost until
+      cancelled. Worth exposing as a `number` if anyone wants it, but note it
+      would be *our* period, not the panel's.
 
 ## Verification
 
@@ -222,5 +216,10 @@ CS 50/CS 500 manual adds three parameters, **none of them marked "not CS 50"**:
 | One or two temperature sensors? | **One.** The afterheater kit fits two *thermostats*, not measuring sensors |
 | Is `0xC0` a read request? | No — tested and rejected, 0 of 27 |
 | Can the parameter registers be written? | **Yes** — confirmed. See PROTOCOL.md §9.6 before trying |
+| How long does a boost last? | **30 min 24 s measured** for one press |
+| Can we send the 60/90-minute options? | **No.** The panel counts presses locally; only on/off reaches the bus |
+| Who times the boost? | **The CI 50 panel** — and only for boosts it started itself. A boost from the bus is never timed (measured: 36 min, panel silent) |
+| What is `[15]`'s low nibble? | Boost: 3 = on, 0 = off |
+| Does writing a fan level fully cancel a boost? | It returns the fan, but leaves `[15]` stale. Use the `0x14` command (§7.4) |
 | Does the node survive a house-wide power cut? | Yes — measured. The CS50 boots slower than the ESP32, so we answer within the enumeration window |
 | Can the fan duty per level (50/75/100) be written to re-balance the fans? | **No, not on this unit.** It is transformer-regulated with relay-switched taps; those parameters apply only to stepless units. See PROTOCOL.md §9.3 |

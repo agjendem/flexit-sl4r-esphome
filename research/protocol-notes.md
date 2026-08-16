@@ -2650,3 +2650,57 @@ besvart som bieffekt. Begge er nå notert i PROTOCOL.md §5.3.
 
 Konsekvens hvis elementet er trinnstyrt: «hvor hardt varmer den» finnes kanskje
 ikke på bussen i det hele tatt — bare «hvilket trinn er inne».
+
+## Forsering: varigheten målt, og timeren sitter i PANELET (2026-08-16)
+
+Trykketesten på panelet ga først to negative resultater: **ingen** parameterord
+endret seg (alle registre skannet gjennom hele vinduet), og **alle** «på»-
+kommandoene var byte-identiske uansett antall trykk. `0x0E[6]` sto på 30 hele
+veien, så «motorvern»-merkingen overlevde — men uten positiv kontroll.
+
+Grunnen til at trykkene føltes like var at de VAR like: avstanden mellom dem var
+3,4–18 sekunder, langt utenfor manualens «noen sekunder»-vindu, så hvert trykk
+ble en ny av/på-veksling framfor et dobbelttrykk.
+
+### Kommandoen er reg 0x14
+
+```
+C1 <node> 04 20 14 <pådrag> <flagg>     pådrag = 0x31 (49 %) / 0x64 (100 %)
+                                        flagg  = [15], lav nibbel 3=på 0=av
+```
+
+### [15] er to nibler — lav nibbel er forsering
+
+Dermed falt det siste «ukjente» statusfeltet. 32/35/48/51 er `0x20/0x23/0x30/0x33`.
+Lav nibbel = forsering (3 på, 0 av), verifisert i begge retninger og både fra
+panel og fra buss. Høy nibbel (2 eller 3) står igjen; «ettervarme» passer med
+alle observasjoner, men er ikke kontrollert testet.
+
+### Varigheten, og hvem som eier klokka
+
+Siste trykk lot forseringen stå. Vi lot den løpe ut:
+
+| Startet av | Varighet | Hvordan den endte |
+|---|---|---|
+| panelet (ett trykk) | **30 min 24 s** | **panelet** (node 04) sendte `20 14 64 30` selv |
+| oss, over bussen | **36 min, gikk fortsatt** | aldri — vi avbrøt manuelt |
+
+I forsøk 2 sendte panelet **ingenting** på 37 minutter. Timeren ligger altså i
+CI 50, og CI 50 timer kun det den selv har startet. Det forklarer begge de
+negative resultatene over i ett grep: varigheten finnes ikke i CS50 (derfor
+ingen registerendring), og trykktallet telles lokalt i panelet (derfor
+identiske kommandoer).
+
+### To reelle feil i vår egen integrasjon, begge rettet
+
+1. **Forsering fra HA løp for alltid.** README-en påsto at aggregatet faller
+   tilbake selv — sant for panelet, usant for oss. Komponenten har nå en egen
+   30-minutters frist som armeres når VI starter, og ryddes straks forseringen
+   ender på annen måte (så en panelforsering forblir panelets å time).
+2. **Vår avbrytelse var ikke panelets avbrytelse.** Vi skrev et viftetrinn,
+   som returnerer vifta men etterlater `[15]` på `0x33` — sto slik i 36 minutter
+   i opptaket. Nå sendes `0x14`-kommandoen med begge byte speilet fra
+   statustelegrammet. Verifisert: `[15]` 51 -> 48 ved avslag.
+
+Femte gang speilingsprinsippet blir bekreftet. Denne gangen var feilen ikke at
+vi skrev noe ukjent, men at vi lot være å skrive noe vi burde.
