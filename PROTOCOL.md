@@ -261,11 +261,22 @@ The value `0` appears briefly during a level change, while no relay is
 engaged. If the two groups ever disagree, the fans are genuinely running at
 different speeds — a diagnostic signal not otherwise available.
 
-**Bit1 has never been observed set** in 837 telegrams. Flexit uses the same
-output (J5 pin 11,12) for "rotor **or** bypass motor" depending on unit type,
-so on a plate-exchanger unit this group probably encodes bypass state. ❓
-This cannot be settled on a rotary unit — **a capture from a plate-exchanger
-installation would resolve it immediately.**
+**Bit1 has never been observed set** in 837 telegrams. Two hypotheses fit that
+equally well, and they were not distinguished until now: ❓
+
+1. **Bypass.** Flexit uses the same output (J5 pin 11,12) for "rotor **or**
+   bypass motor" depending on unit type, so on a plate-exchanger unit this
+   group would encode bypass — absent on our rotary unit by construction.
+2. **The heating relay.** The CS 50 drives an *electric* afterheater from relay
+   outputs ("Varme trinn 2 (el.batteri)"); the J5 0–10 V afterheater signal is
+   designated for the *water* battery's valve motor, and the PWM/SSR output for
+   electric elements (J6 pin 13,14) is marked "not CS 50". `[2]` is the relay
+   byte, so the element's state belongs here. It has simply been summer.
+
+Hypothesis 2 also supplies the "element is heating now" indicator we otherwise
+lack. Both predict "never set so far", so only a measurement separates them:
+run the afterheater with a real heat demand and see whether bit1 sets. See
+TODO.md.
 
 ---
 
@@ -556,7 +567,7 @@ Contributions that would settle these are very welcome; see the README.
 | # | Question | What would settle it |
 |---|---|---|
 | 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
-| 2 | Is `[2]` bit1 bypass? | A capture from a **plate-exchanger** unit |
+| 2 | Is `[2]` bit1 bypass — or the heating relay? | A plate-exchanger capture, **or** our own afterheater test firing the element (§5.3) |
 | 3 | What is `[15]`? | Unknown correlate; varies 32/35/48/51 independently of boost and afterheater |
 | 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | Heating season, with a real heat demand |
 | 5 | Where is the equipment configuration? | A capture from a unit with **different equipment** — diffing two installations would expose it immediately |

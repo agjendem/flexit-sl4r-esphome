@@ -2601,3 +2601,52 @@ trenger opptak av dobbelt- og trippeltrykk.
 
 Merk at dette også er den ryddigste veien ut av bryterens begrensning: én bryter
 + én `number` for varighet er en bedre modell enn tre knapper.
+
+## Navneregel for ettervarme, og innslagspunktet (2026-08-16)
+
+«Ettervarme» (bryter) og «Ettervarme aktivert» (binary_sensor) leste **samme
+bit** — `[6]` bit7. Sensoren var altså en ren duplikat av bryterens tilstand,
+ikke et supplement, og det var duplikaten som gjorde dem umulige å skille.
+Sensoren er fjernet fra begge YAML-ene.
+
+Verre: CI 50-manualens paneloversikt (s. 4) bruker «aktiv» om det MOTSATTE av
+det vi gjorde:
+
+| Lysdiode | Flexits ordlyd | Betydning |
+|---|---|---|
+| 7 (grønn) | «Indikering ettervarme AV/PÅ» | innstillingen |
+| 6 (gul) | «Indikering ettervarme aktiv (element varmer)» | elementet varmer nå |
+
+Vedtatt navngiving: **«Ettervarme»** = innstillingen, **«Ettervarme varmer»** =
+elementet varmer nå. Ordet «aktiv»/«aktivert» skal aldri brukes om
+innstillingen.
+
+### Hva manualen sier om innslagspunktet
+
+Tilluftstemperaturen styres av ÉTT regulatorutgangssignal delt i soner:
+kjøling · nøytral · gjenvinning · nøytral · varme (§4.48). Nøytralsonen
+**Gjenvinner–Varme har standardverdi 0,0 °C** (område −5…+5) — altså ingen
+dødsone: varmen slår inn straks gjenvinningen er uttømt og settpunktet fortsatt
+ikke er nådd. (Manualen skriver samtidig «Unngå å gå under 2°C», som står i
+motstrid til dens egen standardverdi. Verdt å vite før man stoler på noen av
+delene.)
+
+Forutsetningen er dermed observerbar i en entitet vi allerede har:
+**«Varmepådrag» (`[11]`) må nå 100** mens tillufta fortsatt er under settpunkt.
+Derfor er dette umulig å fremprovosere om sommeren — pådraget står på 0 nå.
+
+### Hvor bør «Ettervarme varmer» ligge?
+
+Sterkt spor fra CS 50-terminallista: et **elektrisk** ettervarmebatteri styres
+med **reléutganger** («Varme trinn 2 (el.batteri)»). J5 pin 9,10 (0–10 V) er
+tiltenkt VANNbatteriets ventilmotor («Ettervarme full range vannbatteri»), og
+PWM/SSR-utgangen for elektriske elementer (J6 pin 13,14) er merket «ikke CS 50».
+
+Og `[2]` er nettopp vår relébyte. **`[2]` bit1 — som vi har antatt er bypass
+fordi den aldri har vært satt — passer like godt som varmerelé, og «aldri satt»
+forklares da av at det har vært sommer.** De to hypotesene er skillbare: fyrer
+elementet og bit1 settes, er det varmerelé, og det åpne spørsmålet om bypass er
+besvart som bieffekt. Begge er nå notert i PROTOCOL.md §5.3.
+
+Konsekvens hvis elementet er trinnstyrt: «hvor hardt varmer den» finnes kanskje
+ikke på bussen i det hele tatt — bare «hvilket trinn er inne».

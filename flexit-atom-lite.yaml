@@ -491,11 +491,18 @@ binary_sensor:
     afterheat_active:
       name: "Forsering (statusbit)"
       entity_category: diagnostic
-    # payload[6] bit7 — ettervarme aktivert (panelets «+»-lampe). Leses fra
-    # statustelegrammet, som kommer hvert sekund; panelrammen sendes kun ved
-    # endring og etterlot feltet ukjent i timevis etter hver omstart.
-    afterheat_enabled:
-      name: "Ettervarme aktivert"
+    # payload[6] bit7 — ettervarmens av/på-innstilling. IKKE eksponert her:
+    # bryteren «Ettervarme» leser nøyaktig samme bit, så en binary_sensor ville
+    # vært en ren duplikat — og duplikaten var selve forvirringen.
+    #
+    # NAVNEREGELEN, som følger CI 50-manualens paneloversikt (s. 4):
+    #   «Ettervarme»        = innstillingen, elementet FÅR LOV å varme
+    #                         (grønn lysdiode 7, «ettervarme AV/PÅ»)
+    #   «Ettervarme varmer» = elementet varmer NÅ
+    #                         (gul lysdiode 6, «ettervarme aktiv»)
+    # Ordet «aktiv» brukes ALDRI om innstillingen — Flexit bruker det om det
+    # motsatte, og vår gamle «Ettervarme aktivert» kolliderte rett med det.
+    # Vi har foreløpig ingen bussverdi for «Ettervarme varmer»; se TODO.md.
     # payload[4] bit1 — filtertiden er utløpt. CS 50 har ingen trykkvakt;
     # alarmen er tidsbasert og nullstilles på panelet.
     filter_alarm:

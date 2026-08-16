@@ -20,7 +20,7 @@ The protocol is documented in **[`PROTOCOL.md`](PROTOCOL.md)**.
 
 - **Reading:** supply air temperature, fan level (running and return), fan duty
   in percent for both fans, heat exchanger setpoint, heat demand, boost state,
-  **filter alarm**, **afterheater enabled**, and from the parameter registers
+  **filter alarm**, the **afterheater setting**, and from the parameter registers
   **hours since the filter timer was last reset** together with the filter
   interval. Plus diagnostic entities for fields not yet decoded, so Home
   Assistant's recorder builds history to correlate against.
@@ -90,7 +90,7 @@ filter hours and filter interval · fan duty configured per level.
 
 **State and alarm**
 
-Filter alarm · **unknown alarm** · afterheater enabled · boost active ·
+Filter alarm · **unknown alarm** · boost active ·
 **heat recovery running** (the rotor is actually turning, not merely that
 demand exists) · **bypass (assumed)**.
 
@@ -101,7 +101,27 @@ log.
 
 "Bypass (assumed)" is an open guess and the name says so: the bit has never
 been observed set on our rotary unit. If it ever changes, it is logged as an
-anomaly with the full frame.
+anomaly with the full frame. It may not be bypass at all — see
+[`PROTOCOL.md` §5.3](PROTOCOL.md).
+
+### One word about naming the afterheater
+
+The CI 50 panel has two separate lamps for the afterheater, and conflating them
+is easy: green LED 7 is the **setting** ("ettervarme AV/PÅ"), yellow LED 6 is
+the element **actually heating** ("ettervarme aktiv"). Note that Flexit's word
+"aktiv" means the *heating* one.
+
+This integration follows that split, and reserves the vocabulary accordingly:
+
+| Entity | Meaning | Panel |
+|---|---|---|
+| **Afterheater** (`switch`) | the setting — the element is *allowed* to heat | green LED 7 |
+| **Afterheater heating** | the element is heating *right now* | yellow LED 6 |
+
+**The second one does not exist yet.** The bit we once believed was it turned
+out to be boost. There is deliberately no read-only "enabled" sensor alongside
+the switch: it would show the same bit, and that duplicate is precisely what
+makes the two impossible to tell apart. Never label the setting "active".
 
 **Diagnostics**
 

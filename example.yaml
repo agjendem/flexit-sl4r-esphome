@@ -418,10 +418,20 @@ binary_sensor:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
 
-    # payload[6] bit7. Read from the status telegram, which arrives every
-    # second — not from the panel frame, which is only sent on change.
-    afterheat_enabled:
-      name: "Afterheater enabled"
+    # payload[6] bit7 is the afterheater's on/off SETTING. It is deliberately
+    # not exposed here: the "Afterheater" switch reads the very same bit, so a
+    # binary sensor would be a pure duplicate — and that duplicate was exactly
+    # what made the two impossible to tell apart.
+    #
+    # The naming rule, from the CI 50 manual's panel overview (p. 4):
+    #   "Afterheater"          = the setting; the element is ALLOWED to heat
+    #                            (green LED 7, "ettervarme AV/PÅ")
+    #   "Afterheater heating"  = the element is heating RIGHT NOW
+    #                            (yellow LED 6, "ettervarme aktiv")
+    # Never use "active" for the setting — Flexit uses that word for the other
+    # meaning, so it reads backwards to anyone looking at the panel.
+    # We have no bus value for "heating right now" yet; see TODO.md.
+    #   afterheat_enabled: { name: "Afterheater on" }   # if you want it anyway
 
     # payload[6] bit0 = boost. Kept as a diagnostic because it is an
     # INDEPENDENT source for boost state; "Boost active" below is derived from

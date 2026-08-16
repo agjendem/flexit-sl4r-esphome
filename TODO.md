@@ -20,6 +20,22 @@ becomes a fix. Both cost us days when ignored.
 
 ---
 
+## The two provocation experiments
+
+Both are agreed, both are **read-only**, and both work the same way: put the
+unit into a state it will not reach on its own, and diff the bus against a
+known-good capture. They are written up in place below rather than duplicated
+here.
+
+1. **[Boost — capture all three durations](#boost-duration--and-a-register-we-may-have-mislabelled)**
+   off the panel (1×/2×/3× = 30/60/90 min). May also prove `0x0E[6]` is
+   mislabelled. Can be done any time.
+2. **[Afterheater — provoke "Ettervarme varmer"](#the-afterheater-when-does-the-element-actually-heat)**
+   with the setpoint at maximum through a cold night. **Needs the heating
+   season**; it cannot succeed while heat demand never reaches 100.
+
+---
+
 ## Decoding
 
 ### The bus
@@ -46,11 +62,13 @@ becomes a fix. Both cost us days when ignored.
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
       but what the value itself encodes is unknown.
 - [ ] **`[2]` bit 1** — assumed bypass, never observed set on our rotary unit.
-      **Needs a capture from a plate-exchanger installation.**
+      A plate-exchanger capture would settle it — **but so might our own
+      afterheater test**, since the electric element is relay-driven and `[2]`
+      is the relay byte. See the afterheater section below.
 - [ ] **`[12]`, `[16]`–`[19]`, `[21]`** — no variation observed. Possibly
       options we do not have, or CS 500-only fields.
 
-### The afterheater's own duty
+### The afterheater — when does the element actually heat?
 
 The CS 50 terminal list confirms both outputs exist, and neither is marked
 "not CS 50":
@@ -61,9 +79,42 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
 | J5 (pin 9,10) | Control signal to the afterheater, 0-10 V |
 | J5 (pin 13,14) | Rotor alarm |
 
-- [ ] **Find the afterheater's 0-10 V duty.** We have no "element is heating
-      now" indicator at all — the field we believed was one turned out to be
-      boost. Best hunted during the heating season, with a real heat demand.
+- [ ] **Provoke "Ettervarme varmer" — the overnight max-setpoint test.** We
+      have no "the element is heating now" indicator at all; the field we
+      believed was one turned out to be boost. The panel *has* the signal
+      (yellow LED 6), so the bit exists somewhere.
+
+      **What the manual says about the cut-in point.** Supply air temperature is
+      governed by one regulator output, split into zones: cooling · neutral ·
+      heat recovery · neutral · heat (§4.48). The **Gjenvinner–Varme neutral
+      zone defaults to 0.0 °C** (range −5…+5), so there is no dead band: the
+      heat engages as soon as the recovery output is exhausted and the setpoint
+      is still not met. The manual advises never going below 2 °C, which sits
+      oddly with its own default of 0 — worth knowing before trusting either.
+
+      **The precondition is therefore observable in an entity we already have:**
+      heat demand (`[11]`, the rotor's 0–100 signal) must reach **100** while
+      supply air is still below setpoint. Until it does, no element test can
+      succeed, and that is why this cannot be forced in summer.
+
+      Method: set the setpoint to its maximum (25 °C), turn raw frame logging
+      on, and let it run through a cold night. Diff whatever moves against a
+      daytime capture at the same setpoint.
+- [ ] **Watch `[2]` bit1 in particular during that test — it may not be bypass
+      at all.** The CS 50 terminal list drives an *electric* afterheater with
+      **relay** outputs ("Varme trinn 2 (el.batteri)"), not with the J5 0–10 V
+      signal, which p. 11 designates for the *water* battery valve motor
+      ("Ettervarme full range vannbatteri"); the PWM/SSR output for electric
+      elements (J6 pin 13,14) is marked "ikke CS 50". And `[2]` is precisely
+      our known relay-feedback byte (§5.3). Bit1 has never been observed set —
+      which we read as "bypass, absent on a rotary unit", but which fits
+      "heating relay, and it has been summer" just as well. **The two
+      hypotheses are distinguishable:** if bit1 sets when the element fires,
+      it is the heat relay, and PROTOCOL.md open question 2 is answered as a
+      side effect.
+- [ ] **Then find the modulating duty, if it exists.** Should the element turn
+      out to be stepped rather than modulated on this unit, "how hard is it
+      heating" may not exist on the bus at all — only "which step is engaged".
 - [ ] **Find the rotor alarm bit.** The rotor has a built-in self-test that
       runs for one minute daily; logging over 24 h should reveal it.
 
