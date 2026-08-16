@@ -2776,3 +2776,29 @@ seg ikke. Bør logge en advarsel når en forsering ikke slår inn.
 Metodenotat: dette er andre gang i dag at en «fysisk» forklaring (skjør knapp)
 ble foretrukket framfor en målbar, og begge gangene var måleren tilgjengelig
 hele tiden.
+
+## Dobbelttrykket VIRKET: 60 min bekreftet, men usynlig på bussen (2026-08-16)
+
+Brukeren fikk et bekreftet dobbelttrykk (to dioder i utvalgsvinduet). Resultat:
+
+| Valg | Kommando på bussen | Målt varighet |
+|---|---|---|
+| ett trykk | `20 14 31 33` | 30 min 24 s |
+| ett trykk | `20 14 31 33` | 30 min 25 s |
+| **to trykk** | `20 14 31 33` — **identisk** | **60 min 51 s** |
+
+Forseringen startet 16:22:01,7 og falt tilbake 17:22:52,5.
+
+**Begge deler er altså sanne samtidig:** den lengre perioden er ekte, OG
+kommandoen er byte-identisk. Panelet holder klokka helt for seg selv.
+
+Et lite kvalitetstegn på målingene: overskytet skalerer med perioden (+1,33 %
+og +1,42 %), altså én treg klokke og ikke et fast påslag. To uavhengige
+målinger av samme mekanisme.
+
+Konsekvensen er skarpere enn «vi kan ikke sette varigheten»: **vi kan ikke vite
+den heller.** Starter en forsering på panelet, ser vi at den begynte, men ikke
+når den slutter. Bare forseringer vi selv starter har en varighet vi kjenner.
+
+Motsatt vei er det derimot åpent: siden aggregatet blir stående i forsering til
+noe avbryter, kan VI tilby 30/60/90 med vår egen timer. Lagt i TODO.

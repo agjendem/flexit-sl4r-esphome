@@ -444,13 +444,25 @@ Two consequences for anyone implementing this. **A boost you start over the bus
 runs until something cancels it** — you must keep your own timer, or the fans
 stay at maximum indefinitely.
 
-**And the press count for 60/90 minutes is not on the bus at all.** ✅ The panel
-counts presses locally and transmits only on/off. Confirmed 2026-08-16 with the
-control the first attempt lacked: the operator watched the panel and reported
-**two or three lit LEDs** — the panel's own display of a 60/90-minute
-selection — while the bus carried the byte-identical `20 14 31 33` and not one
-parameter register moved. A single press and a triple press are
-indistinguishable to anything downstream of the panel.
+**And the press count for 60/90 minutes is not on the bus at all** — although
+the longer period is entirely real. ✅ Three measurements settle it:
+
+| Selection | Command on the bus | Measured duration |
+|---|---|---|
+| one press | `20 14 31 33` | 30 min 24 s |
+| one press | `20 14 31 33` | 30 min 25 s |
+| **two presses** (2 LEDs, confirmed on the panel) | `20 14 31 33` — **identical** | **60 min 51 s** |
+
+So the panel really does keep a 60-minute clock; it simply never says so. The
+overshoot scales with the period (+1.33 % and +1.42 %), which is one slow clock
+rather than a fixed overhead — a small sign that both numbers measure the same
+mechanism.
+
+The consequence is sharper than "we cannot set the duration": **we cannot know
+it either.** When a boost begins at the panel, the bus reveals that it started
+but nothing about when it will end, so an integration cannot predict the end
+time of a boost it did not start. Only boosts you start yourself have a
+duration you know.
 
 Two practical notes from that session. Pressing while a boost is running
 **deactivates** it rather than extending it, so a longer period must be selected

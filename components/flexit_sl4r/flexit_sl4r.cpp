@@ -93,6 +93,26 @@ void FlexitSL4RComponent::loop() {
     }
   }
 
+  // Did a boost we asked for actually happen? The CS50 discards a request made
+  // within roughly three minutes of a previous boost ending, and it does so
+  // WITHOUT any reply - the command goes out, the status byte [15] even
+  // changes, and the fans simply never start. Measured 2026-08-16: refused at
+  // 69 s after the previous boost, accepted at 263 s (PROTOCOL.md §5.5).
+  //
+  // The switch already tells the truth on its own, because it reads the fan
+  // level rather than our intent, so it falls back to "off" by itself. What was
+  // missing is any explanation of WHY, which from the outside is
+  // indistinguishable from a broken button - it was in fact misdiagnosed as one.
+  if (this->boost_request_ms_ != 0 && (millis() - this->boost_request_ms_) > BOOST_CONFIRM_MS) {
+    if (!this->get_boost_active()) {
+      ESP_LOGW(TAG,
+               "Boost was requested but the unit did not start it. The CS50 discards a boost "
+               "request made within ~3 minutes of a previous boost ending; wait and try again.");
+      this->boost_deadline_ms_ = 0;  // nothing is running, so nothing to time out
+    }
+    this->boost_request_ms_ = 0;
+  }
+
   // Time out a boost we started ourselves. The CI50 never does it for us; see
   // trigger_boost(). Comparing the difference against the period rather than
   // the deadline against millis() keeps this correct across the 49-day wrap.
@@ -543,6 +563,8 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     // deadline, which is both wrong and hard to explain from the panel's side.
     if (running_level == return_level)
       this->boost_deadline_ms_ = 0;
+    else
+      this->boost_request_ms_ = 0;  // boost is running - nothing left to confirm
 #ifdef USE_BINARY_SENSOR
     // Boost = the unit is running a different level than the one it will fall
     // back to. A precise indicator, free from data we already have.
@@ -754,6 +776,9 @@ void FlexitSL4RComponent::trigger_boost() {
   // silent throughout, and would have run indefinitely. The timer lives in the
   // CI50, and the CI50 only times what it started itself. So we keep our own.
   this->boost_deadline_ms_ = millis() + BOOST_PERIOD_MS;
+  this->boost_request_ms_ = millis();
+  if (this->boost_request_ms_ == 0)
+    this->boost_request_ms_ = 1;  // 0 is our "nothing outstanding" marker
 }
 
 void FlexitSL4RComponent::cancel_boost() {
@@ -764,6 +789,7 @@ void FlexitSL4RComponent::cancel_boost() {
   ESP_LOGI(TAG, "Cancelling boost");
   this->queue_boost_command_(false);
   this->boost_deadline_ms_ = 0;
+  this->boost_request_ms_ = 0;
 }
 
 // Boost on and off are the SAME command with one nibble different, which is why

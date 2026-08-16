@@ -161,10 +161,18 @@ Two loose ends survived:
       panel does not write the duration anywhere. Both default to 30. If a
       register write is ever attempted on the experiment branch, this is the
       one to change and watch.
-- [ ] **Could we send 60/90 minutes ourselves?** Nothing stops us running our
-      own timer for longer than 30 minutes — the unit stays in boost until
-      cancelled. Worth exposing as a `number` if anyone wants it, but note it
-      would be *our* period, not the panel's.
+- [ ] **Offer 30/60/90 minutes ourselves.** Now clearly worth doing. The panel's
+      longer periods are real — a confirmed double press ran **60 min 51 s**
+      against 30 min 24 s for a single one — but the duration never reaches the
+      bus, so we cannot reproduce them by sending a different command. We can
+      reproduce them with our own timer, since the unit stays in boost until
+      cancelled. A `number` (or a `select` of 30/60/90) driving `BOOST_PERIOD_MS`
+      would give parity with the panel. Note it would be *our* clock, not the
+      panel's.
+- [ ] **We cannot predict the end of a PANEL-started boost.** The bus shows that
+      one began but not how long it will last, so any "boost ends at" display
+      would be a guess for boosts we did not start. Worth stating in the UI
+      rather than papering over.
 
 ## Verification
 
