@@ -351,20 +351,21 @@ sensor:
     # ligger der på fabrikkverdi), gruppert etter TYPE — min/maks-par ligger
     # sammen — ikke etter menyrekkefølge. Se research/protocol-notes.md.
     int_registers:
-      # reg 0x0E ord 10 så lenge ut som en andre timeteller (`82 DC` -> `82 E5`
-      # -> `82 F2`, +9 og +13 over to døgn, konstant differanse 4158 mot
-      # filtertelleren). 15. august sto det plutselig `00 0C`: lavbyten hadde
-      # rullet rundt 242 -> 12, og høybyten gikk 0x82 -> 0x00 i stedet for å
-      # bære carry til 0x83. Det ER altså ikke ett 16-bit tall. Bytene
-      # eksponeres derfor hver for seg til oppførselen er kartlagt.
+      # FILTERTIMEREN. Bekreftet 2026-08-16 ved å kjøre nullstillingsprosedyren
+      # med rå logging på: dette ordet — og INGEN andre — gikk 45 -> 0 i samme
+      # sekund. Teller nøyaktig +1 per time (verifisert time for time gjennom
+      # 33 timer i HA-historikken).
+      #
+      # Vi trodde tidligere dette IKKE var et 16-bit tall, fordi `82 F2` ble til
+      # `00 0C` uten å bære carry. Forklaringen var enklere: det var en
+      # NULLSTILLING (33522 -> 0), utført ved et uhell fra panelet natt til
+      # 15. august. Derfor forsvant filteralarmen den natta.
       - register: 0x0E
         index: 10
-        mode: low_byte
-        name: "Teller 0x0E[10] lav"
-      - register: 0x0E
-        index: 10
-        mode: high_byte
-        name: "Flagg 0x0E[10] høy"
+        name: "Filtertimer"
+        unit_of_measurement: "h"
+        icon: "mdi:air-filter"
+        state_class: total_increasing
       # Samme mønster i reg 0x00 ord 0: lavbyten er stabilt 25 (maks settpunkt),
       # mens høybyten gikk 0x00 -> 0x08 i samme tidsrom. To «høybyte-flagg» som
       # beveger seg — verdt å følge.
@@ -372,17 +373,18 @@ sensor:
         index: 0
         mode: high_byte
         name: "Flagg 0x00[0] høy"
-      # Den viktigste av de to: en timeteller knyttet til filteret. Hva den
-      # teller FRA er uavklart - se PROTOCOL.md 9.3.
-      # Gir «tid til filterbytte» i HA, og — viktigere — en MÅLBAR fasit på om
-      # «Nullstill filtervakt» faktisk virker. Da alarmen ble kvittert ved et
-      # uhell 14. august fortsatte denne å telle, og alarmen kom tilbake.
+      # IKKE filtertimeren, slik denne het fram til 2026-08-16. Den overlevde
+      # nullstillingsprosedyren uendret (29419 både før og etter), mens
+      # 0x0E[10] gikk til null. Teller også +1 per time, og ligger et konstant
+      # antall timer foran filtertimeren — altså samme takt, annen epoke.
+      # Sannsynligvis driftstimer, men epoken er ikke fastslått.
       - register: 0x1C
         index: 8
-        name: "Filtertimer"
+        name: "Timeteller 0x1C[8]"
         unit_of_measurement: "h"
-        icon: "mdi:air-filter"
+        icon: "mdi:counter"
         state_class: total_increasing
+        entity_category: diagnostic
       # Filterintervallet i måneder (manualens «Tids periode», 0-12, std 6).
       - register: 0x0E
         index: 5

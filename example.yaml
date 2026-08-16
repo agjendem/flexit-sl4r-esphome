@@ -182,10 +182,9 @@ button:
     #
     # ONLY PRESS THIS WHEN THE FILTER HAS ACTUALLY BEEN CHANGED.
     #
-    # Whether this fully resets the unit's own filter timer is NOT confirmed:
-    # on 2026-08-14 the alarm cleared while the hour counter below ran straight
-    # through the event. Watch that counter when you press it - if it zeroes,
-    # we have our answer. See PROTOCOL.md 9.3.
+    # Confirmed working 2026-08-16: pressing this zeroed the filter timer
+    # (0x0E word 10) from 45 to 0, and changed nothing else except the setpoint
+    # it moves to 20 and back. Watch "Filter hours" below to see it happen.
     reset_filter:
       name: "Reset filter timer"
 
@@ -334,17 +333,29 @@ sensor:
     # The CS50 broadcasts its whole parameter table continuously, so this is
     # pure listening — no read request exists, and none is needed.
     int_registers:
-      # An hour counter tied to the filter. Ticks once per hour, reliably; what
-      # it counts FROM is unsettled, and it does not subtract against the
-      # interval below to give a time remaining - see PROTOCOL.md 9.3
-      # and — more usefully — a measurable check on whether the reset button
-      # actually worked, instead of waiting days to see if the alarm returns.
-      - register: 0x1C
-        index: 8
+      # THE filter timer: hours since the filter was last reset. Ticks +1 per
+      # hour, and goes to zero when the reset procedure runs - both confirmed
+      # by running that procedure with raw logging on, and watching this word
+      # (and no other) drop 45 -> 0.
+      - register: 0x0E
+        index: 10
         name: "Filter hours"
         unit_of_measurement: "h"
         icon: "mdi:air-filter"
         state_class: total_increasing
+
+      # A second hour counter, same tick rate but a different epoch: it runs a
+      # constant number of hours ahead of the filter timer and did NOT change
+      # when the filter was reset. Probably operating hours. Exposed as a
+      # diagnostic because the epoch is unknown - do not read a filter age into
+      # it, which is exactly the mistake this project made for three days.
+      - register: 0x1C
+        index: 8
+        name: "Hour counter 0x1C[8]"
+        unit_of_measurement: "h"
+        icon: "mdi:counter"
+        state_class: total_increasing
+        entity_category: diagnostic
 
       # Filter interval in months (the manual's "time period", 0-12, default 6).
       - register: 0x0E

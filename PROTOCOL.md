@@ -556,39 +556,51 @@ Bank `0x20`, word indices within each register block:
 | `0x0E` | 6 | motor protection delay | 30 s ✅ |
 | `0x0E` | 8, 9 | **fan duty per level**, supply and extract | 50 / 75 / 100 % ✅ |
 | `0x0E` | 12 | **stored user settings**: setpoint (high) and fan level (low) | ✅ |
-| `0x1C` | 8 | **an hour counter tied to the filter** | ticks +1 per hour ✅, but what it counts *from* is unsettled 🟡 |
+| `0x0E` | 10 | **the filter timer** — hours since the filter was last reset | ticks +1 per hour, zeroes on reset ✅ |
+| `0x1C` | 8 | a second hour counter, different epoch, never resets | ticks +1 per hour ✅, epoch unknown 🟡 |
 
 The stored-settings word was identified by watching it follow a panel session
 byte for byte as the user swept setpoint and fan level — it is what makes the
 unit remember its settings across a power cut.
 
-**The filter counter is the most promising of these, and the least understood.**
-It increments once per hour, reliably. What it counts *from* is another matter,
-and an earlier draft of this document claimed too much by saying that it gives
-"time until filter change" when combined with the interval.
+**The filter timer is `0x0E` word 10** — settled on 2026-08-16 by running the
+reset procedure with raw frame logging on. Exactly one word changed and stayed
+changed: ✅
 
-It does not, on the evidence we have. Measured 2026-08-16: the counter stood at
-**29,418 h** against a filter interval of **6 months** — call it 4,400 h — so a
-subtraction would put the filter three years overdue. The filter alarm was
-**off**. And when the alarm did fire and clear (on 2026-08-14 at 23:44 and
-2026-08-15 at 00:19), the counter ran straight through the event without
-resetting.
+```
+before  ... 32 4B 64 00 [00 2D] 02 32 12 01 32 4B      word 10 = 45
+after   ... 32 4B 64 00 [00 00] 02 32 12 01 32 4B      word 10 = 0
+```
 
-Three readings survive that, and we cannot yet separate them: ❓
+It increments **+1 per hour**, verified hour by hour across 33 consecutive
+hours. The reset procedure (setpoint to 20, both temperature buttons, restore)
+zeroes it.
 
-1. The counter runs from the last *genuine* filter reset, and none of our
-   attempts have been one.
-2. It counts something else entirely — operating hours since some earlier
-   event. It is not lifetime hours: 29,418 h is 3.4 years, and the panel's
-   board carries a 2006 date code.
-3. The alarm threshold is not `interval × hours-per-month`, so the two fields
-   are not directly comparable at all.
+**This corrects two earlier readings in this document, and the way they were
+wrong is instructive.**
 
-**What would settle it:** a real filter change with the documented reset
-procedure, watching whether the counter zeroes — the integration now reports any
-parameter word that moves, so the answer arrives by itself. Failing that, a
-register holding the threshold in *hours* would make the subtraction honest.
-See TODO.md.
+*`0x1C[8]` is not the filter timer.* It was labelled that for three days. It
+survived the reset unchanged at 29,419 h. It ticks at the same rate as the real
+filter timer and runs a constant number of hours ahead of it — the same tick,
+a different epoch. Probably operating hours; the epoch is unknown. 🟡
+
+*`0x0E[10]` is a normal 16-bit counter after all.* An earlier section here
+argued it could not be, because it went `0x82F2` → `0x000C` without carrying
+into the high byte, and concluded it must be two independent bytes. The simpler
+explanation was the right one: `0x82F2` → `0` was **a reset**, performed by
+accident from the panel on the night of 15 August, and `0x000C` was twelve hours
+of counting afterwards. That also explains why the filter alarm cleared that
+night and stayed cleared.
+
+The lesson is the same one this project keeps relearning: a discontinuity in a
+counter is more likely to be an event than a decoding error, and the way to tell
+is to *cause* the event and watch.
+
+**On "time until filter change".** With the timer identified this is finally a
+defensible calculation — hours elapsed against an interval given in months —
+but the conversion the CS 50 uses is still unmeasured, so this integration does
+not ship such an entity. The timer now starts from zero, so the value it holds
+when the alarm next fires *is* the threshold, exactly. See TODO.md.
 
 #### The fan duty parameters do not control our fans
 
