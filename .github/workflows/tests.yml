@@ -1,0 +1,69 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  # So a failing suite can be re-run without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to the same branch makes the older run irrelevant.
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  protocol:
+    name: Protocol tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No dependency step: the suite needs a C++17 compiler and gunzip, both
+      # of which the runner already has. That is deliberate - the tests are
+      # meant to be runnable anywhere, and a dependency list is a thing that
+      # rots.
+      - name: Compiler version
+        run: c++ --version
+
+      - name: Run tests
+        run: ./tests/run.sh
+
+  config:
+    name: ESPHome config validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          # Required: the cache looks for requirements.txt or pyproject.toml by
+          # default, and finding neither it fails the job rather than skipping
+          # the cache.
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install ESPHome
+        run: pip install -r requirements-dev.txt
+
+      # Validates the canonical example against the component's own codegen
+      # schemas. This catches a platform schema that no longer matches the YAML
+      # it documents - which a C++ test cannot see, because the mismatch is in
+      # the Python.
+      #
+      # `esphome config` does not compile, so no ESP32 toolchain is downloaded
+      # and the job stays quick.
+      - name: Validate example.yaml
+        run: |
+          cat > secrets.yaml <<'EOF'
+          wifi_ssid: ci
+          wifi_password: ci-password
+          flexit_sl4r_api_key: "aGVsbG93b3JsZGhlbGxvd29ybGRoZWxsb3dvcmxkMTI="
+          flexit_sl4r_ota_password: ci-ota-password
+          EOF
+          esphome config example.yaml > /dev/null

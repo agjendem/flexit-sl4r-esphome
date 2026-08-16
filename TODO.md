@@ -209,7 +209,11 @@ against what PROTOCOL.md says they contain.
       need hardware or elapsed time. A recorded-capture harness that could
       replay a whole session against the component (not just `protocol.h`) would
       reach most of it, and is the obvious next step.
-- [ ] **Run them in CI** once the repository is public.
+- [x] ~~Run them in CI.~~ Done — `.github/workflows/tests.yml` runs the suite on
+      every push and pull request, alongside an `esphome config` validation of
+      `example.yaml` that catches a platform schema drifting from the YAML it
+      documents. Private repositories get Actions minutes too, so this did not
+      have to wait for publication.
 
 ## Verification
 

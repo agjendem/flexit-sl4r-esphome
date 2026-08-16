@@ -289,6 +289,20 @@ captures** asserted against what `PROTOCOL.md` says they contain. See
 [`tests/README.md`](tests/README.md) for what each one is guarding against —
 every case corresponds to a mistake this project actually made.
 
+## Working on this repository
+
+`main` is protected by habit rather than by force: **work on a branch and open a
+pull request**, so the checks run before anything lands. Two jobs run on every
+push and every PR:
+
+| Job | What it catches |
+|---|---|
+| **Protocol tests** | `./tests/run.sh` — the byte-level logic, plus a replay of the recorded captures |
+| **ESPHome config validation** | `example.yaml` against the component's codegen schemas, which a C++ test cannot see because the mismatch lives in the Python |
+
+Neither job needs the ESP32 toolchain, so they finish quickly. Run the first one
+locally before pushing; it takes about a second.
+
 ## Repository layout
 
 ```
