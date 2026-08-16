@@ -274,6 +274,52 @@ sensor:
     name: "Oppetid"
     entity_category: diagnostic
 
+  # --- Filterets levetid, avledet ---
+  #
+  # Bevisst template-sensorer og ikke komponentkode: komponenten rapporterer
+  # det bussen faktisk sier, og alt som REGNES oppå det hører hjemme her, hvor
+  # regnestykket er synlig og kan endres uten ny firmware.
+
+  # Eksakt — filtertimeren teller timer, dette er samme tall i døgn.
+  - platform: template
+    name: "Filterets alder"
+    id: filter_age_days
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: "mdi:air-filter"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state))
+        return NAN;
+      return id(filter_hours).state / 24.0f;
+
+  # Omtrentlig, og forbeholdet ER hele poenget: intervallet er oppgitt i
+  # MÅNEDER mens timeren teller TIMER, og hvordan CS 50 konverterer mellom dem
+  # har vi ikke målt. 730 t er en gjennomsnittsmåned (365,25 * 24 / 12); en
+  # 30-dagersmåned gir 720, altså 1,4 % forskjell — rundt tre døgn hver vei
+  # over et halvår. Godt nok til «bytt snart», ikke godt nok til å stemme
+  # eksakt med aggregatet.
+  #
+  # Går negativ når det er på overtid, med vilje: det er reell informasjon, og
+  # filteralarmen er uansett fasiten.
+  #
+  # Kan erstattes med et eksakt tall når alarmterskelen er målt — se TODO.md.
+  - platform: template
+    name: "Filterbytte om"
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:calendar-clock"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state) || isnan(id(filter_interval_months).state))
+        return NAN;
+      const float budget_hours = id(filter_interval_months).state * 730.0f;
+      return (budget_hours - id(filter_hours).state) / 24.0f;
+
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
     # Eneste tilkoblede temperaturføler på bussen — Flexits B1, «tilluftføler
@@ -362,6 +408,7 @@ sensor:
       # 15. august. Derfor forsvant filteralarmen den natta.
       - register: 0x0E
         index: 10
+        id: filter_hours
         name: "Filtertimer"
         unit_of_measurement: "h"
         icon: "mdi:air-filter"
@@ -388,6 +435,7 @@ sensor:
       # Filterintervallet i måneder (manualens «Tids periode», 0-12, std 6).
       - register: 0x0E
         index: 5
+        id: filter_interval_months
         name: "Filterintervall"
         unit_of_measurement: "mnd"
         icon: "mdi:calendar-clock"

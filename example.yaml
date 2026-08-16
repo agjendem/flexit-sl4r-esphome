@@ -259,6 +259,54 @@ sensor:
     name: "Uptime"
     entity_category: diagnostic
 
+  # --- Filter service life, derived ---
+  #
+  # These are template sensors rather than component code on purpose. The
+  # component reports what the bus actually says; anything computed on top of
+  # it belongs here, where the arithmetic is visible and you can change it
+  # without rebuilding firmware.
+
+  # Exact: the filter timer counts hours, this is the same number in days.
+  - platform: template
+    name: "Filter age"
+    id: filter_age_days
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: "mdi:air-filter"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state))
+        return NAN;
+      return id(filter_hours).state / 24.0f;
+
+  # Approximate, and the approximation is the whole caveat: the interval is
+  # given in MONTHS and the timer counts HOURS, and how the CS 50 converts
+  # between them has not been measured. 730 h is a mean month (365.25 * 24 /
+  # 12); a 30-day month would give 720, which is 1.4 % different - about three
+  # days either way over a six-month interval. Fine for "change it soon",
+  # wrong for anything that needs to agree with the unit exactly.
+  #
+  # Goes negative when overdue, which is deliberate: that is real information,
+  # and the filter alarm is the authority anyway.
+  #
+  # This can be replaced with an exact figure once the alarm threshold has been
+  # measured - see TODO.md.
+  - platform: template
+    name: "Filter change due in"
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:calendar-clock"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state) || isnan(id(filter_interval_months).state))
+        return NAN;
+      const float budget_hours = id(filter_interval_months).state * 730.0f;
+      return (budget_hours - id(filter_hours).state) / 24.0f;
+
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
 
@@ -339,6 +387,7 @@ sensor:
       # (and no other) drop 45 -> 0.
       - register: 0x0E
         index: 10
+        id: filter_hours
         name: "Filter hours"
         unit_of_measurement: "h"
         icon: "mdi:air-filter"
@@ -360,6 +409,7 @@ sensor:
       # Filter interval in months (the manual's "time period", 0-12, default 6).
       - register: 0x0E
         index: 5
+        id: filter_interval_months
         name: "Filter interval"
         unit_of_measurement: "months"
         icon: "mdi:calendar-clock"

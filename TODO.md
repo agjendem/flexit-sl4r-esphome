@@ -222,13 +222,14 @@ against what PROTOCOL.md says they contain.
       zeroes `0x0E[10]`, which is the real filter timer. `0x1C[8]`, which this
       project had called "filter hours" for three days, is a different counter
       on a different epoch and does not reset. See PROTOCOL.md §9.3.
-- [ ] **Measure the filter alarm threshold, then add "time until filter
-      change".** The timer was zeroed on 2026-08-16, so the value it holds when
-      the alarm next fires is the threshold in hours — exactly, with nothing
-      assumed. Until then the conversion from the interval's *months* to the
-      timer's *hours* is guesswork, which is why no such entity ships yet.
-      Expect the answer in roughly six months; the anomaly log will record the
-      alarm changing state whether or not anyone is watching.
+- [ ] **Measure the filter alarm threshold and drop the assumed conversion.**
+      The "filter change due in" sensor assumes 730 h per month, because the
+      interval is given in months and the timer counts hours. The timer was
+      zeroed on 2026-08-16, so **the value it holds when the alarm next fires is
+      the threshold in hours, exactly**. Expect the answer in roughly six
+      months; the anomaly log records the alarm changing state whether or not
+      anyone is watching. Replace the constant then, and the sensor becomes
+      exact instead of approximate.
 - [ ] **What is `0x1C[8]`'s epoch?** Same tick rate as the filter timer, runs a
       constant offset ahead of it, never resets. Operating hours is the obvious
       guess. A second installation with a known commissioning date would settle

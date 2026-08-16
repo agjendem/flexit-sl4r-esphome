@@ -103,7 +103,18 @@ digits need no translation.
 - Setpoint, read back from the bus
 - Spare sensor inputs — these hide themselves when nothing is connected
 - Filter hours and filter interval
+- **Filter age** and **filter change due in**, in days
 - Fan duty configured per level
+
+The last pair are template sensors in the configuration rather than component
+code, because only one of them is exact. *Filter age* is the filter timer in
+days and nothing more. *Filter change due in* has to convert an interval given
+in **months** into the timer's **hours**, and the conversion the CS 50 uses has
+not been measured — 730 h per month is assumed, which is within about three
+days of a 30-day month over a six-month interval. Good enough to plan around,
+not exact enough to argue with the unit: the filter alarm remains the authority.
+Keeping the arithmetic in YAML means you can see the assumption and change it
+without rebuilding firmware.
 
 **State and alarm**
 
