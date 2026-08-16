@@ -140,8 +140,10 @@ flexit_sl4r:
 #   HEAT  = afterheater enabled     FAN_ONLY = heat recovery only
 #   BOOST = timed max fan           fan mode = low / medium / high
 #
-# The fan modes are Home Assistant's standard ones, so the frontend translates
-# them into the user's own language. They map onto Flexit's CI 50 manual, which
+# The fan modes are Home Assistant's standard ones, which is what makes them
+# translatable at all - a custom string never is. Whether a given language
+# actually has the translation is up to HA's catalogue, and it has gaps.
+# They map onto Flexit's CI 50 manual, which
 # describes level 1 as "lower ventilation demand than normal" (low), level 2 as
 # "normal operating ventilation" (medium) and level 3 as "increased ventilation
 # in wet rooms" (high). "high" is a permanent setting - BOOST is the timed
