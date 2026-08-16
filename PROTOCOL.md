@@ -115,8 +115,18 @@ they are. ✅
 | 1 | CS50 control board (the master's own data source) |
 | 2, 3 | Probed at startup, unused on our installation |
 | 4 | CI50 panel 1 |
-| 5 | Panel 2 — the identity dipswitch 3 selects on a physical panel |
+| 5 | Panel 2 — **inferred**, see below 🟡 |
 | 0x41 (65) | Polled, unexplained — see below ❓ |
+
+**What is measured, and what is inferred.** We have measured that answering as
+node 5 works, that it survives our own restarts, and that no physical second
+panel is needed for the CS50 to poll it. Calling node 5 "panel 2" is the
+inference: the CI 50 manual states that switch 3 must be set differently on each
+panel when more than one is fitted, and our panel — factory default, switch 3
+off — is node 4. Nobody has set a physical panel to panel 2 and observed it
+appear as node 5, so the mapping between that switch and this address is
+reasoning, not observation. It has no practical consequence for the
+integration: node 5 is free and answering on it works.
 
 The address space is not closed at 5. Checksum-valid polls to node `0x41` have
 been captured twice, each a few minutes after a restart of our node (at 7.5 and
