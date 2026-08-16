@@ -45,7 +45,7 @@ jobs:
           cache: pip
 
       - name: Install ESPHome
-        run: pip install esphome
+        run: pip install -r requirements-dev.txt
 
       # Validates the canonical example against the component's own codegen
       # schemas. This catches a platform schema that no longer matches the YAML
