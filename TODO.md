@@ -247,17 +247,30 @@ against what PROTOCOL.md says they contain.
       | 1 | 94,955 h | ~2016 |
       | 2 | 160,491 h | ~2008 |
 
-      **A reconstruction that does fit:** two wraps put the counter at 18.3
-      years of *counted* hours. Our house was built 2006–2007, and the unit
-      stood idle for a period with a broken fan. Commissioning in 2007 with
-      roughly 16 months out of service lands exactly on 18.3; commissioning in
-      mid-2007 with 10 months lands there too. On that reading `0x1C[8]` is
-      **total running hours since commissioning**, wrapped twice — and the
-      shortfall against wall-clock time is the downtime.
+      **A reconstruction that arithmetically fits — and one reason to doubt it.**
+      Two wraps put the counter at 18.3 years of *counted* hours. Our house was
+      built 2006–2007 and the unit stood idle for a period with a broken fan;
+      commissioning in 2007 with roughly 16 months out of service lands exactly
+      on 18.3. On that reading `0x1C[8]` is total running hours since
+      commissioning, wrapped twice, and the shortfall against wall-clock time
+      is the downtime.
 
-      Treat that as a plausible story, not a result: three unknowns
-      (commissioning date, downtime, wrap count) against one equation, so
-      errors in one are absorbed by the others.
+      **But nothing broadcasts a wrap count.** All 78 parameter words were
+      scanned: the only one holding a small number is the filter interval
+      (`0x0E[5]` = 6). If this counter had rolled over twice, the "2" is
+      nowhere on the bus. That does not disprove wrapping — the CS 50 need not
+      expose it — but it removes the only evidence that would have supported
+      it, and leaves the simpler reading standing: the counter is at 29,419 and
+      has never wrapped, i.e. roughly 3.4 years since *something*.
+
+      So: three unknowns (commissioning date, downtime, wrap count) against one
+      equation. A fit was always available. Treat it as a story, not a result.
+
+      The neighbouring words are **not decoded**, but they are not part of this
+      counter either: across three days in which word 8 advanced 77, every
+      other word in register `0x1C` was bit-identical (25615, 0, 0, 300, 0, 0,
+      300, 301, …, 100). No 32-bit pairing with a neighbour yields a sane
+      number — the nearest, words 7+8, would read 2,255 years.
 
       **One cheap measurement would carry most of the weight:** does the
       counter track *running* hours or *wall-clock* hours? Cut power to the
