@@ -171,9 +171,9 @@ This integration follows that split, and reserves the vocabulary accordingly:
 
 ![The CI 50 panel in normal operation, several indicator lamps lit](docs/images/ci50-panel-front.jpg)
 
-*The lamps this table refers to: the amber one at the left is the afterheater,
-the three green ones are the fan level, and the red one in the right-hand column
-is the setpoint.*
+*The lamps this table refers to: the amber one is the afterheater, the three
+green ones are the fan level, and the red one in the temperature column is the
+setpoint.*
 
 **The second one does not exist yet.** The bit we once believed was it turned
 out to be boost. There is deliberately no read-only "enabled" sensor alongside
@@ -366,6 +366,12 @@ never has to be opened.
 | [M5Stack ATOM Tail485](https://shop.m5stack.com/products/atom-tail485) ([docs](https://docs.m5stack.com/en/atom/tail485)) | SKU T002. SP485EEN-L transceiver plus a 9–24 V buck converter, so the bus powers the node. No DE/RE line — direction is handled on the module |
 | A 4P4C telephone cable | Cut in half; you need one plug and four wires. Sometimes sold as an RJ9/RJ10 handset cord |
 
+![The ATOM Lite stacked on the Tail485, with the RS485 wires attached](docs/images/atom-lite-tail485.jpg)
+
+*The two modules stack directly. The Tail485's silkscreen carries everything
+you need: **B, A, V, G** at the bottom edge for the bus, and the note that it
+accepts 9–24 V — which is why the panel's 12 V can power the whole thing.*
+
 ### Where it connects
 
 The CI 50 control panel has **two** 4P4C sockets on the back and normally uses
@@ -374,8 +380,10 @@ so the node can be fitted without opening the unit.
 
 ![The CI 50 panel opened, showing both 4P4C sockets and the DIP switch block](docs/images/ci50-panel-open.jpg)
 
-*Both sockets are visible at centre right, one of them free. The four-position
-DIP switch is at the lower right — switch 3 selects panel 1 or panel 2.*
+*The two 4P4C sockets sit side by side in the middle. Here both are occupied:
+the original panel cable in one, and this integration's node in the other, which
+is the whole trick. The four-position DIP switch is immediately to their left —
+switch 3 is the panel 1 / panel 2 selector discussed in `PROTOCOL.md` §3.1.*
 
 Pinout at the socket: **1 = GND, 2 = B, 3 = A, 4 = +V** (measured 11.8 V).
 
