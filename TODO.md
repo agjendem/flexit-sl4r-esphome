@@ -247,11 +247,24 @@ against what PROTOCOL.md says they contain.
       | 1 | 94,955 h | ~2016 |
       | 2 | 160,491 h | ~2008 |
 
-      So it more likely counts from an *event* than from installation —
-      something around **April 2023** on our unit. A long power failure, a
-      board replacement or a service visit would all fit. The cheapest way to
-      settle it is a second installation with a known history; the next
-      cheapest is finding out what happened in April 2023.
+      **A reconstruction that does fit:** two wraps put the counter at 18.3
+      years of *counted* hours. Our house was built 2006–2007, and the unit
+      stood idle for a period with a broken fan. Commissioning in 2007 with
+      roughly 16 months out of service lands exactly on 18.3; commissioning in
+      mid-2007 with 10 months lands there too. On that reading `0x1C[8]` is
+      **total running hours since commissioning**, wrapped twice — and the
+      shortfall against wall-clock time is the downtime.
+
+      Treat that as a plausible story, not a result: three unknowns
+      (commissioning date, downtime, wrap count) against one equation, so
+      errors in one are absorbed by the others.
+
+      **One cheap measurement would carry most of the weight:** does the
+      counter track *running* hours or *wall-clock* hours? Cut power to the
+      unit across an hour boundary and see whether it advances. If it does not,
+      the reconstruction above stands and the counter is running hours. If it
+      does, the CS 50 keeps a real-time clock, the downtime explanation
+      collapses, and the epoch is something else entirely.
 - [ ] **Preheat for plate-exchanger units.** Removed here because the SL4 R has
       a rotor. Needed for the integration to cover plate-exchanger variants —
       requires someone with that hardware.
