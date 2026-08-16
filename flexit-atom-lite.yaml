@@ -406,13 +406,15 @@ sensor:
       # `00 0C` uten å bære carry. Forklaringen var enklere: det var en
       # NULLSTILLING (33522 -> 0), utført ved et uhell fra panelet natt til
       # 15. august. Derfor forsvant filteralarmen den natta.
+      # `internal: true` — finnes for utregningene, men publiseres ikke til HA.
+      # «Filterets alder» viser samme tall i døgn, og to entiteter for samme
+      # verdi er bare støy. Fjern linja hvis du vil se rå timer i HA.
       - register: 0x0E
         index: 10
         id: filter_hours
         name: "Filtertimer"
+        internal: true
         unit_of_measurement: "h"
-        icon: "mdi:air-filter"
-        state_class: total_increasing
       # Samme mønster i reg 0x00 ord 0: lavbyten er stabilt 25 (maks settpunkt),
       # mens høybyten gikk 0x00 -> 0x08 i samme tidsrom. To «høybyte-flagg» som
       # beveger seg — verdt å følge.

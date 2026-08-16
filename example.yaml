@@ -385,13 +385,15 @@ sensor:
       # hour, and goes to zero when the reset procedure runs - both confirmed
       # by running that procedure with raw logging on, and watching this word
       # (and no other) drop 45 -> 0.
+      # internal: exists for the templates below, but is not published to Home
+      # Assistant. "Filter age" is the same number in days, and two entities
+      # for one value is just clutter. Drop the line to see raw hours.
       - register: 0x0E
         index: 10
         id: filter_hours
         name: "Filter hours"
+        internal: true
         unit_of_measurement: "h"
-        icon: "mdi:air-filter"
-        state_class: total_increasing
 
       # A second hour counter, same tick rate but a different epoch: it runs a
       # constant number of hours ahead of the filter timer and did NOT change

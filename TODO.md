@@ -231,9 +231,27 @@ against what PROTOCOL.md says they contain.
       anyone is watching. Replace the constant then, and the sensor becomes
       exact instead of approximate.
 - [ ] **What is `0x1C[8]`'s epoch?** Same tick rate as the filter timer, runs a
-      constant offset ahead of it, never resets. Operating hours is the obvious
-      guess. A second installation with a known commissioning date would settle
-      it.
+      constant offset ahead of it, never resets. "Operating hours since
+      installation" is the obvious guess and **the arithmetic does not support
+      it**: 29,419 h is 3.36 years of continuous running, on a unit whose panel
+      board carries a 2006 date code.
+
+      The register is 16 bits, so it wraps every 7.48 years and a remainder
+      would tell you nothing about total age. But the wraps do not land
+      convincingly either — 20 years of continuous running would leave 44,128,
+      not 29,419, and no whole number of wraps puts the epoch near 2006:
+
+      | Wraps | Total | Epoch |
+      |---|---|---|
+      | 0 | 29,419 h | ~2023 |
+      | 1 | 94,955 h | ~2016 |
+      | 2 | 160,491 h | ~2008 |
+
+      So it more likely counts from an *event* than from installation —
+      something around **April 2023** on our unit. A long power failure, a
+      board replacement or a service visit would all fit. The cheapest way to
+      settle it is a second installation with a known history; the next
+      cheapest is finding out what happened in April 2023.
 - [ ] **Preheat for plate-exchanger units.** Removed here because the SL4 R has
       a rotor. Needed for the integration to cover plate-exchanger variants —
       requires someone with that hardware.
