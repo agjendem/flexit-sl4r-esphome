@@ -69,6 +69,15 @@ chronological derivation including the dead ends, in Norwegian.
 
 ## Entities
 
+<img src="docs/images/home-assistant-entities.png" alt="The integration's controls and sensors in Home Assistant" width="360">
+
+*The device page on a live installation. This is the author's own, so the names
+are Norwegian — `example.yaml` ships English ones. A few things worth pointing
+at: the `climate` entity reports its mode in the user's language because it uses
+Home Assistant's standard fan modes rather than custom strings; "Filterets
+alder" and "Filterbytte om" are derived in YAML rather than read off the bus;
+and the filter timer reads 0 days because it had just been reset.*
+
 Names below are from [`example.yaml`](example.yaml). Every entity is optional —
 take what you need, name it what you like.
 
@@ -346,7 +355,7 @@ and say what you measured.
 PROTOCOL.md               Protocol specification (English)
 components/flexit_sl4r/   ESPHome external component (C++ hub + platforms)
 components/…/protocol.h   Pure byte-level protocol logic (no ESPHome, unit-tested)
-docs/images/              Photographs of the installation
+docs/images/              Photographs and screenshots
 example.yaml              Canonical example configuration
 flexit-atom-lite.yaml     The author's live configuration (Norwegian entity names)
 research/                 Source material and derivation (see research/README.md)
