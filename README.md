@@ -323,8 +323,9 @@ field decoding, and a replay of the recorded captures in
 
 ## Working on this repository
 
-Work on a branch and open a pull request. Two jobs run on every push and every
-pull request:
+Work on a branch and open a pull request — `main` requires it, and both checks
+must be green before it can merge. Two jobs run on every push and every pull
+request:
 
 | Job | What it catches |
 |---|---|

@@ -323,15 +323,13 @@ against what PROTOCOL.md says they contain.
 
 ## For publication
 
-- [ ] **Replace the pre-push hook with a real ruleset.** `main` is currently
-      guarded only by `.githooks/pre-push`, which is client-side and therefore
-      advisory: it protects clones that ran `git config core.hooksPath .githooks`
-      and nothing else. GitHub reserves branch protection and rulesets for
-      private repositories on paid plans, so making this repository public is
-      itself the fix — require the `Protocol tests` and `ESPHome config
-      validation` checks, and block direct pushes. Note that a *required review*
-      rule still will not fit a single-maintainer repository, since GitHub
-      forbids self-approval.
+- [x] ~~Replace the pre-push hook with a real ruleset.~~ Done when the
+      repository went public: `main` now requires a pull request with both
+      checks green, and blocks force-pushes and deletion server-side. The
+      pre-push hook is kept anyway — it fails in a second locally instead of
+      after a round trip to GitHub. No *required review* rule, deliberately:
+      GitHub forbids approving your own pull request, so on a single-maintainer
+      repository that would lock the owner out rather than protect anything.
 
 - [ ] **Automatic hardware detection**, once the equipment configuration bits
       are found.
