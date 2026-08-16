@@ -2736,3 +2736,43 @@ Det svekker samtidig min egen begrunnelse for at viftetrinn-avbrytelsen var en
 «feil»: panelet lar også `[15]` og kjøretilstanden sprike. Fiksen (å sende
 panelets `0x14`-kommando) er fortsatt riktig, men et sprik i seg selv er ikke
 bevis på feil i egne skrivinger.
+
+## Kontrollert sperretest — «dårlige trykk» var ikke dårlige (2026-08-16)
+
+Én operasjon om gangen, med bussen som dommer. Poenget med å logge var nettopp
+at bussen skiller **«trykket nådde aldri panelet»** fra **«trykket registrerte,
+men CS50 ignorerte det»** — knappen oppleves skjør, så uten den distinksjonen
+er alt gjetning.
+
+| Klokke | Δ etter forrige stopp | Kommando | Resultat |
+|---|---|---|---|
+| 15:28:17 | — | `31 30` (AV) | ryddet stale `[15]` — dette var «bommen» |
+| 15:28:46 | — | `31 33` (PÅ) | forsering startet ✓ |
+| 15:29:28 | — | `64 30` (AV) | avbrutt ✓ |
+| 15:30:38 | **69 s** | `31 33` (PÅ) | **registrert, men IGNORERT** |
+| 15:33:39 | 322 s | `31 30` (AV) | ryddet `[15]` igjen |
+| 15:33:52 | **263 s** | `31 33` (PÅ) | forsering startet ✓ |
+
+**Alle seks trykkene nådde bussen.** Ingen av dem var et dårlig trykk.
+
+Tre ting følger:
+
+1. **«Bommen» først var stale `[15]`.** Feltet sto igjen på `0x33` fra forrige
+   runde, så panelet mente forsering var på, og trykket ble en DEAKTIVERING.
+2. **Sperren er reell.** 69 s etter stopp → forespørselen forkastes; 263 s etter
+   → godtas. Passer med `0x0E[4]` = 180 s «avstengingssekvens».
+3. **Forespørselen køes ikke.** `[15]` sto på `0x33` i tre minutter uten at vifta
+   startet, heller ikke da 180 s var passert. Den forkastes, og den stale
+   flaggverdien gjør at NESTE trykk sender «av» — derfor krevdes to trykk for å
+   komme i gang igjen. Det var det brukeren opplevde som enda et dårlig trykk.
+
+Konsekvens for oss: vår bryter sender ABSOLUTTE verdier (ikke toggle), så
+to-trykks-problemet rammer oss ikke. Men den stille forkastingen gjør det:
+slår du på forsering fra HA innen ~3 min etter forrige, skjer ingenting.
+Bryteren faller riktignok tilbake til «av» av seg selv (den leser
+`[5]`-niblene, ikke vår egen intensjon), så den lyver ikke — men den forklarer
+seg ikke. Bør logge en advarsel når en forsering ikke slår inn.
+
+Metodenotat: dette er andre gang i dag at en «fysisk» forklaring (skjør knapp)
+ble foretrukket framfor en målbar, og begge gangene var måleren tilgjengelig
+hele tiden.

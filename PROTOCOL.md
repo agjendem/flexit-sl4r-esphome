@@ -308,11 +308,32 @@ only the command moves it. That discrepancy is what revealed the command. Note
 that the panel leaves `[15]` and the running state disagreeing too, so a
 mismatch is not by itself evidence of a bug in your own writes.
 
-**Open:** what makes the CS 50 accept one boost request and ignore the next?
-On 2026-08-16 a request 2 s after a boost ended, and another 22 s after, both
-set `[15]` without starting the fans. A changeover lockout is the obvious
-suspect — `0x0E[4]` is a 180 s "shutdown sequence" — but this has not been
-measured. ❓
+### 5.5 Boost requests are dropped for ~3 minutes after a boost ends
+
+A boost request issued shortly after a previous boost ended is **silently
+discarded by the CS 50**. 🟡 Measured 2026-08-16 in a controlled run, one
+operation at a time:
+
+| Time since previous boost ended | Command on the bus | Fans |
+|---|---|---|
+| 69 s | `20 14 31 33` — sent, `[15]` → `0x33` | **did not start** |
+| 263 s | `20 14 31 33` — identical | started |
+
+Consistent with the 180 s "shutdown sequence" (`0x0E[4]`), though only these two
+points bracket it.
+
+**Two properties make this nastier than a plain lockout.** The request is *not*
+queued: `[15]` stayed at `0x33` for three minutes and the fans never started,
+not even once 180 s had elapsed. And because the panel toggles on `[15]`, the
+dropped request leaves the panel believing boost is on — so **the next press
+sends "off", and it takes two presses to get going again.** From the operator's
+chair this is indistinguishable from a broken button, and it was in fact
+misdiagnosed as one; only the bus log separated "press never registered" from
+"press registered and ignored". Every press in that session did reach the bus.
+
+Implementations should therefore **verify that boost actually engaged** rather
+than assume the command took effect, and should send absolute on/off values
+rather than toggling, which avoids the two-press recovery entirely.
 
 ---
 
