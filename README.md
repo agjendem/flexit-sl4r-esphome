@@ -387,11 +387,11 @@ switch 3 is the panel 1 / panel 2 selector discussed in `PROTOCOL.md` §3.1.*
 
 Pinout at the socket: **1 = GND, 2 = B, 3 = A, 4 = +V** (measured 11.8 V).
 
-> **Check polarity with a meter before plugging in.** The buck converter has no
-> reverse-polarity protection, and 4P4C cables come in both straight and
-> *reversed* wiring — handset cords are usually reversed, and shops rarely say
-> which they are selling. Whichever you buy, ring out the cut end against the
-> plug rather than trusting the wire colours.
+> **Ring out the wires before connecting anything.** Cutting the cable leaves
+> you with four bare conductors whose colours mean nothing — measure continuity
+> from each one to each pin of the remaining plug and label them. Getting +V and
+> GND the wrong way round can destroy the Tail485, which has no reverse-polarity
+> protection.
 
 Flash over USB-C with the 4P4C **disconnected**. USB power and bus power must
 never be connected at the same time.
@@ -541,6 +541,20 @@ than one that says what you expected.
 
 ## License
 
-MIT, see [`LICENSE`](LICENSE). Copied source material in `research/` is
-Copyright (c) 2018 Vongraven, also MIT — see
-[`research/LICENSE-Vongraven`](research/LICENSE-Vongraven).
+**Dual, mirroring ESPHome's own split** — see [`LICENSE`](LICENSE) for the full
+text, and the `SPDX-License-Identifier` line at the top of each file for what
+applies to it.
+
+| Part | License | Why |
+|---|---|---|
+| `protocol.h`, `tests/` | **MIT** | No ESPHome dependency. This is the reusable part — lift it into a Tasmota port or an ESP-IDF project if you like |
+| The rest of the C++ component | **GPLv3** | It includes ESPHome headers, so it is a derivative of ESPHome's GPLv3 runtime and cannot be offered on looser terms |
+| Python codegen, YAML, documentation | **MIT** | Same treatment ESPHome gives its own Python |
+
+MIT code may be combined into a GPLv3 work, so this is internally consistent:
+build the component and the resulting binary is GPLv3; take `protocol.h` on its
+own and it stays MIT.
+
+Copied source material in `research/` is Copyright (c) 2018 Vongraven, MIT —
+see [`research/LICENSE-Vongraven`](research/LICENSE-Vongraven). Flexit's manuals
+are copyrighted by Flexit AS and are linked at source, never redistributed here.

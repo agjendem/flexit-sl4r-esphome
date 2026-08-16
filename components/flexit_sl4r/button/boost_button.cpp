@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Derivative work of ESPHome's GPLv3 runtime. See LICENSE.
 #include "boost_button.h"
 
 namespace esphome::flexit_sl4r {

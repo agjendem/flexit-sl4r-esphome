@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// No ESPHome dependency - reusable on its own. See LICENSE.
 // Host tests for the pure protocol logic in components/flexit_sl4r/protocol.h.
 //
 // No test framework on purpose: this needs to build with nothing but a C++

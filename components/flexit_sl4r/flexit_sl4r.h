@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Derivative work of ESPHome's GPLv3 runtime. See LICENSE.
 #pragma once
 
 // Pure byte-level protocol logic lives here, free of ESPHome so it can be

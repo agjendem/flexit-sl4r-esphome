@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// No ESPHome dependency - reusable on its own. See LICENSE.
 #pragma once
 
 // Pure protocol logic: no ESPHome, no hardware, no I/O.

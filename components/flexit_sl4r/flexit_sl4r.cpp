@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Derivative work of ESPHome's GPLv3 runtime. See LICENSE.
 #include "flexit_sl4r.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
