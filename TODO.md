@@ -217,10 +217,27 @@ against what PROTOCOL.md says they contain.
 
 ## Verification
 
-- [ ] **Confirm the filter reset actually restarts the timer.** Now measurable:
-      read the filter-hours counter before and after pressing the button. A
-      genuine reset should zero it. (An accidental panel reset did *not* zero
-      it, which is why the alarm re-armed hours later.)
+- [ ] **What does the filter hour counter count from, and where is the
+      threshold?** The counter (`0x1C[8]`) increments once per hour, reliably.
+      Everything past that is assumption, and the arithmetic openly contradicts
+      the label we gave it: on 2026-08-16 it stood at **29,418 h** against a
+      **6-month** interval — roughly 4,400 h — while the filter alarm was
+      **off**. A subtraction would report the filter three years overdue. The
+      counter also ran straight through the alarm firing and clearing on
+      14–15 August without resetting.
+
+      Until this is settled there is deliberately **no "time until filter
+      change" entity**, because any such number would be fiction. Three
+      readings remain open, listed in PROTOCOL.md §9.3.
+
+      Two things would settle it, and neither costs anything to wait for:
+      - **A real filter change with the documented reset procedure**, watching
+        whether the counter zeroes. The parameter watch added on 2026-08-16
+        reports any word that moves, so the answer arrives by itself.
+      - **A register holding the threshold in hours.** We have the interval in
+        *months*, which cannot be compared to an hour counter without assuming
+        how the CS 50 converts one to the other. If such a register exists, the
+        subtraction becomes honest and the entity can be built.
 - [ ] **Preheat for plate-exchanger units.** Removed here because the SL4 R has
       a rotor. Needed for the integration to cover plate-exchanger variants —
       requires someone with that hardware.

@@ -109,9 +109,11 @@ flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
 
-  # Which node we present ourselves as. The CI50 is node 4 (panel 1); node 5 is
-  # panel 2, the identity dipswitch 3 selects on a physical panel. Enrolling as
-  # node 5 lets us coexist with the real panel instead of impersonating it.
+  # Which node we present ourselves as. The CI50 is node 4, and node 5 is free
+  # on a single-panel installation, so answering there lets us coexist with the
+  # real panel instead of impersonating it. (It is probably the address a
+  # physical second panel would take - see PROTOCOL.md 3.1 for what is measured
+  # and what is inferred.)
   #
   # The address field is computed automatically: bytes 3-4 are the Fletcher
   # checksum over [C3, node, 00].
@@ -178,8 +180,12 @@ button:
     # step is required — without it the alarm is merely acknowledged while the
     # timer keeps counting, and it returns by itself.
     #
-    # ONLY PRESS THIS WHEN THE FILTER HAS ACTUALLY BEEN CHANGED. You can verify
-    # it worked by watching the "Filter hours" sensor below.
+    # ONLY PRESS THIS WHEN THE FILTER HAS ACTUALLY BEEN CHANGED.
+    #
+    # Whether this fully resets the unit's own filter timer is NOT confirmed:
+    # on 2026-08-14 the alarm cleared while the hour counter below ran straight
+    # through the event. Watch that counter when you press it - if it zeroes,
+    # we have our answer. See PROTOCOL.md 9.3.
     reset_filter:
       name: "Reset filter timer"
 
@@ -328,8 +334,9 @@ sensor:
     # The CS50 broadcasts its whole parameter table continuously, so this is
     # pure listening — no read request exists, and none is needed.
     int_registers:
-      # Hours since the filter timer was last reset. Ticks once per hour.
-      # Together with the interval below this gives "time until filter change"
+      # An hour counter tied to the filter. Ticks once per hour, reliably; what
+      # it counts FROM is unsettled, and it does not subtract against the
+      # interval below to give a time remaining - see PROTOCOL.md 9.3
       # and — more usefully — a measurable check on whether the reset button
       # actually worked, instead of waiting days to see if the alarm returns.
       - register: 0x1C

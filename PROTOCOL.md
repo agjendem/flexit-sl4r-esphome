@@ -556,16 +556,39 @@ Bank `0x20`, word indices within each register block:
 | `0x0E` | 6 | motor protection delay | 30 s ✅ |
 | `0x0E` | 8, 9 | **fan duty per level**, supply and extract | 50 / 75 / 100 % ✅ |
 | `0x0E` | 12 | **stored user settings**: setpoint (high) and fan level (low) | ✅ |
-| `0x1C` | 8 | **hours since the filter timer was last reset** | ticks +1 per hour ✅ |
+| `0x1C` | 8 | **an hour counter tied to the filter** | ticks +1 per hour ✅, but what it counts *from* is unsettled 🟡 |
 
 The stored-settings word was identified by watching it follow a panel session
 byte for byte as the user swept setpoint and fan level — it is what makes the
 unit remember its settings across a power cut.
 
-**The filter counter is the most useful of these.** Combined with the filter
-interval it gives "time until filter change", and — more importantly — a
-*measurable* check on whether a filter reset actually worked, instead of
-waiting days to see whether the alarm returns.
+**The filter counter is the most promising of these, and the least understood.**
+It increments once per hour, reliably. What it counts *from* is another matter,
+and an earlier draft of this document claimed too much by saying that it gives
+"time until filter change" when combined with the interval.
+
+It does not, on the evidence we have. Measured 2026-08-16: the counter stood at
+**29,418 h** against a filter interval of **6 months** — call it 4,400 h — so a
+subtraction would put the filter three years overdue. The filter alarm was
+**off**. And when the alarm did fire and clear (on 2026-08-14 at 23:44 and
+2026-08-15 at 00:19), the counter ran straight through the event without
+resetting.
+
+Three readings survive that, and we cannot yet separate them: ❓
+
+1. The counter runs from the last *genuine* filter reset, and none of our
+   attempts have been one.
+2. It counts something else entirely — operating hours since some earlier
+   event. It is not lifetime hours: 29,418 h is 3.4 years, and the panel's
+   board carries a 2006 date code.
+3. The alarm threshold is not `interval × hours-per-month`, so the two fields
+   are not directly comparable at all.
+
+**What would settle it:** a real filter change with the documented reset
+procedure, watching whether the counter zeroes — the integration now reports any
+parameter word that moves, so the answer arrives by itself. Failing that, a
+register holding the threshold in *hours* would make the subtraction honest.
+See TODO.md.
 
 #### The fan duty parameters do not control our fans
 

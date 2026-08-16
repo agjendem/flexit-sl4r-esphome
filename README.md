@@ -33,8 +33,8 @@ rather than copied into this repository.
 - **Reading:** supply air temperature, fan level (running and return), fan duty
   in percent for both fans, heat exchanger setpoint, heat demand, boost state,
   **filter alarm**, the **afterheater setting**, and from the parameter registers
-  **hours since the filter timer was last reset** together with the filter
-  interval. Plus diagnostic entities for fields not yet decoded, so Home
+  an **hour counter tied to the filter** together with the filter interval —
+  see `PROTOCOL.md` before reading a "time remaining" into the pair. Plus diagnostic entities for fields not yet decoded, so Home
   Assistant's recorder builds history to correlate against.
 - **Writing:** fan level, setpoint, boost, cancel boost, afterheater on/off and
   filter reset — all verified against the CS50's own broadcast values, not just
