@@ -1,8 +1,5 @@
 # Flexit SL4R (CS50/CI50) — ESPHome integration over RS485
 
-*[Norsk versjon](README.no.md) — the original, and the language the research
-notes are written in.*
-
 Two-way integration of a Flexit SL4 R air handling unit (CS50 main board, CI50
 control panel) into Home Assistant, over the unit's own RS485 bus and without
 Flexit's CI66 Modbus adapter.
