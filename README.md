@@ -286,6 +286,20 @@ captures** asserted against what `PROTOCOL.md` says they contain. See
 [`tests/README.md`](tests/README.md) for what each one is guarding against —
 every case corresponds to a mistake this project actually made.
 
+## Working on this repository
+
+`main` is protected by habit rather than by force: **work on a branch and open a
+pull request**, so the checks run before anything lands. Two jobs run on every
+push and every PR:
+
+| Job | What it catches |
+|---|---|
+| **Protocol tests** | `./tests/run.sh` — the byte-level logic, plus a replay of the recorded captures |
+| **ESPHome config validation** | `example.yaml` against the component's codegen schemas, which a C++ test cannot see because the mismatch lives in the Python |
+
+Neither job needs the ESP32 toolchain, so they finish quickly. Run the first one
+locally before pushing; it takes about a second.
+
 ## Repository layout
 
 ```
@@ -307,8 +321,24 @@ tests/                    Host tests for the protocol logic (./tests/run.sh)
 python3.12 -m venv .venv-esphome
 ./.venv-esphome/bin/pip install esphome
 cp secrets.yaml.example secrets.yaml   # fill in wifi, generate api key and ota password
+git config core.hooksPath .githooks    # refuses direct pushes to main
 ./.venv-esphome/bin/esphome run example.yaml
 ```
+
+That `core.hooksPath` line is worth running even if you only ever read this
+repository. `main` is meant to be reached through a pull request so the checks
+run first, and the hook is what enforces it — **there is no server-side branch
+protection here**, because GitHub reserves that for private repositories on a
+paid plan. The hook is therefore a seatbelt, not a lock: it only applies to
+clones that enable it, and `git push --no-verify` walks past it. When this
+repository goes public, rulesets become available for free and should replace
+it.
+
+One consequence worth stating, because it looks like an omission: there is no
+*required review*. GitHub does not let you approve your own pull request, so on
+a single-maintainer repository that rule locks you out rather than protecting
+you. Opening the PR, letting the checks run, and clicking Merge yourself is the
+approval step.
 
 Wire the Tail485 to the panel's spare 4P4C socket: pin 1 = GND, 2 = B, 3 = A,
 4 = +V. **Check polarity with a meter before plugging in** — the buck converter

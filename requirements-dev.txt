@@ -1,0 +1,10 @@
+# Development dependencies. Only needed to build firmware or validate the YAML -
+# the protocol tests in tests/ deliberately need nothing but a C++ compiler.
+#
+# Pinned to a minor series rather than an exact version: config validation
+# should track the ESPHome the firmware is actually built with (2026.7 here),
+# while still picking up patch releases. Bump this deliberately when moving to a
+# new series, because platform schemas do change between them - the climate
+# custom fan modes moved from traits to the entity in 2026.5, which broke the
+# build until the code was updated to match.
+esphome~=2026.7

@@ -209,7 +209,11 @@ against what PROTOCOL.md says they contain.
       need hardware or elapsed time. A recorded-capture harness that could
       replay a whole session against the component (not just `protocol.h`) would
       reach most of it, and is the obvious next step.
-- [ ] **Run them in CI** once the repository is public.
+- [x] ~~Run them in CI.~~ Done — `.github/workflows/tests.yml` runs the suite on
+      every push and pull request, alongside an `esphome config` validation of
+      `example.yaml` that catches a platform schema drifting from the YAML it
+      documents. Private repositories get Actions minutes too, so this did not
+      have to wait for publication.
 
 ## Verification
 
@@ -230,6 +234,16 @@ against what PROTOCOL.md says they contain.
       would catch a failure.
 
 ## For publication
+
+- [ ] **Replace the pre-push hook with a real ruleset.** `main` is currently
+      guarded only by `.githooks/pre-push`, which is client-side and therefore
+      advisory: it protects clones that ran `git config core.hooksPath .githooks`
+      and nothing else. GitHub reserves branch protection and rulesets for
+      private repositories on paid plans, so making this repository public is
+      itself the fix — require the `Protocol tests` and `ESPHome config
+      validation` checks, and block direct pushes. Note that a *required review*
+      rule still will not fit a single-maintainer repository, since GitHub
+      forbids self-approval.
 
 - [ ] **Automatic hardware detection**, once the equipment configuration bits
       are found.
