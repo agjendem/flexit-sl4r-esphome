@@ -310,8 +310,24 @@ tests/                    Host tests for the protocol logic (./tests/run.sh)
 python3.12 -m venv .venv-esphome
 ./.venv-esphome/bin/pip install esphome
 cp secrets.yaml.example secrets.yaml   # fill in wifi, generate api key and ota password
+git config core.hooksPath .githooks    # refuses direct pushes to main
 ./.venv-esphome/bin/esphome run example.yaml
 ```
+
+That `core.hooksPath` line is worth running even if you only ever read this
+repository. `main` is meant to be reached through a pull request so the checks
+run first, and the hook is what enforces it — **there is no server-side branch
+protection here**, because GitHub reserves that for private repositories on a
+paid plan. The hook is therefore a seatbelt, not a lock: it only applies to
+clones that enable it, and `git push --no-verify` walks past it. When this
+repository goes public, rulesets become available for free and should replace
+it.
+
+One consequence worth stating, because it looks like an omission: there is no
+*required review*. GitHub does not let you approve your own pull request, so on
+a single-maintainer repository that rule locks you out rather than protecting
+you. Opening the PR, letting the checks run, and clicking Merge yourself is the
+approval step.
 
 Wire the Tail485 to the panel's spare 4P4C socket: pin 1 = GND, 2 = B, 3 = A,
 4 = +V. **Check polarity with a meter before plugging in** — the buck converter

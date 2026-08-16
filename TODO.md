@@ -231,6 +231,16 @@ against what PROTOCOL.md says they contain.
 
 ## For publication
 
+- [ ] **Replace the pre-push hook with a real ruleset.** `main` is currently
+      guarded only by `.githooks/pre-push`, which is client-side and therefore
+      advisory: it protects clones that ran `git config core.hooksPath .githooks`
+      and nothing else. GitHub reserves branch protection and rulesets for
+      private repositories on paid plans, so making this repository public is
+      itself the fix — require the `Protocol tests` and `ESPHome config
+      validation` checks, and block direct pushes. Note that a *required review*
+      rule still will not fit a single-maintainer repository, since GitHub
+      forbids self-approval.
+
 - [ ] **Automatic hardware detection**, once the equipment configuration bits
       are found.
 - [ ] **External boost switch on the CS 50** (J5 pin 16) would give an
