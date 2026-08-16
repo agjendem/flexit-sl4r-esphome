@@ -20,6 +20,21 @@ becomes a fix. Both cost us days when ignored.
 
 ---
 
+## Waiting on the panel
+
+- [ ] **Triple press (90 min).** Same protocol as the confirmed double press:
+      from idle, at least 3 minutes after any previous boost, three rapid
+      presses, **confirm three lit LEDs**, then leave it alone. Expect
+      ~90 min 76 s if the clock keeps drifting at the measured 1.4 %.
+- [ ] **Does cancelling from HA stop the PANEL's timer?** Untested, and now easy
+      to answer since we decode register `0x14`: start a boost at the panel,
+      cancel it from Home Assistant, and watch whether the panel still sends its
+      own `20 14 <duty> 30` when its period would have expired.
+      Benign either way — a second cancel lands on an already-cancelled boost —
+      **except for one edge case**: if you start a new boost from HA inside that
+      window, the panel's pending deadline could cut it short. Worth knowing
+      before anyone automates boost on a short cycle.
+
 ## The two provocation experiments
 
 Both are agreed, both are **read-only**, and both work the same way: put the
