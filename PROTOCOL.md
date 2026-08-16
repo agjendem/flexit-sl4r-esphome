@@ -23,8 +23,8 @@ Other firmware revisions may differ; please report if they do.
 
 ## 1. Physical layer
 
-| Property | Value |
-|---|---|
+| Property | Value | Confidence |
+|---|---|---|
 | Signalling | RS485, half duplex, 2-wire | ✅ |
 | Baud rate | 19200, 8 data bits, no parity, 1 stop bit | ✅ |
 | Topology | Multi-drop. The CI50's two 4P4C sockets are the **same** bus segment | ✅ |
@@ -115,8 +115,18 @@ they are. ✅
 | 1 | CS50 control board (the master's own data source) |
 | 2, 3 | Probed at startup, unused on our installation |
 | 4 | CI50 panel 1 |
-| 5 | Panel 2 — the identity dipswitch 3 selects on a physical panel |
+| 5 | Panel 2 — **inferred**, see below 🟡 |
 | 0x41 (65) | Polled, unexplained — see below ❓ |
+
+**What is measured, and what is inferred.** We have measured that answering as
+node 5 works, that it survives our own restarts, and that no physical second
+panel is needed for the CS50 to poll it. Calling node 5 "panel 2" is the
+inference: the CI 50 manual states that switch 3 must be set differently on each
+panel when more than one is fitted, and our panel — factory default, switch 3
+off — is node 4. Nobody has set a physical panel to panel 2 and observed it
+appear as node 5, so the mapping between that switch and this address is
+reasoning, not observation. It has no practical consequence for the
+integration: node 5 is free and answering on it works.
 
 The address space is not closed at 5. Checksum-valid polls to node `0x41` have
 been captured twice, each a few minutes after a restart of our node (at 7.5 and
@@ -546,16 +556,114 @@ Bank `0x20`, word indices within each register block:
 | `0x0E` | 6 | motor protection delay | 30 s ✅ |
 | `0x0E` | 8, 9 | **fan duty per level**, supply and extract | 50 / 75 / 100 % ✅ |
 | `0x0E` | 12 | **stored user settings**: setpoint (high) and fan level (low) | ✅ |
-| `0x1C` | 8 | **hours since the filter timer was last reset** | ticks +1 per hour ✅ |
+| `0x0E` | 10 | **the filter timer** — hours since the filter was last reset | ticks +1 per hour, zeroes on reset ✅ |
+| `0x1C` | 8 | a second hour counter, different epoch, never resets | ticks +1 per hour ✅, epoch unknown 🟡 |
 
 The stored-settings word was identified by watching it follow a panel session
 byte for byte as the user swept setpoint and fan level — it is what makes the
 unit remember its settings across a power cut.
 
-**The filter counter is the most useful of these.** Combined with the filter
-interval it gives "time until filter change", and — more importantly — a
-*measurable* check on whether a filter reset actually worked, instead of
-waiting days to see whether the alarm returns.
+**The filter timer is `0x0E` word 10** — settled on 2026-08-16 by running the
+reset procedure with raw frame logging on. Exactly one word changed and stayed
+changed: ✅
+
+```
+before  ... 32 4B 64 00 [00 2D] 02 32 12 01 32 4B      word 10 = 45
+after   ... 32 4B 64 00 [00 00] 02 32 12 01 32 4B      word 10 = 0
+```
+
+It increments **+1 per hour**, verified hour by hour across 33 consecutive
+hours. The reset procedure (setpoint to 20, both temperature buttons, restore)
+zeroes it.
+
+**This corrects two earlier readings in this document, and the way they were
+wrong is instructive.**
+
+*`0x1C[8]` is not the filter timer.* It was labelled that for three days. It
+survived the reset unchanged at 29,419 h. It ticks at the same rate as the real
+filter timer and runs a constant number of hours ahead of it — the same tick,
+a different epoch. Probably operating hours; the epoch is unknown. 🟡
+
+*`0x0E[10]` is a normal 16-bit counter after all.* An earlier section here
+argued it could not be, because it went `0x82F2` → `0x000C` without carrying
+into the high byte, and concluded it must be two independent bytes. The simpler
+explanation was the right one: `0x82F2` → `0` was **a reset**, performed by
+accident from the panel on the night of 15 August, and `0x000C` was twelve hours
+of counting afterwards. That also explains why the filter alarm cleared that
+night and stayed cleared.
+
+The lesson is the same one this project keeps relearning: a discontinuity in a
+counter is more likely to be an event than a decoding error, and the way to tell
+is to *cause* the event and watch.
+
+**On "time until filter change".** With the timer identified this is a
+defensible calculation — hours elapsed against an interval given in months —
+but the conversion the CS 50 uses is unmeasured, so the integration ships it as
+a template sensor with the assumption written next to it (730 h per month)
+rather than as component code. The timer now starts from zero, so the value it
+holds when the alarm next fires *is* the threshold, exactly. See TODO.md.
+
+#### Both hour counters wrap, and sooner than the equipment lasts
+
+Every counter here is a **single 16-bit word**, so it rolls over at 65,536
+hours — **7 years and 175 days**. ✅ That is a property of the field width, not
+a guess, and it is shorter than the service life of an air handling unit by a
+wide margin. Any consumer of these registers has to assume a wrap will happen.
+
+The practical consequences:
+
+- **The absolute value means nothing on its own.** A reading of 29,419 h could
+  be 3.4 years, or 10.8, or 18.3 — the wire cannot tell you which, because
+  **no wrap count is broadcast.** All 78 parameter words were scanned for one;
+  the only word holding a small number is the filter interval itself. 🟡
+- **Deltas are still sound.** The counters tick +1 per hour and the neighbouring
+  words never move, so *differences* over any period shorter than seven years
+  are exact. That is what the filter timer actually needs.
+- **In Home Assistant, use `state_class: total_increasing`.** A wrap looks
+  exactly like a reset, which that class already handles. Anything computed on
+  top will inherit the discontinuity.
+
+**A worked example of the ambiguity**, from this installation. The house was
+built in 2006–2007 and the unit stood idle for a period with a broken fan. If
+`0x1C[8]` counts operating hours since commissioning, then:
+
+| Wraps | Hours counted | Years | Implied history |
+|---|---|---|---|
+| 0 | 29,419 | 3.4 | counts from some event around 2023, not from commissioning |
+| 1 | 94,955 | 10.8 | commissioned ~2016 — the house is older than that |
+| 2 | 160,491 | 18.3 | commissioned 2007, ~16 months out of service ✅ fits |
+
+The two-wrap row fits the building's history neatly, which is exactly why it
+should be distrusted: three unknowns — commissioning date, downtime, wrap
+count — against one equation will always yield a fit. It is offered here as an
+illustration of the ambiguity, not as a result.
+
+**The measurement that would resolve most of it** is whether these are
+*running* hours or *wall-clock* hours: cut power to the unit across an hour
+boundary and see whether the counter advances. Running hours make the downtime
+explanation possible; wall-clock hours rule it out entirely. See TODO.md.
+
+**What the field width itself tells you.** It is worth asking why a designer
+would build an hour counter and then not spend the two extra bits that would
+make it meaningful across the equipment's life. A 32-bit counter would run for
+490,000 years; even 24 bits would cover 1,900. Sixteen was a choice.
+
+The most likely reading is that these were never meant as lifetime counters at
+all. Sixteen bits is a comfortable fit for an **interval** counter — the filter
+interval maxes out at 12 months, or 8,760 h, which leaves sevenfold headroom
+before a wrap can occur. `0x0E[10]` is exactly that, and its width is sensible.
+`0x1C[8]` is the odd one: at 29,419 h it is already several times past any
+service interval the manual documents.
+
+Two things follow, and they matter more than the epoch does. First, **the
+register map is the CS 500's** (§9.1), and this unit carries CS 500 fields it
+does not use — the cooling parameters sit at factory defaults on a CS 50 that
+cannot cool. `0x1C[8]` may well be another of those: incremented because the
+firmware is shared, meaningful only on a different controller. Second, on a
+commercial unit with a service regime, a counter that wraps every seven years is
+defensible if a technician is expected to read and record it at each visit.
+Neither reading makes it a lifecycle metric, and treating it as one — as this
+project briefly did — is reading intent into a field that does not carry it.
 
 #### The fan duty parameters do not control our fans
 

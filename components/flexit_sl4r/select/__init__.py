@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# ESPHome codegen. See LICENSE.
 import esphome.codegen as cg
 from esphome.components import select
 import esphome.config_validation as cv

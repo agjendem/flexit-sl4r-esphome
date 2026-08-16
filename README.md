@@ -11,6 +11,21 @@ socket** on the back of the control panel, and powered from the bus's own 12 V
 
 The protocol is documented in **[`PROTOCOL.md`](PROTOCOL.md)**.
 
+### Official documentation
+
+Flexit's own material for this unit. All three are worth having open when
+reading `PROTOCOL.md`; the CS 50/CS 500 manual in particular names the
+parameters this integration reads off the bus.
+
+- [SL4 R product page](https://www.flexit.no/produkter/base/26380/ventilasjonsaggregat-sl4-r/)
+  ([documentation tab](https://www.flexit.no/produkter/base/26380/ventilasjonsaggregat-sl4-r/?focus-on=documentation))
+- [CS 50 / CS 500 control automation](https://www.flexit.no/globalassets/catalog/documents/man_94269n_3749.pdf) — 94269N-02, the controller's parameter and terminal reference
+- [CI 50 control panel](https://www.flexit.no/globalassets/catalog/documents/man_110191n_3748.pdf) — 110191N-07, the panel this integration impersonates
+- [Operating instructions, S3 R / SL4 R / S4 R / S7 R](https://www.flexit.no/globalassets/catalog/documents/fdv_94273n_3270.pdf) — 94273N-07, the unit itself
+
+The manuals are in Norwegian and are copyrighted, so they are linked at source
+rather than copied into this repository.
+
 ## Status
 
 **Two-way control works against a real installation.**
@@ -18,8 +33,8 @@ The protocol is documented in **[`PROTOCOL.md`](PROTOCOL.md)**.
 - **Reading:** supply air temperature, fan level (running and return), fan duty
   in percent for both fans, heat exchanger setpoint, heat demand, boost state,
   **filter alarm**, the **afterheater setting**, and from the parameter registers
-  **hours since the filter timer was last reset** together with the filter
-  interval. Plus diagnostic entities for fields not yet decoded, so Home
+  the **filter timer** — hours since the filter was last reset — together with
+  the filter interval. Plus diagnostic entities for fields not yet decoded, so Home
   Assistant's recorder builds history to correlate against.
 - **Writing:** fan level, setpoint, boost, cancel boost, afterheater on/off and
   filter reset — all verified against the CS50's own broadcast values, not just
@@ -41,9 +56,10 @@ REPLY (node):    <TYPE> <node> <LEN> <data...> <ck1> <ck2>
 ```
 
 At startup the CS50 probes nodes 2, 3 and 5 five times each. A node that does
-not answer is dropped for the rest of the run. We therefore enrol as
-**node 5 = panel 2** — the identity dipswitch 3 selects on a physical panel —
-and are then polled continuously, including across our own restarts.
+not answer is dropped for the rest of the run. We therefore answer on **node
+5**, which is free on a single-panel installation, and are then polled
+continuously, including across our own restarts. No second physical panel is
+needed — that was measured, not assumed.
 
 Getting there took a while, because the obvious model treats poll and reply as
 one frame with an 8-byte header. That model reads fine and fails completely for
@@ -80,16 +96,34 @@ digits need no translation.
 
 **Measurement**
 
-Supply air temperature · heat demand (0–100, drives the rotor) · fan duty
-supply/extract (%) · fan level running and return · setpoint read back from the
-bus · spare sensor inputs (which hide themselves when nothing is connected) ·
-filter hours and filter interval · fan duty configured per level.
+- Supply air temperature
+- Heat demand (0–100, drives the rotor)
+- Fan duty, supply and extract (%)
+- Fan level, running and return
+- Setpoint, read back from the bus
+- Spare sensor inputs — these hide themselves when nothing is connected
+- Filter hours and filter interval
+- **Filter age** and **filter change due in**, in days
+- Fan duty configured per level
+
+The last pair are template sensors in the configuration rather than component
+code, because only one of them is exact. *Filter age* is the filter timer in
+days and nothing more. *Filter change due in* has to convert an interval given
+in **months** into the timer's **hours**, and the conversion the CS 50 uses has
+not been measured — 730 h per month is assumed, which is within about three
+days of a 30-day month over a six-month interval. Good enough to plan around,
+not exact enough to argue with the unit: the filter alarm remains the authority.
+Keeping the arithmetic in YAML means you can see the assumption and change it
+without rebuilding firmware.
 
 **State and alarm**
 
-Filter alarm · **unknown alarm** · boost active ·
-**heat recovery running** (the rotor is actually turning, not merely that
-demand exists) · **bypass (assumed)**.
+- Filter alarm
+- **Unknown alarm**
+- Boost active
+- **Heat recovery running** — the rotor is actually turning, not merely that
+  demand exists
+- **Bypass (assumed)**
 
 "Unknown alarm" is any bit in the alarm field other than the filter bit. We do
 not know which bit is the rotor alarm and which is the overheat thermostat, but
@@ -135,6 +169,12 @@ This integration follows that split, and reserves the vocabulary accordingly:
 | **Afterheater** (`switch`) | the setting — the element is *allowed* to heat | green LED 7 |
 | **Afterheater heating** | the element is heating *right now* | yellow LED 6 |
 
+![The CI 50 panel in normal operation, several indicator lamps lit](docs/images/ci50-panel-front.jpg)
+
+*The lamps this table refers to: the amber one is the afterheater, the three
+green ones are the fan level, and the red one in the temperature column is the
+setpoint.*
+
 **The second one does not exist yet.** The bit we once believed was it turned
 out to be boost. There is deliberately no read-only "enabled" sensor alongside
 the switch: it would show the same bit, and that duplicate is precisely what
@@ -142,9 +182,11 @@ makes the two impossible to tell apart. Never label the setting "active".
 
 **Diagnostics**
 
-Communication OK · enumerated on the bus · anomalies · status interval · frames
-discarded · reset reason · uptime · raw status bytes for undecoded fields ·
-**firmware version for both the controller and the panel**.
+- Communication OK, and enumerated on the bus
+- Anomalies, status interval, frames discarded
+- Reset reason and uptime
+- Raw status bytes for fields not yet decoded
+- **Firmware version for both the controller and the panel**
 
 Please quote both firmware versions in any bug report — everything documented
 here was derived from controller `R1A 2.8` and panel `R1A 1.2`.
@@ -233,15 +275,9 @@ plus [scheduler-card](https://github.com/nielsfaber/scheduler-card) (both HACS)
 is the common alternative. It creates one `switch.schedule_*` entity per rule,
 which can be enabled and disabled individually.
 
-**Can the plan live on the ESPHome device itself?** Not as a helper — helper
-entities belong to their own config entry and cannot be attached to another
-integration's device, so a `schedule.*` entity will never appear under the
-Flexit device page. Put it in the same **area** and on the same dashboard card
-and it will read as one unit. Keeping the schedule in Home Assistant is also the
-better arrangement: it survives reflashing the node, and it is editable without
-a rebuild. The node holds no schedule of its own, and deliberately so — if
-Home Assistant is down, the unit simply keeps running whatever it was last set
-to, which is the safe failure mode for ventilation.
+The node deliberately holds no schedule of its own. If Home Assistant is down
+the unit keeps running whatever it was last set to, which is the safe failure
+mode for ventilation — and the schedule survives reflashing the node.
 
 ## Different unit variants
 
@@ -275,30 +311,33 @@ comparing two installations with different equipment — see
 ```
 
 A C++17 compiler and nothing else — no ESPHome, no ESP32 toolchain, no
-hardware. The byte-level protocol logic lives in
-[`components/flexit_sl4r/protocol.h`](components/flexit_sl4r/protocol.h) so the
-tests exercise the code the firmware runs rather than a copy of it.
+hardware. The byte-level logic lives in
+[`components/flexit_sl4r/protocol.h`](components/flexit_sl4r/protocol.h), free
+of ESPHome, so the tests exercise the code the firmware runs rather than a copy
+of it.
 
-108 checks cover the checksum (with vectors read off the wire), frame validation
-and resynchronisation, the fan-level nibbles, the boost command's mirroring of
-undecoded bits, the big-endian parameter words, and a **replay of both recorded
-captures** asserted against what `PROTOCOL.md` says they contain. See
-[`tests/README.md`](tests/README.md) for what each one is guarding against —
-every case corresponds to a mistake this project actually made.
+The suite covers the checksum, frame validation and resynchronisation, the
+field decoding, and a replay of the recorded captures in
+[`research/captures/`](research/captures/). See
+[`tests/README.md`](tests/README.md) for what each case guards against.
 
 ## Working on this repository
 
-`main` is protected by habit rather than by force: **work on a branch and open a
-pull request**, so the checks run before anything lands. Two jobs run on every
-push and every PR:
+Work on a branch and open a pull request. Two jobs run on every push and every
+pull request:
 
 | Job | What it catches |
 |---|---|
-| **Protocol tests** | `./tests/run.sh` — the byte-level logic, plus a replay of the recorded captures |
+| **Protocol tests** | `./tests/run.sh` |
 | **ESPHome config validation** | `example.yaml` against the component's codegen schemas, which a C++ test cannot see because the mismatch lives in the Python |
 
-Neither job needs the ESP32 toolchain, so they finish quickly. Run the first one
-locally before pushing; it takes about a second.
+Neither needs the ESP32 toolchain, so both finish in seconds. Run the tests
+locally before pushing.
+
+Contributions are welcome, and disagreement especially so — see
+[Contributions and logs wanted](#contributions-and-logs-wanted). If you change
+how a byte is interpreted, please update `PROTOCOL.md` in the same pull request
+and say what you measured.
 
 ## Repository layout
 
@@ -306,6 +345,7 @@ locally before pushing; it takes about a second.
 PROTOCOL.md               Protocol specification (English)
 components/flexit_sl4r/   ESPHome external component (C++ hub + platforms)
 components/…/protocol.h   Pure byte-level protocol logic (no ESPHome, unit-tested)
+docs/images/              Photographs of the installation
 example.yaml              Canonical example configuration
 flexit-atom-lite.yaml     The author's live configuration (Norwegian entity names)
 research/                 Source material and derivation (see research/README.md)
@@ -315,39 +355,62 @@ secrets.yaml.example      Template for secrets.yaml (wifi/api/ota)
 tests/                    Host tests for the protocol logic (./tests/run.sh)
 ```
 
+## Hardware
+
+Three parts, about €25 all told. Nothing is soldered and the air handling unit
+never has to be opened.
+
+| Part | Notes |
+|---|---|
+| [M5Stack ATOM Lite](https://shop.m5stack.com/products/atom-lite-esp32-development-kit) ([docs](https://docs.m5stack.com/en/core/ATOM%20Lite)) | ESP32-PICO. Any ESP32 works, but the Tail485 is built for this form factor |
+| [M5Stack ATOM Tail485](https://shop.m5stack.com/products/atom-tail485) ([docs](https://docs.m5stack.com/en/atom/tail485)) | SKU T002. SP485EEN-L transceiver plus a 9–24 V buck converter, so the bus powers the node. No DE/RE line — direction is handled on the module |
+| A 4P4C cable | Cut in half — you need one plug and four wires. Search for "4P4C", "RJ9/RJ10/RJ22" or "handset cord"; [this 2 m one](https://www.teknikkdeler.no/produkt/modulaerkabel-4p4c-rj9rj10rj22-2m-svart) is the right thing, at about 60 NOK |
+
+![The ATOM Lite stacked on the Tail485, with the RS485 wires attached](docs/images/atom-lite-tail485.jpg)
+
+*The two modules stack directly. The Tail485's silkscreen carries everything
+you need: **B, A, V, G** at the bottom edge for the bus, and the note that it
+accepts 9–24 V — which is why the panel's 12 V can power the whole thing.*
+
+### Where it connects
+
+The CI 50 control panel has **two** 4P4C sockets on the back and normally uses
+only one. The spare is a full tap of the same bus, carrying A, B, GND and 12 V,
+so the node can be fitted without opening the unit.
+
+![The CI 50 panel opened, showing both 4P4C sockets and the DIP switch block](docs/images/ci50-panel-open.jpg)
+
+*The two 4P4C sockets sit side by side in the middle. Here both are occupied:
+the original panel cable in one, and this integration's node in the other, which
+is the whole trick. The four-position DIP switch is immediately to their left —
+switch 3 is the panel 1 / panel 2 selector discussed in `PROTOCOL.md` §3.1.*
+
+Pinout at the socket: **1 = GND, 2 = B, 3 = A, 4 = +V** (measured 11.8 V).
+
+> **Ring out the wires before connecting anything.** Cutting the cable leaves
+> you with four bare conductors whose colours mean nothing — measure continuity
+> from each one to each pin of the remaining plug and label them. Getting +V and
+> GND the wrong way round can destroy the Tail485, which has no reverse-polarity
+> protection.
+
+Flash over USB-C with the 4P4C **disconnected**. USB power and bus power must
+never be connected at the same time.
+
+If no frames arrive, swap A and B. That is the single most common mistake.
+
 ## Getting started
 
+Requires Python 3.12 or newer — ESPHome currently supports up to 3.14.
+
 ```bash
-python3.12 -m venv .venv-esphome
-./.venv-esphome/bin/pip install esphome
-cp secrets.yaml.example secrets.yaml   # fill in wifi, generate api key and ota password
-git config core.hooksPath .githooks    # refuses direct pushes to main
+python3 -m venv .venv-esphome
+./.venv-esphome/bin/pip install -r requirements-dev.txt
+cp secrets.yaml.example secrets.yaml   # wifi, plus an API key and OTA password
 ./.venv-esphome/bin/esphome run example.yaml
 ```
 
-That `core.hooksPath` line is worth running even if you only ever read this
-repository. `main` is meant to be reached through a pull request so the checks
-run first, and the hook is what enforces it — **there is no server-side branch
-protection here**, because GitHub reserves that for private repositories on a
-paid plan. The hook is therefore a seatbelt, not a lock: it only applies to
-clones that enable it, and `git push --no-verify` walks past it. When this
-repository goes public, rulesets become available for free and should replace
-it.
-
-One consequence worth stating, because it looks like an omission: there is no
-*required review*. GitHub does not let you approve your own pull request, so on
-a single-maintainer repository that rule locks you out rather than protecting
-you. Opening the PR, letting the checks run, and clicking Merge yourself is the
-approval step.
-
-Wire the Tail485 to the panel's spare 4P4C socket: pin 1 = GND, 2 = B, 3 = A,
-4 = +V. **Check polarity with a meter before plugging in** — the buck converter
-has no reverse-polarity protection, and module cables exist in mirrored
-variants. Flash over USB-C with the 4P4C disconnected; USB and bus power must
-never be connected at the same time.
-
-If nothing arrives, swap A and B. That is the single most common mistake, and
-it was ours too.
+`example.yaml` is a starting point rather than a fixed configuration: every
+entity in it is optional, so take what you need and name it what you like.
 
 ## Contributions and logs wanted
 
@@ -433,8 +496,7 @@ The protocol knowledge here rests on
 **[Vongraven/Flexit-SL4R-master](https://github.com/Vongraven/Flexit-SL4R-master)**
 (MIT, 2018) — an Arduino Mega implementation tested against a real SL4R/CS50,
 and the only known source for both the protocol and the wiring diagram for this
-bus. This repository is not a fork: it shares no code, and the protocol has been
-reimplemented and re-verified numerically. See
+bus. The protocol has been reimplemented and re-verified numerically. See
 [`research/README.md`](research/README.md) for exactly what was copied and what
 is our own derivation.
 
@@ -446,15 +508,53 @@ Other sources used:
 - [M5Stack Tail RS485, SKU T002](https://docs.m5stack.com/en/atom/tail485) and
   its [datasheet](https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/static/pdf/static/en/atom/tail485.pdf)
   (9–24 V buck, SP485EEN-L, G26/G32, no DE/RE line).
-- Flexit's own manuals: [CI 50 control panel](https://www.flexit.no/globalassets/catalog/documents/man_110191n_3748.pdf)
-  and the [CI 66 Modbus adapter](https://www.flexit.no/produkter/relatert/modbusadapter_ci66_k2-c2-uni/).
-  The manuals themselves are copyrighted and are **not** included in this
-  repository; only document numbers are cited.
+- Flexit's own documentation — see [Official documentation](#official-documentation)
+  above. The manuals are copyrighted and are **not** redistributed here; they
+  are linked at source and cited by document number.
 - [hjemmeautomasjon.no: "Styre balansert ventilasjon, Flexit CI60"](https://www.hjemmeautomasjon.no/forums/topic/714-styre-balansert-ventilasjon-flexit-ci60/)
   — Vongraven's own description of the wiring, and experience from CS60/CI60.
 
+## AI-assisted development
+
+This integration was reverse-engineered and written together with
+[Claude Code](https://claude.com/claude-code), and it seems fair to say so
+plainly rather than leave it to be inferred from the commit trailers.
+
+What that does and does not mean for the reliability of what you are reading:
+
+- **Every protocol claim was checked against real hardware.** Nothing here is
+  inferred from a language model's guess about how a bus "should" work. Where a
+  reading rests on inference rather than measurement, `PROTOCOL.md` marks it
+  with ✅ / 🟡 / ❓ and says what would settle it.
+- **The mistakes are documented rather than quietly corrected.** Several
+  readings in this repository were wrong at some point — a checksum window off
+  by one byte, a counter that turned out to be two independent bytes, three
+  successive misreadings of one status byte. They are written up with how they
+  were caught, because that is more useful to the next person than a clean
+  narrative would be.
+- **The tests exist because of this.** `tests/` pins the byte-level arithmetic
+  against vectors read off the wire, so a plausible-looking change to the
+  decoding fails a check rather than reaching a ventilation unit.
+
+If you find something wrong, an issue that says what you measured is worth more
+than one that says what you expected.
+
 ## License
 
-MIT, see [`LICENSE`](LICENSE). Copied source material in `research/` is
-Copyright (c) 2018 Vongraven, also MIT — see
-[`research/LICENSE-Vongraven`](research/LICENSE-Vongraven).
+**Dual, mirroring ESPHome's own split** — see [`LICENSE`](LICENSE) for the full
+text, and the `SPDX-License-Identifier` line at the top of each file for what
+applies to it.
+
+| Part | License | Why |
+|---|---|---|
+| `protocol.h`, `tests/` | **MIT** | No ESPHome dependency. This is the reusable part — lift it into a Tasmota port or an ESP-IDF project if you like |
+| The rest of the C++ component | **GPLv3** | It includes ESPHome headers, so it is a derivative of ESPHome's GPLv3 runtime and cannot be offered on looser terms |
+| Python codegen, YAML, documentation | **MIT** | Same treatment ESPHome gives its own Python |
+
+MIT code may be combined into a GPLv3 work, so this is internally consistent:
+build the component and the resulting binary is GPLv3; take `protocol.h` on its
+own and it stays MIT.
+
+Copied source material in `research/` is Copyright (c) 2018 Vongraven, MIT —
+see [`research/LICENSE-Vongraven`](research/LICENSE-Vongraven). Flexit's manuals
+are copyrighted by Flexit AS and are linked at source, never redistributed here.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Derivative work of ESPHome's GPLv3 runtime. See LICENSE.
 #pragma once
 
 #include "esphome/components/select/select.h"

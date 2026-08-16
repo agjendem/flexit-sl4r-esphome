@@ -103,17 +103,15 @@ text_sensor:
 flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
-  # Hvilken node vi utgir oss for å være ved sending. CI50 er node 4 (panel 1).
-  # Node 5 er panel 2 — det er dét dipswitch 3 på panelet konfigurerer.
+  # Hvilken node vi utgir oss for å være ved sending. CI50 er node 4, og node 5
+  # er ledig på et anlegg med ett panel — så der kan vi svare uten å utgi oss
+  # for det ekte panelet. (At node 5 er dét dipswitch 3 velger er en SLUTNING
+  # fra manualen, ikke målt; se PROTOCOL.md 3.1.)
   # Adressefeltet beregnes automatisk: byte 3-4 er Fletcher-sjekksummen over
   # [C3, node, 00], verifisert mot node 1 (01 00 C4 4B) og node 4 (04 00 C7 51).
-  # Å opptre som node 4 betyr å utgi seg for det ekte panelet; node 5 er en
-  # egen identitet CS50 er bygget for å støtte.
-  # Tilbake på 4 (panelets identitet) — node 5 er prøvd og gir ingen reaksjon.
   # Bussen er POLLED: masteren sender 5 byte `C3 <node> 00 <cks>`, og kun den
   # adresserte noden svarer — UTEN å gjenta C3-headeren. Node 2/3/5 pollast fem
   # ganger hver ved oppstart (enumerering); svarer de ikke, droppes de.
-  # Vi melder oss derfor på som node 5 = panel 2.
   source_node: 5
   respond_to_polls: true
   # Retningsstyring: blokkdiagrammet i M5Stacks datablad for Tail RS485 (SKU
@@ -161,11 +159,14 @@ switch:
       - lambda: 'id(flexit_sl4r_hub)->set_afterheat_enabled(false);'
 
   # Forsering («Max vifte») som av/på i stedet for to knapper — samme modell
-  # som Ettervarme over. Det fungerer nettopp fordi tilstanden LESES fra
-  # bussen: forseringen er tidsstyrt av aggregatet selv (30 min ved ett trykk),
-  # og når perioden er over faller bryteren tilbake til «av» av seg selv, uten
-  # at vi trenger å telle tid. Av-slaget skriver returtrinnet (lav nibbel
-  # av [5]) — altså trinnet aggregatet uansett skulle tilbake til.
+  # som Ettervarme over. Fungerer fordi tilstanden LESES fra bussen.
+  #
+  # RETTET 2026-08-16: kommentaren her påsto at aggregatet timer forseringen
+  # selv. Det gjør det ikke — timeren ligger i CI 50-PANELET, og panelet timer
+  # kun det det selv har startet. En forsering vi starter løper til noe avbryter
+  # den (målt: 36 min, panelet helt stille). Komponenten armerer derfor sin egen
+  # 30-minutters frist. Av-slaget sender panelets egen avbrytelseskommando
+  # (reg 0x14), ikke en viftetrinnskriving. Se PROTOCOL.md 7.4.
   - platform: template
     name: "Forsering"
     id: boost_switch
@@ -273,6 +274,52 @@ sensor:
     name: "Oppetid"
     entity_category: diagnostic
 
+  # --- Filterets levetid, avledet ---
+  #
+  # Bevisst template-sensorer og ikke komponentkode: komponenten rapporterer
+  # det bussen faktisk sier, og alt som REGNES oppå det hører hjemme her, hvor
+  # regnestykket er synlig og kan endres uten ny firmware.
+
+  # Eksakt — filtertimeren teller timer, dette er samme tall i døgn.
+  - platform: template
+    name: "Filterets alder"
+    id: filter_age_days
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: "mdi:air-filter"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state))
+        return NAN;
+      return id(filter_hours).state / 24.0f;
+
+  # Omtrentlig, og forbeholdet ER hele poenget: intervallet er oppgitt i
+  # MÅNEDER mens timeren teller TIMER, og hvordan CS 50 konverterer mellom dem
+  # har vi ikke målt. 730 t er en gjennomsnittsmåned (365,25 * 24 / 12); en
+  # 30-dagersmåned gir 720, altså 1,4 % forskjell — rundt tre døgn hver vei
+  # over et halvår. Godt nok til «bytt snart», ikke godt nok til å stemme
+  # eksakt med aggregatet.
+  #
+  # Går negativ når det er på overtid, med vilje: det er reell informasjon, og
+  # filteralarmen er uansett fasiten.
+  #
+  # Kan erstattes med et eksakt tall når alarmterskelen er målt — se TODO.md.
+  - platform: template
+    name: "Filterbytte om"
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:calendar-clock"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state) || isnan(id(filter_interval_months).state))
+        return NAN;
+      const float budget_hours = id(filter_interval_months).state * 730.0f;
+      return (budget_hours - id(filter_hours).state) / 24.0f;
+
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
     # Eneste tilkoblede temperaturføler på bussen — Flexits B1, «tilluftføler
@@ -350,20 +397,24 @@ sensor:
     # ligger der på fabrikkverdi), gruppert etter TYPE — min/maks-par ligger
     # sammen — ikke etter menyrekkefølge. Se research/protocol-notes.md.
     int_registers:
-      # reg 0x0E ord 10 så lenge ut som en andre timeteller (`82 DC` -> `82 E5`
-      # -> `82 F2`, +9 og +13 over to døgn, konstant differanse 4158 mot
-      # filtertelleren). 15. august sto det plutselig `00 0C`: lavbyten hadde
-      # rullet rundt 242 -> 12, og høybyten gikk 0x82 -> 0x00 i stedet for å
-      # bære carry til 0x83. Det ER altså ikke ett 16-bit tall. Bytene
-      # eksponeres derfor hver for seg til oppførselen er kartlagt.
+      # FILTERTIMEREN. Bekreftet 2026-08-16 ved å kjøre nullstillingsprosedyren
+      # med rå logging på: dette ordet — og INGEN andre — gikk 45 -> 0 i samme
+      # sekund. Teller nøyaktig +1 per time (verifisert time for time gjennom
+      # 33 timer i HA-historikken).
+      #
+      # Vi trodde tidligere dette IKKE var et 16-bit tall, fordi `82 F2` ble til
+      # `00 0C` uten å bære carry. Forklaringen var enklere: det var en
+      # NULLSTILLING (33522 -> 0), utført ved et uhell fra panelet natt til
+      # 15. august. Derfor forsvant filteralarmen den natta.
+      # `internal: true` — finnes for utregningene, men publiseres ikke til HA.
+      # «Filterets alder» viser samme tall i døgn, og to entiteter for samme
+      # verdi er bare støy. Fjern linja hvis du vil se rå timer i HA.
       - register: 0x0E
         index: 10
-        mode: low_byte
-        name: "Teller 0x0E[10] lav"
-      - register: 0x0E
-        index: 10
-        mode: high_byte
-        name: "Flagg 0x0E[10] høy"
+        id: filter_hours
+        name: "Filtertimer"
+        internal: true
+        unit_of_measurement: "h"
       # Samme mønster i reg 0x00 ord 0: lavbyten er stabilt 25 (maks settpunkt),
       # mens høybyten gikk 0x00 -> 0x08 i samme tidsrom. To «høybyte-flagg» som
       # beveger seg — verdt å følge.
@@ -371,19 +422,22 @@ sensor:
         index: 0
         mode: high_byte
         name: "Flagg 0x00[0] høy"
-      # Den viktigste av de to: timer siden filtervakten sist ble nullstilt.
-      # Gir «tid til filterbytte» i HA, og — viktigere — en MÅLBAR fasit på om
-      # «Nullstill filtervakt» faktisk virker. Da alarmen ble kvittert ved et
-      # uhell 14. august fortsatte denne å telle, og alarmen kom tilbake.
+      # IKKE filtertimeren, slik denne het fram til 2026-08-16. Den overlevde
+      # nullstillingsprosedyren uendret (29419 både før og etter), mens
+      # 0x0E[10] gikk til null. Teller også +1 per time, og ligger et konstant
+      # antall timer foran filtertimeren — altså samme takt, annen epoke.
+      # Sannsynligvis driftstimer, men epoken er ikke fastslått.
       - register: 0x1C
         index: 8
-        name: "Filtertimer"
+        name: "Timeteller 0x1C[8]"
         unit_of_measurement: "h"
-        icon: "mdi:air-filter"
+        icon: "mdi:counter"
         state_class: total_increasing
+        entity_category: diagnostic
       # Filterintervallet i måneder (manualens «Tids periode», 0-12, std 6).
       - register: 0x0E
         index: 5
+        id: filter_interval_months
         name: "Filterintervall"
         unit_of_measurement: "mnd"
         icon: "mdi:calendar-clock"

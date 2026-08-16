@@ -217,10 +217,98 @@ against what PROTOCOL.md says they contain.
 
 ## Verification
 
-- [ ] **Confirm the filter reset actually restarts the timer.** Now measurable:
-      read the filter-hours counter before and after pressing the button. A
-      genuine reset should zero it. (An accidental panel reset did *not* zero
-      it, which is why the alarm re-armed hours later.)
+- [x] ~~Confirm the filter reset actually restarts the timer.~~ **Done
+      2026-08-16, and it found a mislabelled register.** The reset works; it
+      zeroes `0x0E[10]`, which is the real filter timer. `0x1C[8]`, which this
+      project had called "filter hours" for three days, is a different counter
+      on a different epoch and does not reset. See PROTOCOL.md §9.3.
+- [ ] **Measure the filter alarm threshold and drop the assumed conversion.**
+      The "filter change due in" sensor assumes 730 h per month, because the
+      interval is given in months and the timer counts hours. The timer was
+      zeroed on 2026-08-16, so **the value it holds when the alarm next fires is
+      the threshold in hours, exactly**. Expect the answer in roughly six
+      months; the anomaly log records the alarm changing state whether or not
+      anyone is watching. Replace the constant then, and the sensor becomes
+      exact instead of approximate.
+- [ ] **What is `0x1C[8]`'s epoch, and do these counters track running hours or
+      wall-clock hours?** The wrap behaviour and the ambiguity it creates are
+      documented in PROTOCOL.md §9.3, with a worked example from this
+      installation; what is missing is a measurement.
+
+      **Cut power to the unit across an hour boundary** — the tick lands around
+      :51–:58 — and see whether the counter advances. If it does not, these are
+      running hours and a unit's downtime shows up as a shortfall against
+      calendar time. If it does, the CS 50 keeps a real-time clock and the
+      epoch is something else entirely. Roughly twenty minutes with the
+      ventilation off; the wall socket is enough, no need to open anything.
+
+      A second installation with a known commissioning date and no downtime
+      would settle the epoch outright, since the counter would then have to
+      equal the age modulo 65,536.
+
+## Verification
+
+- [x] ~~Confirm the filter reset actually restarts the timer.~~ **Done
+      2026-08-16, and it found a mislabelled register.** The reset works; it
+      zeroes `0x0E[10]`, which is the real filter timer. `0x1C[8]`, which this
+      project had called "filter hours" for three days, is a different counter
+      on a different epoch and does not reset. See PROTOCOL.md §9.3.
+- [ ] **Measure the filter alarm threshold and drop the assumed conversion.**
+      The "filter change due in" sensor assumes 730 h per month, because the
+      interval is given in months and the timer counts hours. The timer was
+      zeroed on 2026-08-16, so **the value it holds when the alarm next fires is
+      the threshold in hours, exactly**. Expect the answer in roughly six
+      months; the anomaly log records the alarm changing state whether or not
+      anyone is watching. Replace the constant then, and the sensor becomes
+      exact instead of approximate.
+- [ ] **What is `0x1C[8]`'s epoch?** Same tick rate as the filter timer, runs a
+      constant offset ahead of it, never resets. "Operating hours since
+      installation" is the obvious guess and **the arithmetic does not support
+      it**: 29,419 h is 3.36 years of continuous running, on a unit whose panel
+      board carries a 2006 date code.
+
+      The register is 16 bits, so it wraps every 7.48 years and a remainder
+      would tell you nothing about total age. But the wraps do not land
+      convincingly either — 20 years of continuous running would leave 44,128,
+      not 29,419, and no whole number of wraps puts the epoch near 2006:
+
+      | Wraps | Total | Epoch |
+      |---|---|---|
+      | 0 | 29,419 h | ~2023 |
+      | 1 | 94,955 h | ~2016 |
+      | 2 | 160,491 h | ~2008 |
+
+      **A reconstruction that arithmetically fits — and one reason to doubt it.**
+      Two wraps put the counter at 18.3 years of *counted* hours. Our house was
+      built 2006–2007 and the unit stood idle for a period with a broken fan;
+      commissioning in 2007 with roughly 16 months out of service lands exactly
+      on 18.3. On that reading `0x1C[8]` is total running hours since
+      commissioning, wrapped twice, and the shortfall against wall-clock time
+      is the downtime.
+
+      **But nothing broadcasts a wrap count.** All 78 parameter words were
+      scanned: the only one holding a small number is the filter interval
+      (`0x0E[5]` = 6). If this counter had rolled over twice, the "2" is
+      nowhere on the bus. That does not disprove wrapping — the CS 50 need not
+      expose it — but it removes the only evidence that would have supported
+      it, and leaves the simpler reading standing: the counter is at 29,419 and
+      has never wrapped, i.e. roughly 3.4 years since *something*.
+
+      So: three unknowns (commissioning date, downtime, wrap count) against one
+      equation. A fit was always available. Treat it as a story, not a result.
+
+      The neighbouring words are **not decoded**, but they are not part of this
+      counter either: across three days in which word 8 advanced 77, every
+      other word in register `0x1C` was bit-identical (25615, 0, 0, 300, 0, 0,
+      300, 301, …, 100). No 32-bit pairing with a neighbour yields a sane
+      number — the nearest, words 7+8, would read 2,255 years.
+
+      **One cheap measurement would carry most of the weight:** does the
+      counter track *running* hours or *wall-clock* hours? Cut power to the
+      unit across an hour boundary and see whether it advances. If it does not,
+      the reconstruction above stands and the counter is running hours. If it
+      does, the CS 50 keeps a real-time clock, the downtime explanation
+      collapses, and the epoch is something else entirely.
 - [ ] **Preheat for plate-exchanger units.** Removed here because the SL4 R has
       a rotor. Needed for the integration to cover plate-exchanger variants —
       requires someone with that hardware.

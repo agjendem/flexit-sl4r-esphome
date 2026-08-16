@@ -109,9 +109,11 @@ flexit_sl4r:
   id: flexit_sl4r_hub
   uart_id: flexit_uart
 
-  # Which node we present ourselves as. The CI50 is node 4 (panel 1); node 5 is
-  # panel 2, the identity dipswitch 3 selects on a physical panel. Enrolling as
-  # node 5 lets us coexist with the real panel instead of impersonating it.
+  # Which node we present ourselves as. The CI50 is node 4, and node 5 is free
+  # on a single-panel installation, so answering there lets us coexist with the
+  # real panel instead of impersonating it. (It is probably the address a
+  # physical second panel would take - see PROTOCOL.md 3.1 for what is measured
+  # and what is inferred.)
   #
   # The address field is computed automatically: bytes 3-4 are the Fletcher
   # checksum over [C3, node, 00].
@@ -178,8 +180,11 @@ button:
     # step is required — without it the alarm is merely acknowledged while the
     # timer keeps counting, and it returns by itself.
     #
-    # ONLY PRESS THIS WHEN THE FILTER HAS ACTUALLY BEEN CHANGED. You can verify
-    # it worked by watching the "Filter hours" sensor below.
+    # ONLY PRESS THIS WHEN THE FILTER HAS ACTUALLY BEEN CHANGED.
+    #
+    # Confirmed working 2026-08-16: pressing this zeroed the filter timer
+    # (0x0E word 10) from 45 to 0, and changed nothing else except the setpoint
+    # it moves to 20 and back. Watch "Filter hours" below to see it happen.
     reset_filter:
       name: "Reset filter timer"
 
@@ -253,6 +258,54 @@ sensor:
   - platform: uptime
     name: "Uptime"
     entity_category: diagnostic
+
+  # --- Filter service life, derived ---
+  #
+  # These are template sensors rather than component code on purpose. The
+  # component reports what the bus actually says; anything computed on top of
+  # it belongs here, where the arithmetic is visible and you can change it
+  # without rebuilding firmware.
+
+  # Exact: the filter timer counts hours, this is the same number in days.
+  - platform: template
+    name: "Filter age"
+    id: filter_age_days
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 1
+    icon: "mdi:air-filter"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state))
+        return NAN;
+      return id(filter_hours).state / 24.0f;
+
+  # Approximate, and the approximation is the whole caveat: the interval is
+  # given in MONTHS and the timer counts HOURS, and how the CS 50 converts
+  # between them has not been measured. 730 h is a mean month (365.25 * 24 /
+  # 12); a 30-day month would give 720, which is 1.4 % different - about three
+  # days either way over a six-month interval. Fine for "change it soon",
+  # wrong for anything that needs to agree with the unit exactly.
+  #
+  # Goes negative when overdue, which is deliberate: that is real information,
+  # and the filter alarm is the authority anyway.
+  #
+  # This can be replaced with an exact figure once the alarm threshold has been
+  # measured - see TODO.md.
+  - platform: template
+    name: "Filter change due in"
+    unit_of_measurement: "d"
+    device_class: duration
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:calendar-clock"
+    update_interval: 5min
+    lambda: |-
+      if (isnan(id(filter_hours).state) || isnan(id(filter_interval_months).state))
+        return NAN;
+      const float budget_hours = id(filter_interval_months).state * 730.0f;
+      return (budget_hours - id(filter_hours).state) / 24.0f;
 
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub
@@ -328,20 +381,37 @@ sensor:
     # The CS50 broadcasts its whole parameter table continuously, so this is
     # pure listening — no read request exists, and none is needed.
     int_registers:
-      # Hours since the filter timer was last reset. Ticks once per hour.
-      # Together with the interval below this gives "time until filter change"
-      # and — more usefully — a measurable check on whether the reset button
-      # actually worked, instead of waiting days to see if the alarm returns.
+      # THE filter timer: hours since the filter was last reset. Ticks +1 per
+      # hour, and goes to zero when the reset procedure runs - both confirmed
+      # by running that procedure with raw logging on, and watching this word
+      # (and no other) drop 45 -> 0.
+      # internal: exists for the templates below, but is not published to Home
+      # Assistant. "Filter age" is the same number in days, and two entities
+      # for one value is just clutter. Drop the line to see raw hours.
+      - register: 0x0E
+        index: 10
+        id: filter_hours
+        name: "Filter hours"
+        internal: true
+        unit_of_measurement: "h"
+
+      # A second hour counter, same tick rate but a different epoch: it runs a
+      # constant number of hours ahead of the filter timer and did NOT change
+      # when the filter was reset. Probably operating hours. Exposed as a
+      # diagnostic because the epoch is unknown - do not read a filter age into
+      # it, which is exactly the mistake this project made for three days.
       - register: 0x1C
         index: 8
-        name: "Filter hours"
+        name: "Hour counter 0x1C[8]"
         unit_of_measurement: "h"
-        icon: "mdi:air-filter"
+        icon: "mdi:counter"
         state_class: total_increasing
+        entity_category: diagnostic
 
       # Filter interval in months (the manual's "time period", 0-12, default 6).
       - register: 0x0E
         index: 5
+        id: filter_interval_months
         name: "Filter interval"
         unit_of_measurement: "months"
         icon: "mdi:calendar-clock"
