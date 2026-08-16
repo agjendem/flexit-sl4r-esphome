@@ -43,6 +43,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          # Required: the cache looks for requirements.txt or pyproject.toml by
+          # default, and finding neither it fails the job rather than skipping
+          # the cache.
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install ESPHome
         run: pip install -r requirements-dev.txt
