@@ -277,6 +277,27 @@ void FlexitSL4RComponent::dump_anomalies() {
     line[3 * n] = '\0';
     ESP_LOGI(TAG, "  [%8u ms] %-22s %s", static_cast<unsigned>(a.ms), a.reason, line);
   }
+
+  // The census answers the question the anomaly list cannot: how OFTEN does a
+  // shape occur? The list reports a signature once and then goes quiet, so
+  // "appeared once" there means nothing about frequency.
+  ESP_LOGI(TAG, "=== FRAME CENSUS: %u distinct shapes ===", static_cast<unsigned>(this->signatures_.size()));
+  ESP_LOGI(TAG, "  %-18s %8s %10s %10s %12s", "signature", "count", "first ms", "last ms", "mean gap");
+  for (const auto &s : this->signatures_) {
+    // Mean interval over the observed span. Meaningless for a single sighting,
+    // and shown as "-" rather than a fabricated number.
+    char gap[16];
+    if (s.count > 1) {
+      const uint32_t span = s.last_ms - s.first_ms;
+      snprintf(gap, sizeof(gap), "%u ms", static_cast<unsigned>(span / (s.count - 1)));
+    } else {
+      snprintf(gap, sizeof(gap), "-");
+    }
+    ESP_LOGI(TAG, "  %c %016llX %8u %10u %10u %12s", s.decoded ? ' ' : '?',
+             static_cast<unsigned long long>(s.sig), static_cast<unsigned>(s.count),
+             static_cast<unsigned>(s.first_ms), static_cast<unsigned>(s.last_ms), gap);
+  }
+  ESP_LOGI(TAG, "  ('?' marks a shape no handler understood)");
   ESP_LOGI(TAG, "=== END ===");
 }
 
@@ -291,23 +312,54 @@ void FlexitSL4RComponent::dispatch_frame_() {
     ESP_LOGD(TAG, "FRAME: %s", line);
   }
 
-  // New frame signature? The first time a (TYPE, LEN, bank) combination shows
-  // up is worth capturing - that is how an unknown message type reveals
-  // itself.
-  {
-    const uint8_t bank = this->frame_.size() > FRAME_HEADER_LENGTH ? this->frame_[FRAME_HEADER_LENGTH] : 0;
-    const uint32_t sig = (static_cast<uint32_t>(this->frame_[FRAME_CHECKSUM_START]) << 16) |
-                         (static_cast<uint32_t>(this->frame_[FRAME_LEN_OFFSET]) << 8) | bank;
-    if (std::find(this->seen_signatures_.begin(), this->seen_signatures_.end(), sig) ==
-        this->seen_signatures_.end()) {
-      this->seen_signatures_.push_back(sig);
-      // Stay quiet during the learning period - otherwise the whole startup
-      // would be noise.
-      if (millis() > ANOMALY_LEARN_MS)
-        this->note_anomaly_("new frame type");
-    }
-  }
+  // Decode first, then judge. A frame that one of our handlers understood is
+  // normal traffic however seldom it arrives - the panel's state frame appears
+  // only when someone touches the panel, and the boost command only when boost
+  // changes. Both used to be filed as "anomalies", which is exactly the noise
+  // that makes a detector worth ignoring.
+  const bool decoded = this->decode_frame_();
+  const bool first_time = this->record_signature_(decoded);
 
+  // Report only the genuinely unexplained, and only after the learning period -
+  // otherwise the whole startup would be noise.
+  if (first_time && !decoded && millis() > ANOMALY_LEARN_MS)
+    this->note_anomaly_("undecoded frame type");
+}
+
+uint64_t FlexitSL4RComponent::frame_signature_() const {
+  // A bare poll to another node carries no bank or register, and its payload
+  // bytes are zero, so identifying it by TYPE/LEN/bank would map every such
+  // poll onto the same signature. Address and length are what distinguish them
+  // - that is how `C3 41` is told apart from `C3 02`.
+  if (this->frame_.size() <= FRAME_HEADER_LENGTH + 1) {
+    return (UINT64_C(1) << 56) | (static_cast<uint64_t>(this->frame_[0]) << 16) |
+           (static_cast<uint64_t>(this->frame_.size() > 1 ? this->frame_[1] : 0) << 8) |
+           static_cast<uint64_t>(this->frame_.size());
+  }
+  return (UINT64_C(2) << 56) | (static_cast<uint64_t>(this->frame_[FRAME_CHECKSUM_START]) << 24) |
+         (static_cast<uint64_t>(this->frame_[FRAME_LEN_OFFSET]) << 16) |
+         (static_cast<uint64_t>(this->frame_[FRAME_HEADER_LENGTH]) << 8) |
+         static_cast<uint64_t>(this->frame_[FRAME_HEADER_LENGTH + 1]);
+}
+
+bool FlexitSL4RComponent::record_signature_(bool decoded) {
+  const uint64_t sig = this->frame_signature_();
+  const uint32_t now = millis();
+  for (auto &s : this->signatures_) {
+    if (s.sig != sig)
+      continue;
+    s.count++;
+    s.last_ms = now;
+    s.decoded = decoded;
+    return false;
+  }
+  if (this->signatures_.size() >= SIGNATURE_MAX)
+    return false;  // full: stop growing rather than report endlessly
+  this->signatures_.push_back({sig, 1, now, now, decoded});
+  return true;
+}
+
+bool FlexitSL4RComponent::decode_frame_() {
   const uint8_t type = this->frame_[FRAME_CHECKSUM_START];
   const uint8_t len = this->frame_[FRAME_LEN_OFFSET];
 
@@ -345,7 +397,7 @@ void FlexitSL4RComponent::dispatch_frame_() {
     this->have_prev_status_ = true;
 
     this->parse_and_publish_status_();
-    return;
+    return true;
   }
 
   // Firmware strings: CS50 in bank 0x20 reg 0x00, panel in bank 0x22 reg 0x00.
@@ -355,11 +407,11 @@ void FlexitSL4RComponent::dispatch_frame_() {
     const uint8_t reg = this->frame_[FRAME_HEADER_LENGTH + 1];
     if (node == 1 && bank == 0x20 && reg == 0x00) {
       this->publish_firmware_(true);
-      return;
+      return true;
     }
     if (bank == 0x22 && reg == 0x00) {
       this->publish_firmware_(false);
-      return;
+      return true;
     }
   }
 
@@ -368,16 +420,107 @@ void FlexitSL4RComponent::dispatch_frame_() {
   if (type == TYPE_STATUS && len == 8 && this->frame_.size() > FRAME_HEADER_LENGTH + 2 &&
       this->frame_[FRAME_HEADER_LENGTH] == 0x20 && this->frame_[FRAME_HEADER_LENGTH + 1] == 0x0F) {
     this->handle_panel_frame_();
-    return;
+    return true;
   }
 
   if (type == TYPE_FLOAT || type == TYPE_PARAM) {
     this->handle_float_frame_();
-    return;
+    return true;
   }
 
-  if (type == TYPE_INT)
+  if (type == TYPE_INT) {
+    this->watch_param_block_();
     this->handle_int_frame_();
+    return true;
+  }
+
+  // The panel's boost command. Decoding it does two things: it tells us when
+  // the PANEL starts or stops a boost, and it stops this perfectly ordinary
+  // frame from being filed as an anomaly every time someone presses the button.
+  if (type == TYPE_STATUS && len == 4 && this->frame_.size() > FRAME_HEADER_LENGTH + 3 &&
+      this->frame_[FRAME_HEADER_LENGTH] == 0x20 && this->frame_[FRAME_HEADER_LENGTH + 1] == 0x14) {
+    this->handle_boost_command_();
+    return true;
+  }
+
+  // "Nothing to report". There is nothing to extract, but we understand it
+  // perfectly well - it is the very reply we send when idle - so it counts as
+  // decoded and stays out of the anomaly log.
+  if (type == TYPE_IDLE)
+    return true;
+
+  return false;
+}
+
+void FlexitSL4RComponent::watch_param_block_() {
+  if (this->frame_.size() < FRAME_HEADER_LENGTH + 4)
+    return;
+  const uint8_t bank = this->frame_[FRAME_HEADER_LENGTH];
+  const uint8_t reg = this->frame_[FRAME_HEADER_LENGTH + 1];
+  const uint8_t *data = this->frame_.data() + FRAME_HEADER_LENGTH + 2;
+  size_t words = (this->frame_[FRAME_LEN_OFFSET] - 2) / 2;
+  if (words > 14)
+    words = 14;
+
+  ParamBlock *block = nullptr;
+  for (auto &b : this->param_shadow_) {
+    if (b.bank == bank && b.reg == reg) {
+      block = &b;
+      break;
+    }
+  }
+  if (block == nullptr) {
+    if (this->param_shadow_.size() >= PARAM_BLOCK_MAX)
+      return;
+    this->param_shadow_.push_back({bank, reg, static_cast<uint8_t>(words), {}});
+    block = &this->param_shadow_.back();
+    for (size_t i = 0; i < words; i++)
+      block->value[i] = static_cast<uint16_t>((data[i * 2] << 8) | data[i * 2 + 1]);
+    return;  // first sighting establishes the baseline, it is not a change
+  }
+
+  bool changed = false;
+  for (size_t i = 0; i < words && i < block->words; i++) {
+    const uint16_t now = static_cast<uint16_t>((data[i * 2] << 8) | data[i * 2 + 1]);
+    if (now == block->value[i])
+      continue;
+    // Logged individually: which word moved and to what is the whole point,
+    // and the stored frame alone would make you count bytes to find out.
+    ESP_LOGW(TAG, "PARAMETER CHANGED: bank 0x%02X reg 0x%02X word %u: %u -> %u (0x%04X -> 0x%04X)",
+             static_cast<unsigned>(bank), static_cast<unsigned>(reg), static_cast<unsigned>(i),
+             static_cast<unsigned>(block->value[i]), static_cast<unsigned>(now),
+             static_cast<unsigned>(block->value[i]), static_cast<unsigned>(now));
+    block->value[i] = now;
+    changed = true;
+  }
+  if (changed && millis() > ANOMALY_LEARN_MS)
+    this->note_anomaly_("parameter register changed");
+}
+
+void FlexitSL4RComponent::handle_boost_command_() {
+  // data[1]'s low nibble is the request: 3 = boost on, 0 = off. See
+  // PROTOCOL.md 7.4. We only log it - the resulting fan change arrives in the
+  // status telegram anyway, and THAT is the authority on what actually
+  // happened. A request is not an outcome: the CS50 discards requests made
+  // within roughly three minutes of a previous boost ending.
+  const uint8_t node = this->frame_[1];
+  const uint8_t duty = this->frame_[FRAME_HEADER_LENGTH + 2];
+  const uint8_t flags = this->frame_[FRAME_HEADER_LENGTH + 3];
+  const bool on = (flags & 0x0F) == 0x03;
+
+  // Ours is not news - we just sent it.
+  if (node == this->source_node_)
+    return;
+
+  ESP_LOGI(TAG, "Panel (node %u) requested boost %s (duty %u%%)", static_cast<unsigned>(node), on ? "ON" : "OFF",
+           static_cast<unsigned>(duty));
+
+  // A panel boost is the panel's to time, not ours - it runs 30, 60 or 90
+  // minutes depending on a press count we cannot see, so we must not arm our
+  // own deadline against it. Clearing is the safe direction: worst case the
+  // boost outlives what we would have guessed.
+  this->boost_deadline_ms_ = 0;
+  this->boost_request_ms_ = 0;
 }
 
 void FlexitSL4RComponent::handle_int_frame_() {

@@ -61,6 +61,7 @@ static constexpr uint8_t FRAME_LEN_OFFSET = 7;
 static constexpr uint8_t FRAME_CHECKSUM_START = 5;  // the checksum covers from TYPE onwards
 static constexpr uint8_t FRAME_MAX_PAYLOAD = 64;    // largest observed is 30
 
+static constexpr uint8_t TYPE_IDLE = 0xC0;     // "nothing to report" - the reply we send ourselves
 static constexpr uint8_t TYPE_STATUS = 0xC1;   // with LEN=22 this is the status telegram
 static constexpr uint8_t TYPE_FLOAT = 0xC2;    // IEEE754 float registers (live measurements)
 static constexpr uint8_t TYPE_INT = 0xC6;      // 16-bit integers: parameter tables + clock storage (bank 0x21)
@@ -283,6 +284,14 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // --- Receive: general frame parser ---
   void handle_incoming_byte_(uint8_t byte);
   void dispatch_frame_();
+  // Routes the frame to its handler. Returns false if nothing understood it -
+  // which is what makes a frame worth reporting as an anomaly. Adding a decoder
+  // therefore removes that frame from the anomaly log automatically, with no
+  // whitelist to keep in step.
+  bool decode_frame_();
+  // The panel's boost command, register 0x14. Decoded so we can see the PANEL
+  // start and stop boost, and so it stops being reported as an anomaly.
+  void handle_boost_command_();
   void handle_float_frame_();
   void handle_int_frame_();
   void parse_and_publish_status_();
@@ -347,8 +356,51 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   std::vector<Anomaly> anomalies_;
   uint32_t anomaly_count_{0};
   bool raw_logging_{false};
-  // Frame signatures seen before: (TYPE<<16) | (LEN<<8) | bank.
-  std::vector<uint32_t> seen_signatures_;
+
+  // --- Frame census ---
+  // Every distinct frame shape, with how many have arrived and when. This is
+  // what the anomaly log cannot do on its own: it reports a signature the first
+  // time only, so it can tell you something new appeared but never how often it
+  // recurs. Reading "seen once, never again" out of it was a real mistake once.
+  //
+  // Bounded by construction - a unit emits a couple of dozen shapes - but
+  // capped anyway so a stream of corrupted frames cannot grow it without limit.
+  struct FrameSignature {
+    uint64_t sig;
+    uint32_t count;
+    uint32_t first_ms;
+    uint32_t last_ms;
+    bool decoded;  // we have a handler for it, so it is normal traffic
+  };
+  static constexpr size_t SIGNATURE_MAX = 64;
+  std::vector<FrameSignature> signatures_;
+  // --- Parameter register watch ---
+  // The status telegram has had per-field change detection from the start, but
+  // the PARAMETER registers had none: only the handful wired to a sensor were
+  // watched, and everything else could change unseen. Finding out whether a
+  // parameter moved therefore meant capturing raw frames and diffing them in a
+  // script afterwards - which is exactly how the boost investigation had to be
+  // done, and it only works if you happen to be capturing at the time.
+  //
+  // A shadow copy per (bank, register) block closes that. Small and bounded:
+  // a couple of banks times a few registers, 14 words each.
+  struct ParamBlock {
+    uint8_t bank;
+    uint8_t reg;
+    uint8_t words;
+    uint16_t value[14];
+  };
+  static constexpr size_t PARAM_BLOCK_MAX = 16;
+  std::vector<ParamBlock> param_shadow_;
+  // Compares the current 0xC6 frame against the shadow and reports any word
+  // that moved. Silent during the learning period.
+  void watch_param_block_();
+
+  // Computes the signature of the frame currently in frame_.
+  uint64_t frame_signature_() const;
+  // Records the current frame in the census. Returns true if this shape had
+  // never been seen before.
+  bool record_signature_(bool decoded);
   // Previous status telegram, for detecting changes in "constant" fields.
   std::array<uint8_t, STATUS_DATA_LENGTH> prev_status_{};
   bool have_prev_status_{false};

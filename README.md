@@ -337,12 +337,27 @@ possible that some of ours are wrong for yours.
 The integration is set up to gather evidence without you having to sit and
 watch.
 
-**Anomaly capture (always on).** It logs *the unexpected*, not everything: new
-frame types, changes in fields we believe constant, and any change in the alarm
-field. The last 40 events are stored with the full frame and a timestamp.
-Because it only reacts to deviations it costs almost nothing to leave running —
-in normal operation it counts zero. The `anomalies` sensor shows the count; the
-**dump anomalies** button prints them.
+**Anomaly capture (always on).** It logs *the unexpected*, not everything:
+frames no handler understood, changes in status fields we believe constant, any
+change in the alarm field, and **any change in a parameter register**. The last
+40 events are stored with the full frame and a timestamp. Because it only reacts
+to deviations it costs almost nothing to leave running — in normal operation it
+counts zero. The `anomalies` sensor shows the count; the **dump anomalies**
+button prints them.
+
+*Known frames are not anomalies.* A frame counts as understood when one of our
+handlers claims it, so the panel's state frame and its boost command — both
+perfectly ordinary, both rare — do not clutter the log. Because the test is
+"did a decoder take it" rather than a whitelist, adding a decoder removes that
+frame from the log automatically, with nothing to keep in step.
+
+**Frame census.** The same dump prints every distinct frame shape with a count,
+first and last sighting, and mean interval. This exists because the anomaly log
+answers "did something new appear" and *cannot* answer "how often" — it reports
+a signature once and then stays quiet for every repeat. Reading "seen once,
+never again" out of it was a real mistake here once; the census is the fix.
+Shapes marked `?` are ones no decoder claimed — a poll to an unfamiliar node
+shows up there, which is exactly where you want to look.
 
 The first 30 seconds after boot are a **learning period** in which the node
 learns the installation's normal repertoire of frame types without reporting.

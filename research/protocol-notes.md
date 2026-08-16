@@ -2826,3 +2826,52 @@ som virker etter hensikten.
 
 Lærdom å ta med: et verktøy som filtrerer bort gjentakelser er utmerket til å
 oppdage noe nytt, og ubrukelig til å si hvor ofte noe skjer. Ikke bland de to.
+
+## Rammetelling, dekoder-som-hviteliste og parametervakt (2026-08-16)
+
+Tre svakheter i anomalideteksjonen, alle rettet:
+
+**1. Kjente rammer ble flagget som anomalier.** Panelets tilstandsramme (`20 0F`)
+og forseringskommandoen (`20 14`) er helt ordinær trafikk som bare er sjelden,
+og fylte loggen med støy. Løsningen ble IKKE en hviteliste, men å snu testen:
+`decode_frame_()` returnerer nå `bool`, og en ramme er «kjent» hvis en dekoder
+tok den. Da forsvinner en ramme fra anomaliloggen automatisk i det vi lærer den,
+uten en liste å holde i synk. `20 14` fikk samtidig en ekte dekoder — vi logger
+nå når PANELET ber om forsering av/på, noe vi før ikke så.
+
+**2. Anomaliloggen kunne ikke måle frekvens.** Ny rammetelling (`FrameSignature`)
+med antall, første og siste tidspunkt, og gjennomsnittsintervall per rammeform.
+Signaturen er utvidet med registeret og har fått en egen form for polls, slik at
+en poll til node 0x41 skilles fra en poll til node 1. Begrenset til 64 former så
+en strøm av korrupte rammer ikke kan spise minne. Målt live: 18 former, alle
+dekodet unntatt én — polls til andre noder, som er nettopp der en ny node vil
+dukke opp. **Det er med vilje at polls ikke dekodes:** en poll til en ukjent node
+SKAL flagges.
+
+**3. Parameterregistrene ble ikke overvåket i det hele tatt.** Statustelegrammet
+har hatt feltvis endringsdeteksjon (`CONSTANT_FIELDS`) fra starten, men i C6-
+registrene var bare de få som var koblet til en sensor synlige. Alt annet kunne
+endre seg usett — og det er nettopp derfor forseringsundersøkelsen måtte gjøres
+ved å fange rå rammer og diffe dem i et Python-skript i etterkant, noe som bare
+virker hvis man tilfeldigvis logger akkurat da. Nå holdes en skyggekopi per
+(bank, register) og hvert ord som beveger seg logges med gammel og ny verdi.
+
+Verifisert live etter deploy: 0 anomalier, 18 rammeformer med tellere, 0
+parameterendringer (korrekt — ingenting endret seg).
+
+### Hva vi FORTSATT ikke fanger
+
+Ærlighetens skyld: `[15]` og `[20]` i statustelegrammet står ikke i
+`CONSTANT_FIELDS`, fordi de er kjent for å variere. Endringer der er derfor
+stille. Det er riktig valg — de ville fyrt konstant — men det betyr at et
+*mønsterskifte* i dem ikke oppdages automatisk.
+
+### Tester
+
+Det finnes ingen. Alt i dette repoet er verifisert ved å se på en levende buss,
+som er riktig måte å lære en protokoll på og en dårlig måte å holde den i gang
+på. Delene som lar seg teste uten maskinvare er nettopp de med fiklete
+aritmetikk: sjekksummen, rammesynkronisering, big-endian-ordsplitten i `0xC6`,
+nibbelhåndteringen i `[5]` og `[15]`, og byggingen av forseringskommandoen. Å
+kjøre lagrede opptak gjennom parseren og sjekke dekodede verdier ville fanget
+minst to av dagens feil før de nådde aggregatet. Lagt i TODO.

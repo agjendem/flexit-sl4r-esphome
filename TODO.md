@@ -177,6 +177,18 @@ Two loose ends survived:
       would be a guess for boosts we did not start. Worth stating in the UI
       rather than papering over.
 
+## Testing
+
+- [ ] **There are no automated tests.** Every claim in this repository was
+      verified by watching a live bus, which is the right way to learn a
+      protocol and a poor way to keep it working. The parts that could be tested
+      off-hardware are worth it, because they are the parts with fiddly
+      arithmetic: the checksum, frame framing and resynchronisation, the
+      big-endian word split in `0xC6`, the nibble handling in `[5]` and `[15]`,
+      and the boost command builder. Feeding recorded captures through the
+      parser and asserting the decoded values would have caught at least two of
+      today's mistakes before they reached the unit.
+
 ## Verification
 
 - [ ] **Confirm the filter reset actually restarts the timer.** Now measurable:
