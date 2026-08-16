@@ -323,8 +323,10 @@ sensor:
     raw_status_bytes:
       - index: 4
         name: "Rå status[4]"
+      # [6] er ikke lenger ukjent: bit0 = forsering, bit7 = ettervarme påslått.
+      # Beholdes som rå diagnostikk fordi de øvrige seks bitene er ukartlagt.
       - index: 6
-        name: "Rå status[6] (ettervarme?)"
+        name: "Rå status[6]"
       - index: 10
         name: "Rå status[10]"
       - index: 15
@@ -460,11 +462,18 @@ sensor:
         unit_of_measurement: "°C"
         disabled_by_default: true
       # Motorvernforsinkelse (30 s) og avstengingssekvens (180 s).
+      # USIKKER MERKING — aktivert med vilje for forseringstesten.
+      # Vi kalte den «Motorvern forsinkelse» fordi manualens §4.84 gir motorvern
+      # standard 30 s. Men §4.58 «Tid ved forsering» har OGSÅ standard 30, og
+      # ingen av dem er merket «ikke CS 50». På fabrikkverdi er de umulige å
+      # skille, og vi har aldri hatt en positiv kontroll.
+      # Testen: trykk forsering 1x/2x/3x på panelet (30/60/90 min). Går denne
+      # til 60 og 90, er det forseringstiden — og da kan varigheten settes ved
+      # å skrive parameteren i stedet for å spille av en trykksekvens.
       - register: 0x0E
         index: 6
-        name: "Motorvern forsinkelse"
+        name: "0x0E[6] (motorvern eller forseringstid?)"
         unit_of_measurement: "s"
-        disabled_by_default: true
       - register: 0x0E
         index: 4
         name: "Avstengingssekvens"
