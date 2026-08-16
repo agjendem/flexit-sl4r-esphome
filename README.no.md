@@ -31,9 +31,14 @@ bekreftet at parameterregistrene kan skrives (15. august).
   ikke bare mot vår egen UI-tilstand.
 - **`climate`-entitet** «Ventilasjon» samler settpunkt, viftemodus,
   BOOST-preset og HEAT/FAN_ONLY (ettervarme) i én termostat-modell.
-  Viftemodusene bruker Flexits egne navn fra CI 50-manualen —
-  **Redusert / Normal / Økt** — ikke trinnummer. `select`-entiteten
-  «Viftetrinn» beholder 1/2/3, siden den speiler panelets tre lysdioder.
+  Viftemodusene bruker HAs **standardmoduser** `low`/`medium`/`high`, slik at
+  frontenden oversetter dem selv — på norsk vises de som **Lav / Middels /
+  Høy**. De tilsvarer Flexits egne beskrivelser i CI 50-manualen: trinn 1
+  «redusert ventilasjon» (low), trinn 2 «normal drift» (medium) og trinn 3
+  «økt ventilasjon i våtrom» (high). NB: `high` er en varig innstilling, mens
+  BOOST er den tidsbegrensede maksimalviften aggregatet går ut av selv.
+  `select`-entiteten «Viftetrinn» beholder 1/2/3, siden den speiler panelets
+  tre lysdioder.
 - **Driftsdiagnostikk:** `Enumerert på bussen` viser om CS50 fortsatt poller
   oss. Går den av, feiler skriving *stille*, og aggregatet må strømsykles.
   `Kommunikasjon OK` dekker mottakssiden, og `Statusintervall` viser hvor ofte

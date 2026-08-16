@@ -2469,3 +2469,45 @@ lysdiode 6 som «Indikering ettervarme aktiv (element varmer)» og 7 som
 «Indikering ettervarme AV/PÅ». Vi har fortsatt ingen bussverdi for nr. 6 —
 `[6]` bit0 viste seg å være forsering — så «element varmer» er et reelt felt
 som finnes på panelet, men som vi ikke har funnet i telegrammet.
+
+## Viftemodusene i18net til HAs standardmoduser (2026-08-16)
+
+Trinnavnene over ble brukt som **custom fan modes** i climate-entiteten. Det er
+feil valg for et prosjekt som skal deles: custom-strenger vises ordrett til alle
+brukere uansett språk, mens HA oversetter sine **standardmoduser** selv. Byttet
+til `CLIMATE_FAN_LOW/MEDIUM/HIGH` gir «Lav/Middels/Høy» i norsk frontend og
+«Low/Medium/High» i engelsk, av samme firmware.
+
+Flexits egne beskrivelser er dermed ikke kastet — de er dokumentert som
+*mapping* i koden og i begge README-ene (trinn 1 = low, 2 = medium, 3 = high).
+Fagtermen «forsering» beholdes for BOOST-presetet, som er noe annet enn trinn 3:
+trinn 3 er varig, forsering er tidsstyrt med automatisk retur.
+
+API-detalj for ettertiden: `set_supported_fan_modes()` ligger fortsatt på
+`ClimateTraits` (ikke deprecated i 2026.7), mens `set_supported_custom_fan_modes()`
+ble flyttet til selve entiteten i 2026.5. Standardmodusene trenger derfor ingen
+`setup_state()`-krok — den er fjernet igjen. Verifisert ende-til-ende:
+`fan_modes: [low, medium, high]`, og skriving av `medium` ga viftetrinn 2 og
+pådrag 74 % tilbake fra CS50 (mot parameterens 75 % for trinn 2).
+
+## Anomali: poll til node 0x41 (2026-08-16)
+
+Anomaliloggen hadde fanget én hendelse siden forrige omstart:
+
+```
+[  448602 ms] new frame type         C3 41 00 00 00 00 00 00 00 00
+```
+
+Altså en **sjekksumgyldig poll til node 0x41 (65)**, ~7,5 minutter etter
+OTA-rebooten 15. august, og ikke gjentatt på de påfølgende 21 timene.
+
+Dette er nytt: fram til nå har masteren kun vært observert å polle node 2, 3 og
+5 (jf. kaldstartmålingen). Én forekomst er ikke et mønster, og det er verdt å
+merke seg at anomaliloggen først kunne se den fordi enheten var oppe — en poll
+til 0x41 i selve oppstartsvinduet ville havnet i oppstartsfangsten i stedet.
+
+Mulige forklaringer, ingen av dem bekreftet: en sjelden periodisk sveip etter
+flere nodetyper; noe som henger sammen med at vi selv nettopp hadde restartet;
+eller en adresse for en helt annen enhetsklasse (0x41 = 'A' i ASCII, men det
+er antagelig tilfeldig — de øvrige nodeadressene er små tall). Ufarlig for oss
+uansett: vi svarer kun på node 5. Neste forekomst fanges automatisk.

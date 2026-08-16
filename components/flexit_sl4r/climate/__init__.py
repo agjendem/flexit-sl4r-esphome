@@ -23,5 +23,4 @@ async def to_code(config):
     if ventilation_config := config.get(CONF_VENTILATION):
         clim = await climate.new_climate(ventilation_config)
         await cg.register_parented(clim, config[CONF_FLEXIT_SL4R_ID])
-        cg.add(clim.setup_state())
         cg.add(hub.set_ventilation_climate(clim))

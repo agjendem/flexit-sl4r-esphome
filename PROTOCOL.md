@@ -116,6 +116,14 @@ they are. ✅
 | 2, 3 | Probed at startup, unused on our installation |
 | 4 | CI50 panel 1 |
 | 5 | Panel 2 — the identity dipswitch 3 selects on a physical panel |
+| 0x41 (65) | Seen **once**, unexplained — see below 🟡 |
+
+The address space is not closed at 5. On 2026-08-16 a single checksum-valid
+poll to node `0x41` was captured, roughly 7.5 minutes after a restart, and not
+repeated in the 21 hours that followed. One sample supports no conclusion about
+whether it is periodic, restart-related or a different device class; it is
+recorded here so the next observer recognises it rather than dismissing it as
+line noise. It is harmless — we answer only for our own node.
 
 ### 3.2 Enumeration — and why it matters
 
@@ -514,6 +522,7 @@ Contributions that would settle these are very welcome; see the README.
 | 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | Heating season, with a real heat demand |
 | 5 | Where is the equipment configuration? | A capture from a unit with **different equipment** — diffing two installations would expose it immediately |
 | 6 | What do the two moving high-byte fields in `0xC6` mean? | Long-term logging |
+| 7 | Who is node `0x41`, polled once and never again? | A second sighting — anywhere. Any capture containing `C3 41` |
 
 ---
 

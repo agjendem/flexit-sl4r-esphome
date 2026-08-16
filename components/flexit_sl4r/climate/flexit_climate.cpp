@@ -2,35 +2,34 @@
 #include "esphome/core/log.h"
 
 #include <cmath>
-#include <cstring>
 
 namespace esphome::flexit_sl4r {
 
-// The fan levels as custom fan modes. These must be static const char* -
-// ESPHome stores the pointer, not a copy, and compares identity as well as
-// content.
+// The three fan levels are exposed as Home Assistant's STANDARD fan modes
+// rather than as custom strings, because only the standard ones are
+// translated: the frontend renders LOW/MEDIUM/HIGH in the user's own language
+// ("Lav/Middels/Hoy" in Norwegian, and so on). A custom string is shown
+// verbatim to every user regardless of their language, so any wording we chose
+// here would be wrong for most of them.
 //
-// The names come from Flexit's own CI 50 manual (110191N-07 p. 5), which
-// describes each level in plain words:
-//   level 1 - "lower ventilation demand than normal. Not to be used while the
-//             home is occupied"
-//   level 2 - "normal operating ventilation. This is the everyday setting"
-//   level 3 - "increased ventilation in wet rooms", e.g. while showering
-// "Increased" is used rather than the manual's "forced" for level 3, because
-// "Boost" is already the name of the TIMED maximum function (the BOOST preset).
-// The `select` entity keeps the plain numbers 1/2/3 - it mirrors the panel's
-// three indicator LEDs directly.
+// The mapping to Flexit's own vocabulary, from the CI 50 manual
+// (110191N-07 p. 5), which describes each level in plain words:
+//   LOW    = level 1, "lower ventilation demand than normal. Not to be used
+//            while the home is occupied"
+//   MEDIUM = level 2, "normal operating ventilation. This is the everyday
+//            setting"
+//   HIGH   = level 3, "increased ventilation in wet rooms", e.g. while
+//            showering
 //
-// Translators: these strings are what the user sees in the Home Assistant fan
-// mode dropdown. Adapt them to your language; nothing else depends on the
-// exact wording.
-static const char *const FAN_MODE_1 = "Reduced";
-static const char *const FAN_MODE_2 = "Normal";
-static const char *const FAN_MODE_3 = "Increased";
+// Note that level 3 is NOT the same as the BOOST preset: level 3 is a
+// permanent setting, boost is the timed maximum the unit backs out of by
+// itself. The `select` entity keeps the plain numbers 1/2/3 - it mirrors the
+// panel's three indicator LEDs directly, and digits need no translation.
 
 climate::ClimateTraits FlexitClimate::traits() {
   climate::ClimateTraits traits;
   traits.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE | climate::CLIMATE_SUPPORTS_ACTION);
+  traits.set_supported_fan_modes({climate::CLIMATE_FAN_LOW, climate::CLIMATE_FAN_MEDIUM, climate::CLIMATE_FAN_HIGH});
   // No OFF mode: the unit cannot be stopped over the bus. HEAT/FAN_ONLY
   // distinguishes whether the afterheater is enabled.
   traits.set_supported_modes({climate::CLIMATE_MODE_HEAT, climate::CLIMATE_MODE_FAN_ONLY});
@@ -44,11 +43,6 @@ climate::ClimateTraits FlexitClimate::traits() {
   return traits;
 }
 
-void FlexitClimate::setup_state() {
-  // Fan modes live on the entity (not traits) as of ESPHome 2026.5.
-  this->set_supported_custom_fan_modes({FAN_MODE_1, FAN_MODE_2, FAN_MODE_3});
-}
-
 void FlexitClimate::control(const climate::ClimateCall &call) {
   // The order is deliberate: boost is handled last, so that a simultaneous
   // level change in the same call does not cancel the boost we just asked for.
@@ -58,15 +52,20 @@ void FlexitClimate::control(const climate::ClimateCall &call) {
   if (call.get_mode().has_value())
     this->parent_->set_afterheat_enabled(*call.get_mode() == climate::CLIMATE_MODE_HEAT);
 
-  const auto fm = call.get_custom_fan_mode();
-  if (!fm.empty()) {
+  if (call.get_fan_mode().has_value()) {
     uint8_t level = 0;
-    if (strcmp(fm.c_str(), FAN_MODE_1) == 0) {
-      level = 1;
-    } else if (strcmp(fm.c_str(), FAN_MODE_2) == 0) {
-      level = 2;
-    } else if (strcmp(fm.c_str(), FAN_MODE_3) == 0) {
-      level = 3;
+    switch (*call.get_fan_mode()) {
+      case climate::CLIMATE_FAN_LOW:
+        level = 1;
+        break;
+      case climate::CLIMATE_FAN_MEDIUM:
+        level = 2;
+        break;
+      case climate::CLIMATE_FAN_HIGH:
+        level = 3;
+        break;
+      default:
+        break;
     }
     if (level != 0)
       this->parent_->set_fan_level(level);
@@ -110,10 +109,10 @@ void FlexitClimate::publish_from_bus(float current_temp, uint8_t setpoint, uint8
   }
 
   if (fan_level >= 1 && fan_level <= 3) {
-    const char *want = fan_level == 1 ? FAN_MODE_1 : (fan_level == 2 ? FAN_MODE_2 : FAN_MODE_3);
-    const auto current = this->get_custom_fan_mode();
-    if (current.empty() || strcmp(current.c_str(), want) != 0) {
-      if (this->set_custom_fan_mode_(want))
+    const auto want = fan_level == 1 ? climate::CLIMATE_FAN_LOW
+                                     : (fan_level == 2 ? climate::CLIMATE_FAN_MEDIUM : climate::CLIMATE_FAN_HIGH);
+    if (!this->fan_mode.has_value() || *this->fan_mode != want) {
+      if (this->set_fan_mode_(want))
         changed = true;
     }
   }

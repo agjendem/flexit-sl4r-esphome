@@ -136,11 +136,14 @@ flexit_sl4r:
 #
 # There is no "off" mode: the unit cannot be stopped over the bus.
 #   HEAT  = afterheater enabled     FAN_ONLY = heat recovery only
-#   BOOST = timed max fan           fan mode = Reduced / Normal / Increased
+#   BOOST = timed max fan           fan mode = low / medium / high
 #
-# The fan mode names come from Flexit's CI 50 manual, which describes level 1
-# as "lower ventilation demand than normal", level 2 as "normal operating
-# ventilation" and level 3 as "increased ventilation in wet rooms".
+# The fan modes are Home Assistant's standard ones, so the frontend translates
+# them into the user's own language. They map onto Flexit's CI 50 manual, which
+# describes level 1 as "lower ventilation demand than normal" (low), level 2 as
+# "normal operating ventilation" (medium) and level 3 as "increased ventilation
+# in wet rooms" (high). "high" is a permanent setting - BOOST is the timed
+# maximum the unit backs out of on its own.
 climate:
   - platform: flexit_sl4r
     flexit_sl4r_id: flexit_sl4r_hub

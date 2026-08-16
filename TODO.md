@@ -22,6 +22,16 @@ becomes a fix. Both cost us days when ignored.
 
 ## Decoding
 
+### The bus
+
+- [ ] **Who is node `0x41` (65)?** On 16 August the anomaly log caught a single
+      checksum-valid poll to node `0x41`, about 7.5 minutes after a restart, and
+      never again in the 21 hours that followed. Until then the master had only
+      ever been seen polling nodes 2, 3 and 5. One sample is not a pattern:
+      it could be a rare periodic sweep, something tied to the restart, or a
+      node type we have not met. The anomaly log will catch the next one — the
+      question is what makes it happen.
+
 ### Status telegram
 
 - [ ] **Map the remaining bits in `[4]`.** The rotor alarm (B-alarm,

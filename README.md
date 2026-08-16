@@ -71,9 +71,16 @@ take what you need, name it what you like.
 | Reset filter timer | `button` | Runs the manual's full procedure automatically |
 | Ventilation | `climate` | All of the above in one thermostat model |
 
-The climate entity's fan modes use Flexit's own wording from the CI 50 manual —
-**Reduced / Normal / Increased** — rather than level numbers. The `select`
-entity keeps 1/2/3, because that is what the panel's three LEDs show.
+The climate entity uses Home Assistant's **standard** fan modes — `low`,
+`medium`, `high` — so the frontend renders them in each user's own language
+("Lav/Middels/Høy" in Norwegian). A custom string would be shown verbatim to
+everyone, in whatever language it was written in. They map to Flexit's own
+descriptions in the CI 50 manual: `low` = level 1, reduced ventilation for an
+empty home; `medium` = level 2, the everyday setting; `high` = level 3,
+increased ventilation for wet rooms. Note that `high` is a permanent setting
+and not the same as BOOST, which is timed and backs out by itself. The `select`
+entity keeps 1/2/3, because that is what the panel's three LEDs show — and
+digits need no translation.
 
 **Measurement**
 
@@ -126,6 +133,79 @@ incidents.
 One consequence worth knowing: state that exists in both the status telegram
 and the panel frame is read from the **status telegram**, because the panel
 only transmits on change and its frame can be hours stale.
+
+## Scheduling
+
+The CS 50 has its own weekly clock program, but it is **inactive whenever a
+CI 50 panel is fitted** — the panel takes over. Rather than fight that, run the
+schedule on the Home Assistant side and let it drive the entities above. That
+also means the schedule is editable from a phone instead of through a two-digit
+menu system.
+
+The idiomatic way is Home Assistant's built-in
+[`schedule` helper](https://www.home-assistant.io/integrations/schedule/): a
+weekly grid you draw in the UI, exposed as a `schedule.*` entity that is simply
+`on` inside its blocks and `off` outside them.
+
+**Each block can carry its own values, and they are readable.** A block takes an
+optional `data` dictionary, and while that block is active its keys are merged
+into the schedule entity's attributes. So the schedule holds the setpoint and
+fan level, and a single automation applies whatever is currently in force:
+
+```yaml
+# The helper (Settings > Devices & services > Helpers), shown as YAML for
+# clarity - normally you draw this in the UI.
+schedule:
+  ventilation:
+    name: Ventilation plan
+    monday:
+      - from: "06:00:00"
+        to: "22:00:00"
+        data: { fan_mode: medium, temperature: 20 }
+      - from: "22:00:00"
+        to: "24:00:00"
+        data: { fan_mode: low, temperature: 18 }
+
+# One automation applies the block currently in force - no times in the
+# automation itself, so editing the plan never means editing automations.
+automation:
+  - alias: Apply the ventilation plan
+    triggers:
+      - trigger: state
+        entity_id: schedule.ventilation
+      - trigger: homeassistant
+        event: start
+    actions:
+      - action: climate.set_temperature
+        target: { entity_id: climate.ventilation }
+        data:
+          temperature: "{{ state_attr('schedule.ventilation', 'temperature') }}"
+      - action: climate.set_fan_mode
+        target: { entity_id: climate.ventilation }
+        data:
+          fan_mode: "{{ state_attr('schedule.ventilation', 'fan_mode') }}"
+```
+
+Reading the plan back is then just `state_attr(...)` — useful for a dashboard
+showing what the plan wants right now, and `next_event` tells you when it
+changes next. Guard the automation with a condition if you want manual changes
+to survive until the next block.
+
+If you would rather have several independent timed rules with a purpose-built
+editor card, [nielsfaber/scheduler-component](https://github.com/nielsfaber/scheduler-component)
+plus [scheduler-card](https://github.com/nielsfaber/scheduler-card) (both HACS)
+is the common alternative. It creates one `switch.schedule_*` entity per rule,
+which can be enabled and disabled individually.
+
+**Can the plan live on the ESPHome device itself?** Not as a helper — helper
+entities belong to their own config entry and cannot be attached to another
+integration's device, so a `schedule.*` entity will never appear under the
+Flexit device page. Put it in the same **area** and on the same dashboard card
+and it will read as one unit. Keeping the schedule in Home Assistant is also the
+better arrangement: it survives reflashing the node, and it is editable without
+a rebuild. The node holds no schedule of its own, and deliberately so — if
+Home Assistant is down, the unit simply keeps running whatever it was last set
+to, which is the safe failure mode for ventilation.
 
 ## Different unit variants
 

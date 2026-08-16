@@ -15,9 +15,6 @@ namespace esphome::flexit_sl4r {
 // element is allowed to heat), FAN_ONLY = heat recovery only.
 class FlexitClimate final : public climate::Climate, public Parented<FlexitSL4RComponent> {
  public:
-  // Registers the fan modes. Since ESPHome 2026.5 custom fan modes live on the
-  // entity rather than in traits.
-  void setup_state();
   // Called from the hub when something on the bus has changed.
   void publish_from_bus(float current_temp, uint8_t setpoint, uint8_t fan_level, bool boost, bool afterheat_enabled,
                         bool heating);
