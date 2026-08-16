@@ -81,6 +81,13 @@ and the filter timer reads 0 days because it had just been reset.*
 Names below are from [`example.yaml`](example.yaml). Every entity is optional —
 take what you need, name it what you like.
 
+<img src="docs/images/home-assistant-climate.png" alt="The Ventilation climate entity in Home Assistant" width="420">
+
+*The `climate` entity. Current temperature comes from the supply air sensor, the
+dial is the heat exchanger setpoint, "Vifte" is the action, and mode HEAT means
+the afterheater is enabled. Note "Viftemodus: Low" — see the note on fan modes
+below.*
+
 **Control**
 
 | Entity | Type | Notes |
@@ -93,9 +100,16 @@ take what you need, name it what you like.
 | Ventilation | `climate` | All of the above in one thermostat model |
 
 The climate entity uses Home Assistant's **standard** fan modes — `low`,
-`medium`, `high` — so the frontend renders them in each user's own language
-("Lav/Middels/Høy" in Norwegian). A custom string would be shown verbatim to
-everyone, in whatever language it was written in. They map to Flexit's own
+`medium`, `high` — because only those can be translated at all. A custom string
+is shown verbatim to every user in whatever language it was written in;
+a standard mode goes through Home Assistant's own translation catalogue.
+
+Whether it *is* translated depends on that catalogue rather than on us. The
+screenshot below shows Norwegian rendering "Low" untranslated, because
+`common::state::low` has no Norwegian entry in this Home Assistant version even
+though the surrounding UI is fully translated. That is a gap upstream, and one
+that fixes itself when the translation lands — which a custom string never
+would. They map to Flexit's own
 descriptions in the CI 50 manual: `low` = level 1, reduced ventilation for an
 empty home; `medium` = level 2, the everyday setting; `high` = level 3,
 increased ventilation for wet rooms. Note that `high` is a permanent setting

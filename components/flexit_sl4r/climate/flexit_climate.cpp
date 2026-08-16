@@ -8,11 +8,15 @@
 namespace esphome::flexit_sl4r {
 
 // The three fan levels are exposed as Home Assistant's STANDARD fan modes
-// rather than as custom strings, because only the standard ones are
-// translated: the frontend renders LOW/MEDIUM/HIGH in the user's own language
-// ("Lav/Middels/Hoy" in Norwegian, and so on). A custom string is shown
-// verbatim to every user regardless of their language, so any wording we chose
-// here would be wrong for most of them.
+// rather than as custom strings, because only the standard ones CAN be
+// translated. A custom string is shown verbatim to every user regardless of
+// their language, so any wording chosen here would be wrong for most of them.
+//
+// Whether a standard mode actually appears translated is Home Assistant's
+// business, not ours, and the catalogue has gaps: Norwegian renders "Low"
+// untranslated as of 2026.8 because `common::state::low` has no nb entry, even
+// though the rest of the dialog is translated. That resolves itself upstream;
+// a custom string never would.
 //
 // The mapping to Flexit's own vocabulary, from the CI 50 manual
 // (110191N-07 p. 5), which describes each level in plain words:
