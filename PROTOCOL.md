@@ -596,11 +596,74 @@ The lesson is the same one this project keeps relearning: a discontinuity in a
 counter is more likely to be an event than a decoding error, and the way to tell
 is to *cause* the event and watch.
 
-**On "time until filter change".** With the timer identified this is finally a
+**On "time until filter change".** With the timer identified this is a
 defensible calculation — hours elapsed against an interval given in months —
-but the conversion the CS 50 uses is still unmeasured, so this integration does
-not ship such an entity. The timer now starts from zero, so the value it holds
-when the alarm next fires *is* the threshold, exactly. See TODO.md.
+but the conversion the CS 50 uses is unmeasured, so the integration ships it as
+a template sensor with the assumption written next to it (730 h per month)
+rather than as component code. The timer now starts from zero, so the value it
+holds when the alarm next fires *is* the threshold, exactly. See TODO.md.
+
+#### Both hour counters wrap, and sooner than the equipment lasts
+
+Every counter here is a **single 16-bit word**, so it rolls over at 65,536
+hours — **7 years and 175 days**. ✅ That is a property of the field width, not
+a guess, and it is shorter than the service life of an air handling unit by a
+wide margin. Any consumer of these registers has to assume a wrap will happen.
+
+The practical consequences:
+
+- **The absolute value means nothing on its own.** A reading of 29,419 h could
+  be 3.4 years, or 10.8, or 18.3 — the wire cannot tell you which, because
+  **no wrap count is broadcast.** All 78 parameter words were scanned for one;
+  the only word holding a small number is the filter interval itself. 🟡
+- **Deltas are still sound.** The counters tick +1 per hour and the neighbouring
+  words never move, so *differences* over any period shorter than seven years
+  are exact. That is what the filter timer actually needs.
+- **In Home Assistant, use `state_class: total_increasing`.** A wrap looks
+  exactly like a reset, which that class already handles. Anything computed on
+  top will inherit the discontinuity.
+
+**A worked example of the ambiguity**, from this installation. The house was
+built in 2006–2007 and the unit stood idle for a period with a broken fan. If
+`0x1C[8]` counts operating hours since commissioning, then:
+
+| Wraps | Hours counted | Years | Implied history |
+|---|---|---|---|
+| 0 | 29,419 | 3.4 | counts from some event around 2023, not from commissioning |
+| 1 | 94,955 | 10.8 | commissioned ~2016 — the house is older than that |
+| 2 | 160,491 | 18.3 | commissioned 2007, ~16 months out of service ✅ fits |
+
+The two-wrap row fits the building's history neatly, which is exactly why it
+should be distrusted: three unknowns — commissioning date, downtime, wrap
+count — against one equation will always yield a fit. It is offered here as an
+illustration of the ambiguity, not as a result.
+
+**The measurement that would resolve most of it** is whether these are
+*running* hours or *wall-clock* hours: cut power to the unit across an hour
+boundary and see whether the counter advances. Running hours make the downtime
+explanation possible; wall-clock hours rule it out entirely. See TODO.md.
+
+**What the field width itself tells you.** It is worth asking why a designer
+would build an hour counter and then not spend the two extra bits that would
+make it meaningful across the equipment's life. A 32-bit counter would run for
+490,000 years; even 24 bits would cover 1,900. Sixteen was a choice.
+
+The most likely reading is that these were never meant as lifetime counters at
+all. Sixteen bits is a comfortable fit for an **interval** counter — the filter
+interval maxes out at 12 months, or 8,760 h, which leaves sevenfold headroom
+before a wrap can occur. `0x0E[10]` is exactly that, and its width is sensible.
+`0x1C[8]` is the odd one: at 29,419 h it is already several times past any
+service interval the manual documents.
+
+Two things follow, and they matter more than the epoch does. First, **the
+register map is the CS 500's** (§9.1), and this unit carries CS 500 fields it
+does not use — the cooling parameters sit at factory defaults on a CS 50 that
+cannot cool. `0x1C[8]` may well be another of those: incremented because the
+firmware is shared, meaningful only on a different controller. Second, on a
+commercial unit with a service regime, a counter that wraps every seven years is
+defensible if a technician is expected to read and record it at each visit.
+Neither reading makes it a lifecycle metric, and treating it as one — as this
+project briefly did — is reading intent into a field that does not carry it.
 
 #### The fan duty parameters do not control our fans
 

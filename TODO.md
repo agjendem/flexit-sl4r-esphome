@@ -230,6 +230,37 @@ against what PROTOCOL.md says they contain.
       months; the anomaly log records the alarm changing state whether or not
       anyone is watching. Replace the constant then, and the sensor becomes
       exact instead of approximate.
+- [ ] **What is `0x1C[8]`'s epoch, and do these counters track running hours or
+      wall-clock hours?** The wrap behaviour and the ambiguity it creates are
+      documented in PROTOCOL.md §9.3, with a worked example from this
+      installation; what is missing is a measurement.
+
+      **Cut power to the unit across an hour boundary** — the tick lands around
+      :51–:58 — and see whether the counter advances. If it does not, these are
+      running hours and a unit's downtime shows up as a shortfall against
+      calendar time. If it does, the CS 50 keeps a real-time clock and the
+      epoch is something else entirely. Roughly twenty minutes with the
+      ventilation off; the wall socket is enough, no need to open anything.
+
+      A second installation with a known commissioning date and no downtime
+      would settle the epoch outright, since the counter would then have to
+      equal the age modulo 65,536.
+
+## Verification
+
+- [x] ~~Confirm the filter reset actually restarts the timer.~~ **Done
+      2026-08-16, and it found a mislabelled register.** The reset works; it
+      zeroes `0x0E[10]`, which is the real filter timer. `0x1C[8]`, which this
+      project had called "filter hours" for three days, is a different counter
+      on a different epoch and does not reset. See PROTOCOL.md §9.3.
+- [ ] **Measure the filter alarm threshold and drop the assumed conversion.**
+      The "filter change due in" sensor assumes 730 h per month, because the
+      interval is given in months and the timer counts hours. The timer was
+      zeroed on 2026-08-16, so **the value it holds when the alarm next fires is
+      the threshold in hours, exactly**. Expect the answer in roughly six
+      months; the anomaly log records the alarm changing state whether or not
+      anyone is watching. Replace the constant then, and the sensor becomes
+      exact instead of approximate.
 - [ ] **What is `0x1C[8]`'s epoch?** Same tick rate as the filter timer, runs a
       constant offset ahead of it, never resets. "Operating hours since
       installation" is the obvious guess and **the arithmetic does not support
