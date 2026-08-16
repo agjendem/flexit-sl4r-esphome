@@ -1,5 +1,9 @@
 #pragma once
 
+// Pure byte-level protocol logic lives here, free of ESPHome so it can be
+// unit-tested on a development machine. See tests/.
+#include "protocol.h"
+
 #include "esphome/core/component.h"
 #include "esphome/core/gpio.h"
 #include "esphome/components/uart/uart.h"
@@ -33,8 +37,6 @@ class FlexitClimate;
 #endif
 
 // See PROTOCOL.md for how every offset and length below was derived.
-static constexpr uint8_t STATUS_DATA_LENGTH = 22;   // data bytes in the status telegram (excl. header/checksum)
-static constexpr uint8_t STATUS_RAW_LENGTH = 25;    // total bytes kept after a sync hit (data + 2 checksum + 1 unused)
 static constexpr uint32_t COMMUNICATION_TIMEOUT_MS = 5000;
 // How long the bus must have been COMPLETELY quiet before we dare transmit.
 //
@@ -55,17 +57,7 @@ static constexpr uint32_t ENUMERATION_TIMEOUT_MS = 30000;
 // The checksum window is [5 .. 8+LEN). Validated against 23,708 sniffed bytes:
 // 766 frames, zero false C3 hits. Length + checksum is therefore a safe frame
 // detector.
-static constexpr uint8_t FRAME_START = 0xC3;
-static constexpr uint8_t FRAME_HEADER_LENGTH = 8;   // C3 + 4 address bytes + TYPE + b6 + LEN
-static constexpr uint8_t FRAME_LEN_OFFSET = 7;
-static constexpr uint8_t FRAME_CHECKSUM_START = 5;  // the checksum covers from TYPE onwards
-static constexpr uint8_t FRAME_MAX_PAYLOAD = 64;    // largest observed is 30
 
-static constexpr uint8_t TYPE_IDLE = 0xC0;     // "nothing to report" - the reply we send ourselves
-static constexpr uint8_t TYPE_STATUS = 0xC1;   // with LEN=22 this is the status telegram
-static constexpr uint8_t TYPE_FLOAT = 0xC2;    // IEEE754 float registers (live measurements)
-static constexpr uint8_t TYPE_INT = 0xC6;      // 16-bit integers: parameter tables + clock storage (bank 0x21)
-static constexpr uint8_t TYPE_PARAM = 0xC7;    // IEEE754 float parameters/limits
 
 // Value the CS50 reports for a sensor input that is not connected.
 static constexpr float SENSOR_DISCONNECTED = -55.0f;
@@ -86,7 +78,6 @@ static constexpr float SENSOR_DISCONNECTED = -55.0f;
 //      behind our backs (see the mirroring bugs below).
 // Verified both ways: enable -> 0x80, disable -> 0x00, boost -> 0x01.
 // Vongraven's original "0=off, 128=on" was right all along.
-static constexpr uint8_t STATUS_BOOST_ACTIVE = 0x01;
 
 // How long a boost we started ourselves is allowed to run before we cancel it.
 // The CI50 times its OWN boost at 30 minutes for a single press (measured
@@ -100,7 +91,6 @@ static constexpr uint32_t BOOST_PERIOD_MS = 30UL * 60UL * 1000UL;
 // generous. It matters because a request made within roughly three minutes of a
 // previous boost ending is discarded in silence - see PROTOCOL.md §5.5.
 static constexpr uint32_t BOOST_CONFIRM_MS = 5000UL;
-static constexpr uint8_t STATUS_AFTERHEAT_ENABLED = 0x80;
 
 // The same flag in the PANEL's state frame (`data[4]` of the node 4 frame
 // `20 0F`), which is the format we write in ourselves. Bit6 is a momentary

@@ -271,17 +271,37 @@ on the bus, the integration could configure itself. Finding them requires
 comparing two installations with different equipment — see
 [Contributions](#contributions-and-logs-wanted).
 
+## Tests
+
+```bash
+./tests/run.sh
+```
+
+A C++17 compiler and nothing else — no ESPHome, no ESP32 toolchain, no
+hardware. The byte-level protocol logic lives in
+[`components/flexit_sl4r/protocol.h`](components/flexit_sl4r/protocol.h) so the
+tests exercise the code the firmware runs rather than a copy of it.
+
+108 checks cover the checksum (with vectors read off the wire), frame validation
+and resynchronisation, the fan-level nibbles, the boost command's mirroring of
+undecoded bits, the big-endian parameter words, and a **replay of both recorded
+captures** asserted against what `PROTOCOL.md` says they contain. See
+[`tests/README.md`](tests/README.md) for what each one is guarding against —
+every case corresponds to a mistake this project actually made.
+
 ## Repository layout
 
 ```
 PROTOCOL.md               Protocol specification (English)
 components/flexit_sl4r/   ESPHome external component (C++ hub + platforms)
+components/…/protocol.h   Pure byte-level protocol logic (no ESPHome, unit-tested)
 example.yaml              Canonical example configuration
 flexit-atom-lite.yaml     The author's live configuration (Norwegian entity names)
 research/                 Source material and derivation (see research/README.md)
 research/captures/        Raw bus captures with a parsing recipe
 TODO.md                   What remains to be decoded and tested
 secrets.yaml.example      Template for secrets.yaml (wifi/api/ota)
+tests/                    Host tests for the protocol logic (./tests/run.sh)
 ```
 
 ## Getting started

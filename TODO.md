@@ -194,15 +194,22 @@ Two loose ends survived:
 
 ## Testing
 
-- [ ] **There are no automated tests.** Every claim in this repository was
-      verified by watching a live bus, which is the right way to learn a
-      protocol and a poor way to keep it working. The parts that could be tested
-      off-hardware are worth it, because they are the parts with fiddly
-      arithmetic: the checksum, frame framing and resynchronisation, the
-      big-endian word split in `0xC6`, the nibble handling in `[5]` and `[15]`,
-      and the boost command builder. Feeding recorded captures through the
-      parser and asserting the decoded values would have caught at least two of
-      today's mistakes before they reached the unit.
+Run them with `./tests/run.sh` — a C++17 compiler and nothing else. See
+[`tests/README.md`](tests/README.md).
+
+The byte-level logic now lives in `components/flexit_sl4r/protocol.h`, free of
+ESPHome, so the tests exercise the code the firmware actually runs. 108 checks
+cover the checksum (vectors read off the wire), frame validation and
+resynchronisation, the `[5]` nibbles, the boost command's mirroring of `[15]`,
+the big-endian `0xC6` words, and a replay of both recorded captures asserted
+against what PROTOCOL.md says they contain.
+
+- [ ] **Extend to the parts that still have none.** Untested: enumeration, the
+      transmit path, the boost timer and the CS 50's *responses* — all of which
+      need hardware or elapsed time. A recorded-capture harness that could
+      replay a whole session against the component (not just `protocol.h`) would
+      reach most of it, and is the obvious next step.
+- [ ] **Run them in CI** once the repository is public.
 
 ## Verification
 

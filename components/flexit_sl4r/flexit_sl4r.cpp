@@ -965,13 +965,9 @@ void FlexitSL4RComponent::set_heat_exchanger_setpoint(uint8_t celsius) {
 }
 
 std::pair<uint8_t, uint8_t> FlexitSL4RComponent::checksum_(const uint8_t *data, size_t len) {
-  uint16_t sum1 = 0;
-  uint16_t sum2 = 0;
-  for (size_t i = 0; i < len; i++) {
-    sum1 = static_cast<uint16_t>((sum1 + data[i]) & 0xFF);
-    sum2 = static_cast<uint16_t>((sum2 + sum1) & 0xFF);
-  }
-  return {static_cast<uint8_t>(sum1), static_cast<uint8_t>(sum2)};
+  // The implementation lives in protocol.h so the tests exercise the same code
+  // the firmware runs, rather than a copy that can drift from it.
+  return checksum(data, len);
 }
 
 }  // namespace esphome::flexit_sl4r
