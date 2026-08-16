@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Refuses to push directly to main.
+#
+# This is a stand-in, and it is worth being honest about what it is not: a
+# client-side hook is a seatbelt, not a lock. It only protects clones that have
+# core.hooksPath set, and `--no-verify` walks straight past it. Real enforcement
+# lives on the server, and GitHub only offers that for private repositories on
+# a paid plan - so until this repository goes public (or the plan changes), this
+# is what there is.
+#
+# Enable it in a fresh clone with:
+#     git config core.hooksPath .githooks
+#
+# git feeds us one line per ref being pushed:
+#     <local ref> <local sha> <remote ref> <remote sha>
+
+set -euo pipefail
+
+protected="refs/heads/main"
+blocked=0
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  [ "$remote_ref" = "$protected" ] || continue
+  blocked=1
+done
+
+if [ "$blocked" -eq 1 ]; then
+  cat >&2 <<'EOF'
+
+  Direct push to main refused.
+
+  Work on a branch and open a pull request, so the checks run before anything
+  lands and you get to look at the diff before merging it:
+
+      git switch -c my-change
+      git push -u origin my-change
+      gh pr create --base main
+
+  Merging the PR yourself is the approval step. GitHub will not let you
+  approve your own pull request, so a required-review rule would lock you out
+  of your own repository rather than protect it - clicking Merge is the gate.
+
+  If you really mean it:  git push --no-verify
+
+EOF
+  exit 1
+fi
+
+exit 0
