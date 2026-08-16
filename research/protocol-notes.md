@@ -2704,3 +2704,35 @@ identiske kommandoer).
 
 Femte gang speilingsprinsippet blir bekreftet. Denne gangen var feilen ikke at
 vi skrev noe ukjent, men at vi lot være å skrive noe vi burde.
+
+## Kontrollert dobbelttrykk: trykktallet når IKKE bussen (2026-08-16, andre forsøk)
+
+Andre runde ga den positive kontrollen den første manglet: brukeren bekreftet
+**to eller tre tente lysdioder** på panelet — panelets egen visning av 60/90 min —
+mens bussen bar byte-identisk `20 14 31 33`, og ikke ett parameterord beveget
+seg. Ett trykk og tre trykk er altså ikke til å skille fra hverandre for noe som
+helst nedstrøms for panelet. Konklusjonen fra første runde står, nå med belegg.
+
+To praktiske funn fra samme opptak:
+
+1. **Trykk under aktiv forsering DEAKTIVERER** (som manualen sier), det forlenger
+   ikke. En lengre periode må derfor velges fra hviletilstand. Brukerens fire
+   forsøk ga derfor av/på/av/på og ikke fire varighetsvalg.
+2. **CS50 honorerer ikke enhver forespørsel.** To forespørsler, 2 s og 22 s etter
+   at en forsering endte, satte `[15]` til `0x33` uten at vifta startet
+   (`[6]` bit0 forble 0, trinn 1). Mistanken er en omkoblingssperre —
+   `0x0E[4]` er en «avstengingssekvens» på 180 s — men det er ikke målt.
+
+### RETTELSE: `[15]` lav nibbel er FORESPØRSELEN, ikke kjøretilstanden
+
+Forrige notat påsto at lav nibbel = forsering aktiv. **Det var for sterkt.** Den
+følger `0x14`-kommandoen, men kan stå på 3 mens aggregatet beviselig ikke
+forserer — observert med `[15]=0x33`, `[6]` bit0 = 0 og vifte på trinn 1 i
+flere minutter. Feilen kom av at det første opptaket tilfeldigvis var ett hvor
+forespørsel og tilstand beveget seg sammen. **`[6]` bit0 er fasiten på om
+forsering kjører.**
+
+Det svekker samtidig min egen begrunnelse for at viftetrinn-avbrytelsen var en
+«feil»: panelet lar også `[15]` og kjøretilstanden sprike. Fiksen (å sende
+panelets `0x14`-kommando) er fortsatt riktig, men et sprik i seg selv er ikke
+bevis på feil i egne skrivinger.

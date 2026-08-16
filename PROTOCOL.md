@@ -284,9 +284,17 @@ TODO.md.
 32/35/48/51". Those are `0x20`, `0x23`, `0x30`, `0x33`: it is **two nibbles**,
 not four arbitrary values. ✅
 
-**Low nibble = boost. `3` while boost is running, `0` otherwise.** Verified
-across a full boost lifecycle on 2026-08-16, both when started from the panel
-and when started from the bus, and in both directions.
+**Low nibble = the panel's boost REQUEST — not whether the unit is boosting.**
+🟡 It follows the `0x14` command exactly (3 after an "on", 0 after an "off"),
+but it can sit at `3` while the unit is demonstrably not boosting: observed
+2026-08-16 with `[15] = 0x33`, `[6]` bit0 clear and the fan at level 1, for
+minutes on end, after the panel issued boost requests that the CS 50 did not
+act on.
+
+An earlier draft of this section claimed the low nibble tracked the running
+state. That was wrong, and it was wrong for the usual reason: the first capture
+happened to be one where request and state moved together. **`[6]` bit0 is the
+authority on whether boost is running.**
 
 The high nibble takes `2` or `3` and is not settled. It stayed `3` throughout a
 capture in which the afterheater was on the whole time, and the one archived
@@ -294,10 +302,17 @@ command frame carrying `2` comes from the period when our own mirroring bug was
 switching the afterheater off — so "high nibble = afterheater" fits the
 evidence, but no controlled test has been run. ❓
 
-**`[15]` is not merely a mirror of `[6]` bit0.** It is owned by the command in
-§7.4, not by the fan state: writing a fan level ends a boost and clears `[6]`
-bit0, yet leaves `[15]` at `0x33` indefinitely. That discrepancy is what
-revealed the command in the first place.
+**`[15]` is owned by the `0x14` command (§7.4), not by the fan state.** Writing
+a fan level ends a boost and clears `[6]` bit0 but leaves `[15]` at `0x33`;
+only the command moves it. That discrepancy is what revealed the command. Note
+that the panel leaves `[15]` and the running state disagreeing too, so a
+mismatch is not by itself evidence of a bug in your own writes.
+
+**Open:** what makes the CS 50 accept one boost request and ignore the next?
+On 2026-08-16 a request 2 s after a boost ended, and another 22 s after, both
+set `[15]` without starting the fans. A changeover lockout is the obvious
+suspect — `0x0E[4]` is a 180 s "shutdown sequence" — but this has not been
+measured. ❓
 
 ---
 
@@ -406,10 +421,21 @@ frame, no command. It does not time what it did not start.
 
 Two consequences for anyone implementing this. **A boost you start over the bus
 runs until something cancels it** — you must keep your own timer, or the fans
-stay at maximum indefinitely. And the press count for 60/90 minutes is *not on
-the bus*: the panel counts presses locally and transmits only on/off, which is
-why no parameter register moves and why every "on" command is byte-identical
-regardless of how many times the button was pressed.
+stay at maximum indefinitely.
+
+**And the press count for 60/90 minutes is not on the bus at all.** ✅ The panel
+counts presses locally and transmits only on/off. Confirmed 2026-08-16 with the
+control the first attempt lacked: the operator watched the panel and reported
+**two or three lit LEDs** — the panel's own display of a 60/90-minute
+selection — while the bus carried the byte-identical `20 14 31 33` and not one
+parameter register moved. A single press and a triple press are
+indistinguishable to anything downstream of the panel.
+
+Two practical notes from that session. Pressing while a boost is running
+**deactivates** it rather than extending it, so a longer period must be selected
+from an idle state. And the CS 50 does not honour every request: two requests
+issued 2 s and 22 s after a boost ended set `[15]` without starting the fans
+(§5.4).
 
 ---
 
