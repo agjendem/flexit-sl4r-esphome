@@ -279,24 +279,74 @@ The value `0` appears briefly during a level change, while no relay is
 engaged. If the two groups ever disagree, the fans are genuinely running at
 different speeds — a diagnostic signal not otherwise available.
 
-**Bit1 has never been observed set** in 837 telegrams. Two hypotheses fit that
-equally well, and they were not distinguished until now: ❓
+**Bit1 is the electric afterheater, energised right now.** ✅
 
-1. **Bypass.** Flexit uses the same output (J5 pin 11,12) for "rotor **or**
-   bypass motor" depending on unit type, so on a plate-exchanger unit this
-   group would encode bypass — absent on our rotary unit by construction.
-2. **The heating relay.** The CS 50 drives an *electric* afterheater from relay
-   outputs ("Varme trinn 2 (el.batteri)"); the J5 0–10 V afterheater signal is
-   designated for the *water* battery's valve motor, and the PWM/SSR output for
-   electric elements (J6 pin 13,14) is marked "not CS 50". `[2]` is the relay
-   byte, so the element's state belongs here. It has simply been summer.
+It went unobserved for 837 telegrams simply because it was summer, and two
+hypotheses fit that equally well: *bypass* (Flexit uses the same output, J5
+pin 11,12, for "rotor **or** bypass motor" depending on unit type) or *the
+heating relay* (the CS 50 drives an electric afterheater from relay outputs,
+"Varme trinn 2 (el.batteri)"). It was settled on 2026-08-19 by holding the
+setpoint at its 25 °C maximum until the element had to run. Four independent
+observations agree, and they rule bypass out rather than merely favouring the
+alternative:
 
-Hypothesis 2 also supplies the "element is heating now" indicator we otherwise
-lack. Both predict "never set so far", so only a measurement separates them:
-run the afterheater with a real heat demand and see whether bit1 sets. See
-TODO.md.
+| Observation | Result |
+|---|---|
+| House power meter, independent of this bus | Binary **~940 W** step within 1–2 s of every edge, no intermediate levels |
+| Airflow tripled (fan level 1 → 3) | Duty cycle rose **23 % → 62 %** |
+| Supply air while the bit is set | **Rises**, 21.9 → 27.5 °C at setpoint 25 |
+| Rotor signal `[11]` when it engages | Already saturated at **100** |
 
-### 5.4 `[15]` — two nibbles, and the low one is boost
+The airflow test is the decisive one. A bypass damper exists to *dump* surplus
+heat, so tripling the airflow while heat demand is already saturated must make
+it open *less*, not nearly three times as much. The energy figures agree from
+a second direction: duty derived from metered energy on 17 August (29 %)
+matches duty derived from this bit over the same day (23–26 %).
+
+This also supplies the "element is heating now" indicator we otherwise lacked.
+Note the distinction the entity names keep: `afterheat_enabled` (`[6]` bit7)
+means the element is *permitted* to run; `afterheater_heating` (`[2]` bit1)
+means it is drawing power at this moment.
+
+### 5.4 `[10]` — the ramp that gates the afterheater
+
+`[10]` sat at 0 in every early capture and was carried as a constant. When the
+afterheater began cycling it started moving, and produced roughly 14 000
+anomalies in two days before being reclassified. What is measured: ✅
+
+* The element switches **on when `[10]` rises past 10** and **off when it falls
+  to 4**. Reproduced on every edge observed, across setpoints 25, 24 and 20.
+  This is the one rule that has never failed.
+* It moves in integer steps and **rests at 0**, which is a floor.
+* Rising it has taken ≈4 s per step in every observation so far. Falling is
+  **not** a fixed rate: ≈5 s per step during ordinary cycling, but ≈1.4 s per
+  step immediately after the setpoint was dropped 25 → 20 °C. The falling rate
+  scales with how far the unit is from its setpoint.
+* There is **no ceiling.** It peaked at 34 and 29 during steady cycling at
+  setpoints 25 and 24, which briefly looked like a setpoint-dependent clamp —
+  but after a step from 23 up to 25 it ran to 56 at that same setpoint 25.
+  Those peaks are turning points, not limits. Dropping the setpoint abruptly
+  does not clamp it either; it simply falls faster.
+* The ramp rate is **unchanged** across the moment the element energises —
+  4.0 s/step before, 4.3 s/step after. A quantity measuring a physical effect
+  would have to respond when ~940 W is suddenly added; this does not. `[10]`
+  is therefore a *command*, not a measurement.
+* It is **not** a reading of supply air temperature: `[10]` was 0 both at
+  27.1 °C and at 22.65 °C.
+
+Taken together this behaves like an accumulator of the deviation from setpoint,
+clamped at zero below, with the element gated off two thresholds on it. But the
+**unit is unknown, and so is the exact control law** ❓ — in particular why the
+rising rate looks constant while the falling rate does not. Its turning points
+lag the supply-air crossing of the setpoint by 60–90 s, which is the right
+order for sensor and transport delay, but the two measurements (61 s and 91 s)
+are not consistent enough to call it settled. `[10]` remains a candidate for
+the afterheater's own 0–10 V duty (open question 4).
+
+Because it changes constantly, `[10]` is deliberately **not** in the
+firmware's constant-field list; leaving it there drowned the anomaly log.
+
+### 5.5 `[15]` — two nibbles, and the low one is boost
 
 `[15]` was long the only status field with no known correlate, "varying between
 32/35/48/51". Those are `0x20`, `0x23`, `0x30`, `0x33`: it is **two nibbles**,
@@ -326,7 +376,7 @@ only the command moves it. That discrepancy is what revealed the command. Note
 that the panel leaves `[15]` and the running state disagreeing too, so a
 mismatch is not by itself evidence of a bug in your own writes.
 
-### 5.5 Boost requests are dropped for ~3 minutes after a boost ends
+### 5.6 Boost requests are dropped for ~3 minutes after a boost ends
 
 A boost request issued shortly after a previous boost ended is **silently
 discarded by the CS 50**. 🟡 Measured 2026-08-16 in a controlled run, one
@@ -486,7 +536,7 @@ Two practical notes from that session. Pressing while a boost is running
 **deactivates** it rather than extending it, so a longer period must be selected
 from an idle state. And the CS 50 does not honour every request: two requests
 issued 2 s and 22 s after a boost ended set `[15]` without starting the fans
-(§5.4).
+(§5.5).
 
 ---
 
@@ -794,9 +844,9 @@ Contributions that would settle these are very welcome; see the README.
 | # | Question | What would settle it |
 |---|---|---|
 | 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
-| 2 | Is `[2]` bit1 bypass — or the heating relay? | A plate-exchanger capture, **or** our own afterheater test firing the element (§5.3) |
-| 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.4). The high nibble takes 2 or 3; it was 3 throughout a capture with the afterheater on, and the one archived frame with 2 dates from a period when our own bug kept switching the afterheater off — suggestive, not settled |
-| 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | Heating season, with a real heat demand |
+| 2 | What is `[10]`'s unit and control law? | It gates the afterheater at 10/4 and behaves like a deviation accumulator (§5.4), but the rising and falling rates do not follow the same rule. A capture logging `[10]` against supply air across a slow setpoint sweep |
+| 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.5). The high nibble takes 2 or 3; it was 3 throughout a capture with the afterheater on, and the one archived frame with 2 dates from a period when our own bug kept switching the afterheater off — suggestive, not settled |
+| 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | `[10]` is the leading candidate (§5.4). Against it: the element it gates is switched by a relay, binary at ~940 W, so a duty signal would have nothing to modulate on this unit |
 | 5 | Where is the equipment configuration? | A capture from a unit with **different equipment** — diffing two installations would expose it immediately |
 | 6 | What do the two moving high-byte fields in `0xC6` mean? | Long-term logging |
 | 7 | Who is node `0x41`, polled once and never again? | A second sighting — anywhere. Any capture containing `C3 41` |

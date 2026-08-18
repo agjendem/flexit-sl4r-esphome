@@ -49,9 +49,18 @@ here.
    measured) and located the timer in the panel. See PROTOCOL.md §7.4.
    `0x0E[6]` never moved, so its "motor protection" label survives — still
    without a positive control.
-2. **[Afterheater — provoke "Ettervarme varmer"](#the-afterheater-when-does-the-element-actually-heat)**
-   with the setpoint at maximum through a cold night. **Needs the heating
-   season**; it cannot succeed while heat demand never reaches 100.
+2. ~~Afterheater — provoke "Ettervarme varmer".~~ **Done 2026-08-19, and it
+   did not need the heating season after all.** Holding the setpoint at 25 °C
+   was enough: heat demand `[11]` saturated at 100 within hours, and the
+   element began cycling. `[2]` bit1 is the element, energised — the
+   *bypass* reading is disproved, not merely outranked. A house power meter
+   showed a binary ~940 W step within 1–2 s of every edge, and tripling the
+   airflow raised the duty cycle from 23 % to 62 %, which no bypass damper can
+   do. PROTOCOL.md open question 2 is answered; §5.3 has the evidence table.
+   The test also exposed `[10]` (§5.4), which gates the element at 10/4 — and
+   cost one wrong turn worth recording: its steady-cycle peaks (34 at setpoint
+   25, 29 at 24) looked like a setpoint-dependent ceiling until a step change
+   drove it to 56 at that same setpoint 25. It has no ceiling.
 
 ---
 
@@ -86,10 +95,16 @@ here.
       it** — cheap, and safe while there is no heat demand.
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
       but what the value itself encodes is unknown.
-- [ ] **`[2]` bit 1** — assumed bypass, never observed set on our rotary unit.
-      A plate-exchanger capture would settle it — **but so might our own
-      afterheater test**, since the electric element is relay-driven and `[2]`
-      is the relay byte. See the afterheater section below.
+- [x] **`[2]` bit 1** — ~~assumed bypass~~ **the afterheater element,
+      energised.** Settled 2026-08-19 exactly as predicted below: the element
+      is relay-driven and `[2]` is the relay byte. See PROTOCOL.md §5.3.
+- [ ] **`[10]`** — gates the afterheater relay (on above 10, off at 4, never
+      once violated) and behaves like an accumulator of the deviation from
+      setpoint, floored at 0. **Unit unknown, and the control law only half
+      understood:** rising has always taken ~4 s/step, while falling ranges
+      from ~5 s/step in ordinary cycling to ~1.4 s/step right after a 5 °C
+      setpoint drop. Logging `[10]` against supply air through a slow sweep of
+      the whole 15–25 °C range would pin the law down.
 - [ ] **`[12]`, `[16]`–`[19]`, `[21]`** — no variation observed. Possibly
       options we do not have, or CS 500-only fields.
 
@@ -104,10 +119,11 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
 | J5 (pin 9,10) | Control signal to the afterheater, 0-10 V |
 | J5 (pin 13,14) | Rotor alarm |
 
-- [ ] **Provoke "Ettervarme varmer" — the overnight max-setpoint test.** We
-      have no "the element is heating now" indicator at all; the field we
-      believed was one turned out to be boost. The panel *has* the signal
-      (yellow LED 6), so the bit exists somewhere.
+- [x] **Provoke "Ettervarme varmer" — the overnight max-setpoint test.**
+      **Done 2026-08-19.** The indicator is `[2]` bit1, now published as
+      `afterheater_heating`. Note the naming distinction the entities keep:
+      `afterheat_enabled` (`[6]` bit7) means *permitted to run*;
+      `afterheater_heating` (`[2]` bit1) means *drawing power now*.
 
       **What the manual says about the cut-in point.** Supply air temperature is
       governed by one regulator output, split into zones: cooling · neutral ·
@@ -125,8 +141,8 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       Method: set the setpoint to its maximum (25 °C), turn raw frame logging
       on, and let it run through a cold night. Diff whatever moves against a
       daytime capture at the same setpoint.
-- [ ] **Watch `[2]` bit1 in particular during that test — it may not be bypass
-      at all.** The CS 50 terminal list drives an *electric* afterheater with
+- [x] **Watch `[2]` bit1 in particular during that test — it may not be bypass
+      at all.** **Confirmed: it is the heating relay.** The CS 50 terminal list drives an *electric* afterheater with
       **relay** outputs ("Varme trinn 2 (el.batteri)"), not with the J5 0–10 V
       signal, which p. 11 designates for the *water* battery valve motor
       ("Ettervarme full range vannbatteri"); the PWM/SSR output for electric
@@ -136,7 +152,7 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       "heating relay, and it has been summer" just as well. **The two
       hypotheses are distinguishable:** if bit1 sets when the element fires,
       it is the heat relay, and PROTOCOL.md open question 2 is answered as a
-      side effect.
+      side effect. — *That is exactly what happened.*
 - [ ] **Then find the modulating duty, if it exists.** Should the element turn
       out to be stepped rather than modulated on this unit, "how hard is it
       heating" may not exist on the bus at all — only "which step is engaged".

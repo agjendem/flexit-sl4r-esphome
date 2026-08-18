@@ -112,12 +112,21 @@ static constexpr uint8_t ALARM_FILTER = 0x02;
 // Verified on both edges: `[11]` 0->68 set the bit at 10, and when demand fell
 // back to 0 the bit cleared.
 static constexpr uint8_t HEAT_RECOVERY_RUNNING = 0x01;
-// Bit1 of the same group. NEVER observed set across 837 status telegrams.
-// Flexit uses the same output (J5 pin 11,12) for "rotor OR bypass motor"
-// depending on unit type, so this reading is a QUALIFIED GUESS: on a
-// plate-exchanger unit the group probably encodes bypass state. It cannot be
-// settled on a rotary unit. If it ever flips, it is captured as an anomaly.
-static constexpr uint8_t HEAT_RECOVERY_BYPASS = 0x02;
+// --- payload[2] bit1: the electric afterheater is energised (measured) ---
+// Carried for a long time as an ASSUMED bypass, purely because it was never
+// seen set. It was finally provoked on 2026-08-19 by holding the setpoint at
+// maximum overnight, and the bypass reading is now DISPROVED:
+//   * A house power meter, wholly independent of this bus, steps ~940 W within
+//     1-2 s of every edge - and strictly binary, with no intermediate levels.
+//   * Tripling the airflow (fan level 1 -> 3) raised its duty cycle from ~23 %
+//     to ~62 %. A bypass damper would do the opposite: it dumps surplus heat,
+//     so it cannot open MORE while heat demand is already saturated.
+//   * Supply air RISES while the bit is set (21.9 -> 27.5 degC at setpoint 25).
+//   * It engages only after the rotor signal [11] has saturated at 100, i.e.
+//     once heat recovery alone can no longer reach the setpoint.
+// Duty derived from energy (29 %) and duty derived from this bit (23-26 %)
+// agree over the same day, from fully independent sources.
+static constexpr uint8_t AFTERHEATER_HEATING = 0x02;
 
 // --- data[4] of the state frame: button events (measured) ---
 // The field we long carried as "unresolved". It reports which panel buttons
@@ -145,7 +154,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // day it fires. WHICH bit it was can be read from the raw [4] sensor.
   SUB_BINARY_SENSOR(unknown_alarm)
   SUB_BINARY_SENSOR(heat_recovery_active)  // payload[2] bit0 - the rotor is turning
-  SUB_BINARY_SENSOR(bypass_active)         // payload[2] bit1 - ASSUMED bypass, never observed
+  SUB_BINARY_SENSOR(afterheater_heating)   // payload[2] bit1 - the element is drawing power right now
   SUB_BINARY_SENSOR(communication)
   SUB_BINARY_SENSOR(boost_active)
   // Are we actually being polled? Enumeration happens ONLY when the CS50 boots.
