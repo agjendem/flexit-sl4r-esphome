@@ -374,6 +374,10 @@ sensor:
       # Beholdes som rå diagnostikk fordi de øvrige seks bitene er ukartlagt.
       - index: 6
         name: "Rå status[6]"
+      # [10] styrer ettervarmereléet: elementet slår inn når den stiger forbi
+      # 10 og av når den faller til 4 — reprodusert på hver eneste flanke, ved
+      # settpunkt 25, 24 og 20. Den hviler på 0, har ikke noe tak, og faller
+      # raskere jo lenger anlegget er fra settpunktet. Enhet ukjent.
       - index: 10
         name: "Rå status[10]"
       - index: 15
@@ -581,13 +585,14 @@ binary_sensor:
     # pådraget starter først, biten kommer ved terskelen.
     heat_recovery_active:
       name: "Varmegjenvinner går"
-    # payload[2] bit1 — ANTATT bypass, aldri observert satt i 837 telegram.
-    # Flexit bruker samme utgang til «rotor eller bypass motor», så gruppa er
-    # trolig generisk: bit0 = rotor går, bit1 = bypass på plateveksleraggregat.
-    # Vi har rotor, så den skal stå `off` hos oss. Vippes den, logges den også
-    # som anomali med full ramme.
-    bypass_active:
-      name: "Bypass (antatt)"
+    # payload[2] bit1 — ettervarmeelementet trekker strøm NÅ. Ikke det samme
+    # som brytera «Ettervarme», som bare sier at det har LOV til å slå inn.
+    # Lå lenge inne som «antatt bypass» fordi den aldri var sett satt; framkalt
+    # 19.08.2026 med settpunkt på maks, og bypass-tolkningen er nå motbevist:
+    # husets strømmåler tar et binært steg på ~940 W innen 1–2 s av hver flanke,
+    # og driftsandelen gikk 23 % → 62 % da lufta ble tredoblet. Se PROTOCOL.md.
+    afterheater_heating:
+      name: "Ettervarme varmer"
     communication:
       name: "Flexit-kommunikasjon OK"
     boost_active:

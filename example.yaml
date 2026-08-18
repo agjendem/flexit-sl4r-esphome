@@ -364,6 +364,12 @@ sensor:
         name: "Raw status[4]"     # alarm bit field
       - index: 6
         name: "Raw status[6]"     # bit0 = boost, bit7 = afterheater enabled
+      # Gates the afterheater relay: the element switches on when [10] rises
+      # past 10 and off when it falls to 4 - reproduced on every edge, across
+      # setpoints 25, 24 and 20. It rests at 0, has no ceiling, and falls
+      # faster the further the unit is from its setpoint. Units unknown.
+      - index: 10
+        name: "Raw status[10]"
       - index: 15
         name: "Raw status[15]"    # varies, no known correlate
       - index: 20
@@ -531,11 +537,12 @@ binary_sensor:
     heat_recovery_active:
       name: "Heat recovery running"
 
-    # payload[2] bit1. ASSUMED bypass, never observed set on a rotary unit.
-    # If you have a plate exchanger, this is the entity to watch.
-    bypass_active:
-      name: "Bypass (assumed)"
-      entity_category: diagnostic
+    # payload[2] bit1. The electric afterheater is drawing power RIGHT NOW,
+    # as opposed to `afterheat_enabled`, which only says it is permitted to.
+    # Confirmed against a separate power meter: a binary ~940 W step within
+    # 1-2 s of every edge. See PROTOCOL.md section 5.3.
+    afterheater_heating:
+      name: "Afterheater heating"
 
     boost_active:
       name: "Boost active"

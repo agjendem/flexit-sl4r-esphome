@@ -380,7 +380,11 @@ bool FlexitSL4RComponent::decode_frame_() {
     // exactly the event we want full context around - and the alarm field is
     // always reported.
     if (this->have_prev_status_) {
-      static const uint8_t CONSTANT_FIELDS[] = {0, 1, 3, 7, 8, 10, 12, 16, 17, 18, 19, 21};
+      // [10] is deliberately NOT in this list. It was believed constant until
+      // the afterheater started cycling, and it then produced ~14 000 anomalies
+      // in two days - drowning the log it exists to keep readable. It is a
+      // regular varying field now, published as its own sensor.
+      static const uint8_t CONSTANT_FIELDS[] = {0, 1, 3, 7, 8, 12, 16, 17, 18, 19, 21};
       for (uint8_t idx : CONSTANT_FIELDS) {
         if (this->raw_status_[idx] != this->prev_status_[idx]) {
           this->note_anomaly_("constant field changed");
@@ -389,11 +393,6 @@ bool FlexitSL4RComponent::decode_frame_() {
       }
       if (this->raw_status_[4] != this->prev_status_[4])
         this->note_anomaly_("ALARM FIELD changed");
-      // Bit1 of [2] has never been seen set. If it happens, it is either
-      // bypass on a unit we did not think had it, or a reading that needs
-      // revising. Either way we want the frame.
-      if ((this->raw_status_[2] & HEAT_RECOVERY_BYPASS) != (this->prev_status_[2] & HEAT_RECOVERY_BYPASS))
-        this->note_anomaly_("BYPASS BIT changed (never seen before)");
     }
     std::copy_n(this->raw_status_.begin(), STATUS_DATA_LENGTH, this->prev_status_.begin());
     this->have_prev_status_ = true;
@@ -783,8 +782,8 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     this->unknown_alarm_binary_sensor_->publish_state((this->raw_status_[4] & ~ALARM_FILTER) != 0);
   if (this->heat_recovery_active_binary_sensor_ != nullptr)
     this->heat_recovery_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_RUNNING) != 0);
-  if (this->bypass_active_binary_sensor_ != nullptr)
-    this->bypass_active_binary_sensor_->publish_state((this->raw_status_[2] & HEAT_RECOVERY_BYPASS) != 0);
+  if (this->afterheater_heating_binary_sensor_ != nullptr)
+    this->afterheater_heating_binary_sensor_->publish_state((this->raw_status_[2] & AFTERHEATER_HEATING) != 0);
 #endif
 
 #ifdef USE_CLIMATE
