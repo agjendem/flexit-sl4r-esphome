@@ -315,6 +315,13 @@ instructive enough to record.
 The correct reading, verified in both directions by varying one thing at a
 time: **bit0 = boost, bit7 = afterheater enabled**. ✅
 
+The enable flag is **stored, not merely broadcast**: bank `0x20` register `0x00`
+word 0's *high byte* carries the same setting in the parameter block — `0x08`
+enabled, `0x00` disabled (§9.3). The parameter word leads the status telegram by
+about a second, and that lead is what identified it: across three toggles of the
+setting (two on 2026-08-14, one on 2026-08-20) the word moves first and `[6]`
+bit7 follows in the next telegram. ✅
+
 There is consequently **no "element is heating now" indicator on the bus**,
 even though the CI50 has a dedicated LED for it. That remains an open question.
 
@@ -451,6 +458,31 @@ misdiagnosed as one; only the bus log separated "press never registered" from
 Implementations should therefore **verify that boost actually engaged** rather
 than assume the command took effect, and should send absolute on/off values
 rather than toggling, which avoids the two-press recovery entirely.
+
+---
+
+### 5.7 The "constant" fields are only constant once the unit runs
+
+The fields marked *constant* above are constant **in steady state**. They are
+not constant while the CS50 starts up. A deliberate mains cut on 2026-08-20
+caught the first ninety seconds after power returned:
+
+| After power-up | `[7]` | `[13]` / `[14]` | `[18]`, `[19]`, `[20]` |
+|---|---|---|---|
+| 21 s | `0x80` | 0 / 49 | `0x96`, `0x66`, `0x33` |
+| 81 s | `0x04` | 49 / 49 | `0x99`, `0x99`, `0x88` |
+| 82 s onwards | `0x04` | 49 / 49 | `0x98`, `0x88`, `0x88` |
+
+At 21 s the fans have not started yet — the motor protection delay is 30 s
+(`0x0E[6]`) — and `[7]` reads `0x80` rather than its steady `0x04`. The
+`[18]`–`[20]` triplet reads best as six nibbles: `9,8,8,8,8,8` in steady state,
+passing through 6 and 3 during startup, with `[20]` = `0x44` during boost. They
+settle a second or two after the fans do.
+
+An implementation that treats a change in these fields as an anomaly will
+therefore log three of them per mains cycle. That is the detector working, not
+noise — but it is worth expecting, and it is the reason these are described as
+constant rather than reserved.
 
 ---
 
@@ -878,7 +910,7 @@ not unknown *fields*.
 
 | Reg | Word | Bytes | Meaning |
 |---|---|---|---|
-| `0x00` | 0 | 8 / 25 | low byte = **maximum setpoint** ✅; high byte ❓ |
+| `0x00` | 0 | 8 / 25 | low byte = **maximum setpoint** ✅; high byte = **afterheater setting**, `8` = enabled (§5.2) ✅ |
 | `0x00` | 1 | 30 | ❓ |
 | `0x00` | 2 | 540 | ❓ |
 | `0x00` | 3, 4 | 20 / 80 | identical pair ❓ |
@@ -909,7 +941,7 @@ not unknown *fields*.
 | `0x1C` | 8 | — | **operating hours**, never resets ✅ |
 | `0x1C` | 9 | 100 | ❓ |
 
-38 words in total: 12 named, 26 observed but unnamed. Note the repeated pairs
+38 words in total: 13 named, 25 observed but unnamed. Note the repeated pairs
 (`0x00` words 9/10, `0x0E` words 8/13) — consistent with §9.2's finding that
 min/max and duplicate-purpose parameters cluster.
 
@@ -1066,10 +1098,10 @@ Contributions that would settle these are very welcome; see the README.
 |---|---|---|
 | 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
 | 2 | What is `[10]`'s unit and control law? | It gates the afterheater at 10/4 and behaves like a deviation accumulator (§5.4), but the rising and falling rates do not follow the same rule. A capture logging `[10]` against supply air across a slow setpoint sweep |
-| 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.5). The high nibble takes 2 or 3; it was 3 throughout a capture with the afterheater on, and the one archived frame with 2 dates from a period when our own bug kept switching the afterheater off — suggestive, not settled |
+| 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.5). **Not the afterheater setting** — the archived raw-frame captures from 14–15 August span three toggles of that setting and `[15]` held `0x33` across every one, in both directions. The nibble takes 2 or 3; no correlate is left standing |
 | 4 | Where is the afterheater's own 0–10 V duty (J5 pin 9,10)? | `[10]` is the leading candidate (§5.4). Against it: the element it gates is switched by a relay, binary at ~940 W, so a duty signal would have nothing to modulate on this unit |
 | 5 | Where is the equipment configuration? | A capture from a unit with **different equipment** — diffing two installations would expose it immediately |
-| 6 | What do the two moving high-byte fields in `0xC6` mean? | Long-term logging |
+| 6 | What do the moving high-byte fields in `0xC6` mean? | One is now named: `0x00[0]`'s high byte is the afterheater setting (§5.2). Long-term logging for the rest |
 | 7 | Who is node `0x41`, polled once and never again? | A second sighting — anywhere. Any capture containing `C3 41` |
 
 ---
