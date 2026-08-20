@@ -40,6 +40,17 @@ void FlexitSL4RComponent::setup() {
   if (this->enumerated_binary_sensor_ != nullptr)
     this->enumerated_binary_sensor_->publish_state(false);
 #endif
+#ifdef USE_SENSOR
+  // The same argument applies to the two diagnostic counters, and it bites
+  // hardest exactly when things are going well: they are published only when
+  // they increment, so a node that has seen nothing wrong reads `unknown`
+  // rather than the 0 it has earned. Zero is a measurement here, not an
+  // absence of one.
+  if (this->anomalies_sensor_ != nullptr)
+    this->anomalies_sensor_->publish_state(0);
+  if (this->frames_discarded_sensor_ != nullptr)
+    this->frames_discarded_sensor_->publish_state(0);
+#endif
   if (this->flow_control_pin_ != nullptr) {
     this->flow_control_pin_->setup();
     this->flow_control_pin_->digital_write(false);
