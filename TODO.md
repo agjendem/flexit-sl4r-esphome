@@ -230,10 +230,20 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       A field the panel never displays is a field nothing provokes onto the bus,
       so there is no capture that would reveal it.
 
-      **What is left is the label.** Find the rating plate on the unit and any
-      label inside the CI 50 panel, and note every number, including production
-      date and article number. If a serial exists it lives only there, and the
-      dating it would give has to be carried into the docs by hand.
+      **The panel is done — and it has no serial number.** Read 2026-08-20, the
+      CI 50 wall panel's board is marked `Flexit AS 55412 R2C 060314`: an
+      article number in Flexit's five-digit format, a revision code, and a date
+      code. Exactly the outcome this item anticipated for a unit of this age.
+      Written up in PROTOCOL.md §11.
+
+      **What is left is the control board inside the unit.** That is the one
+      that matters: the hour counters live there, not in the panel, so only its
+      marking can date them. A panel can be replaced without touching it — and
+      the panel's own date code is ambiguous (`YYMMDD` gives March 2006,
+      Norwegian `DDMMYY` gives March 2014), which is precisely why the panel
+      cannot settle the epoch. Note every number on the control board, and if
+      it carries a date code in the same shape, whether it agrees with the
+      panel's — two boards reading 06 and 14 would say the panel was replaced.
 - [ ] **Read the hardware revision, not just the software revision.** The
       manual's information menu offers *Maskinvare rev.* alongside
       *Programvare rev.* for the main board and for every panel slot, but we
@@ -244,6 +254,13 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       above and therefore findable: capture while walking that menu on the
       panel. Worth having in bug reports, where a hardware revision would
       distinguish board variants that a firmware string alone cannot.
+
+      **We now know what to look for.** The panel's board is marked `R2C` while
+      the panel reports `R1A 1.2` on the bus — same `R<digit><letter>` shape,
+      different value. So search a capture taken while walking that menu for the
+      ASCII `R2C`; finding it identifies the field outright, and *not* finding
+      it is nearly as informative, since it would mean the hardware revision
+      never leaves the panel.
 
 ### Boost — answered 2026-08-16
 

@@ -853,7 +853,41 @@ Corresponds to the manual's `Test → Information → Main board / CS50 panel 1`
 ✅
 
 Please include both in any bug report — the protocol may differ between
-revisions and this is the only version information available.
+revisions and this is the only version information available *on the bus*.
+
+**The board carries more than the bus does.** The CI 50 wall panel's circuit
+board is marked:
+
+```
+Flexit AS 55412 R2C 060314
+```
+
+Reading it, field by field, with the confidence each part deserves:
+
+* **`55412` is an article number, not a serial number.** ✅ Flexit's article
+  numbers in these manuals are five digits — the CI 50 manual lists accessory
+  boxes as `09381` and `09382`, the CS 500 manual an item as `09359`. It
+  identifies the part, not this particular copy, so it cannot date or
+  distinguish an individual unit.
+* **`R2C` is almost certainly the hardware revision** 🟡 — and the panel does
+  **not** report it. Note the format: it is the same `R<digit><letter>` shape as
+  the `R1A` that both nodes *do* put on the bus. The manual lists *Maskinvare
+  rev.* and *Programvare rev.* as separate entries for every panel slot, we see
+  only one string per node, and the string the panel sends (`R1A 1.2`) does not
+  match its own board (`R2C`). The natural reading is that the bus carries the
+  software revision and the hardware revision is the one we have not found.
+  That makes it a *findable* target rather than a hopeful one: we now know the
+  value to search a capture for.
+* **`060314` is a date, but which way round is not settled.** ❓ Read as
+  `YYMMDD` it is 14 March 2006; read the Norwegian way, `DDMMYY`, it is
+  6 March 2014. Both are plausible — the first fits a house built in 2006–2007,
+  the second fits a panel replaced later in life.
+
+**It does not date the unit, either way.** The marking is on the *panel*, while
+the hour counters live in the CS 50 control board (node 1). A panel can be
+replaced without touching the board that counts. So this cannot settle the
+`0x1C` word 8 epoch, tempting as the 2006 reading looks — for that, the board
+inside the unit has to be read directly.
 
 ---
 
