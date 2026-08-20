@@ -116,13 +116,11 @@ here.
       Nothing correlates with the high nibble now. Next candidates worth
       logging against it: heat recovery running (`[2]` bit0) and the season /
       outdoor temperature.
-- [ ] **Name the changed word in the "parameter register changed" anomaly.**
-      The dump prints the whole frame and leaves the reader to diff 14 words by
-      eye against the map. Logging `bank/reg/word: old -> new` would have made
-      the 2026-08-20 dump self-explanatory: two of its three entries were an
-      ordinary setpoint edit and the third was the afterheater setting, which
-      took a round of manual decoding plus a cross-check against Home
-      Assistant's history to establish.
+- [x] ~~Name the changed word in the "parameter register changed" anomaly.~~
+      Done. The live warning always carried `bank/reg/word: old -> new`, but the
+      *stored* anomaly did not, so `dump_anomalies` replayed a bare frame hours
+      later and left the reader diffing fourteen words by eye. The 2026-08-20
+      dump cost exactly that. The stored reason now carries the same detail.
 
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
       but what the value itself encodes is unknown.

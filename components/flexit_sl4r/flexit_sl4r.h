@@ -27,6 +27,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -349,9 +350,19 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // that, any new signature is a real event. Better than counting a fixed
   // number - how many types a unit sends varies with its equipment.
   static constexpr uint32_t ANOMALY_LEARN_MS = 30000;
+  // Settling period for the status telegram's "constant" fields. They are
+  // constant once the unit runs, not while the CS50 starts up: a mains cut on
+  // 2026-08-20 showed [7], [18] and [19] taking transient values for the first
+  // 82 s, with the fans held off for the first 30 s by the motor protection
+  // delay. Comparing before the unit has settled reports the startup itself,
+  // three times per mains cycle. 180 s is the unit's own shutdown-sequence
+  // scale and leaves generous margin over the 82 s observed. The startup
+  // window is not unwatched: the boot capture buffer records it in full, which
+  // is the better tool for it. See PROTOCOL.md 5.7.
+  static constexpr uint32_t STATUS_SETTLE_MS = 180000;
   struct Anomaly {
     uint32_t ms;
-    const char *reason;
+    std::string reason;
     std::vector<uint8_t> frame;
   };
   std::vector<Anomaly> anomalies_;
@@ -405,7 +416,7 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Previous status telegram, for detecting changes in "constant" fields.
   std::array<uint8_t, STATUS_DATA_LENGTH> prev_status_{};
   bool have_prev_status_{false};
-  void note_anomaly_(const char *reason);
+  void note_anomaly_(const std::string &reason);
   bool communication_ok_{false};
 
   // Last known raw values from the CS50 - these MUST be mirrored into outgoing

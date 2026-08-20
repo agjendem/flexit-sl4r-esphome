@@ -250,7 +250,7 @@ void FlexitSL4RComponent::handle_incoming_byte_(uint8_t byte) {
   this->dispatch_frame_();
 }
 
-void FlexitSL4RComponent::note_anomaly_(const char *reason) {
+void FlexitSL4RComponent::note_anomaly_(const std::string &reason) {
   this->anomaly_count_++;
   if (this->anomalies_.size() >= ANOMALY_MAX)
     this->anomalies_.erase(this->anomalies_.begin());
@@ -265,7 +265,7 @@ void FlexitSL4RComponent::note_anomaly_(const char *reason) {
   for (size_t k = 0; k < n; k++)
     sprintf(line + 3 * k, "%02X ", this->frame_[k]);
   line[3 * n] = '\0';
-  ESP_LOGW(TAG, "ANOMALY (%s): %s", reason, line);
+  ESP_LOGW(TAG, "ANOMALY (%s): %s", reason.c_str(), line);
 }
 
 void FlexitSL4RComponent::dump_anomalies() {
@@ -277,7 +277,7 @@ void FlexitSL4RComponent::dump_anomalies() {
     for (size_t k = 0; k < n; k++)
       sprintf(line + 3 * k, "%02X ", a.frame[k]);
     line[3 * n] = '\0';
-    ESP_LOGI(TAG, "  [%8u ms] %-22s %s", static_cast<unsigned>(a.ms), a.reason, line);
+    ESP_LOGI(TAG, "  [%8u ms] %-34s %s", static_cast<unsigned>(a.ms), a.reason.c_str(), line);
   }
 
   // The census answers the question the anomaly list cannot: how OFTEN does a
@@ -385,10 +385,20 @@ bool FlexitSL4RComponent::decode_frame_() {
       // in two days - drowning the log it exists to keep readable. It is a
       // regular varying field now, published as its own sensor.
       static const uint8_t CONSTANT_FIELDS[] = {0, 1, 3, 7, 8, 12, 16, 17, 18, 19, 21};
-      for (uint8_t idx : CONSTANT_FIELDS) {
-        if (this->raw_status_[idx] != this->prev_status_[idx]) {
-          this->note_anomaly_("constant field changed");
-          break;
+      // Only once the unit has settled - see STATUS_SETTLE_MS. These fields are
+      // constant in steady state, not during the CS50's startup, and comparing
+      // through a cold start reports the startup itself. The alarm check below
+      // is deliberately NOT gated: an alarm during startup is a real event, and
+      // [4] held steady through the cold start we measured.
+      if (millis() > STATUS_SETTLE_MS) {
+        for (uint8_t idx : CONSTANT_FIELDS) {
+          if (this->raw_status_[idx] != this->prev_status_[idx]) {
+            char detail[48];
+            snprintf(detail, sizeof(detail), "constant [%u]: 0x%02X -> 0x%02X", static_cast<unsigned>(idx),
+                     static_cast<unsigned>(this->prev_status_[idx]), static_cast<unsigned>(this->raw_status_[idx]));
+            this->note_anomaly_(detail);
+            break;
+          }
         }
       }
       if (this->raw_status_[4] != this->prev_status_[4])
@@ -491,7 +501,24 @@ void FlexitSL4RComponent::watch_param_block_() {
       {0x20, 0x1C, 8},   // operating hours: never resets
   };
 
+  // Bits the user owns. These move every time someone turns the dial or presses
+  // a button on the panel, which is not an anomaly - it is the panel working.
+  // Masked per bit rather than per word so the neighbour stays watched: the low
+  // byte of 0x00[0] is the maximum setpoint, an installer setting we very much
+  // want to hear about, while its high byte is the afterheater switch
+  // (PROTOCOL.md 5.2). The live value of each of these is already published as
+  // its own entity from the status telegram, so nothing is lost by staying
+  // quiet here.
+  static const struct {
+    uint8_t bank, reg, word;
+    uint16_t mask;  // the bits that are the user's to change
+  } USER_SETTINGS[] = {
+      {0x20, 0x0E, 12, 0xFFFF},  // stored setpoint (high byte) and fan level (low)
+      {0x20, 0x00, 0, 0xFF00},   // high byte: the afterheater setting
+  };
+
   bool changed = false;
+  char detail[64] = "";
   for (size_t i = 0; i < words && i < block->words; i++) {
     const uint16_t now = static_cast<uint16_t>((data[i * 2] << 8) | data[i * 2 + 1]);
     if (now == block->value[i])
@@ -507,17 +534,41 @@ void FlexitSL4RComponent::watch_param_block_() {
       block->value[i] = now;
       continue;
     }
+    uint16_t user_mask = 0;
+    for (const auto &u : USER_SETTINGS) {
+      if (u.bank == bank && u.reg == reg && u.word == i) {
+        user_mask = u.mask;
+        break;
+      }
+    }
+    if (user_mask != 0 && ((now ^ block->value[i]) & static_cast<uint16_t>(~user_mask)) == 0) {
+      // Only user-owned bits moved. Still logged, at a level that does not
+      // shout, so a capture of a panel session shows the write going by.
+      ESP_LOGD(TAG, "USER SETTING: bank 0x%02X reg 0x%02X word %u: 0x%04X -> 0x%04X",
+               static_cast<unsigned>(bank), static_cast<unsigned>(reg), static_cast<unsigned>(i),
+               static_cast<unsigned>(block->value[i]), static_cast<unsigned>(now));
+      block->value[i] = now;
+      continue;
+    }
     // Logged individually: which word moved and to what is the whole point,
     // and the stored frame alone would make you count bytes to find out.
     ESP_LOGW(TAG, "PARAMETER CHANGED: bank 0x%02X reg 0x%02X word %u: %u -> %u (0x%04X -> 0x%04X)",
              static_cast<unsigned>(bank), static_cast<unsigned>(reg), static_cast<unsigned>(i),
              static_cast<unsigned>(block->value[i]), static_cast<unsigned>(now),
              static_cast<unsigned>(block->value[i]), static_cast<unsigned>(now));
+    // The stored anomaly carries the same detail as the live warning above.
+    // Without it, dump_anomalies replays a frame hours later and leaves the
+    // reader diffing fourteen words by eye against the map - which is exactly
+    // what the 2026-08-20 dump cost.
+    if (!changed)
+      snprintf(detail, sizeof(detail), "param %02X:%02X[%u]: %u -> %u", static_cast<unsigned>(bank),
+               static_cast<unsigned>(reg), static_cast<unsigned>(i), static_cast<unsigned>(block->value[i]),
+               static_cast<unsigned>(now));
     block->value[i] = now;
     changed = true;
   }
   if (changed && millis() > ANOMALY_LEARN_MS)
-    this->note_anomaly_("parameter register changed");
+    this->note_anomaly_(detail);
 }
 
 void FlexitSL4RComponent::handle_boost_command_() {
