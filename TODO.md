@@ -72,27 +72,51 @@ here.
       caught twice on 16 August, each a few minutes after our node restarted
       (7.5 and 3.9 min). Until then the master had only been seen polling nodes
       2, 3 and 5.
-      **The anomaly log cannot answer this one.** It reports a signature only on
-      its first appearance per boot, so it is blind to every repeat — which
-      means "seen twice" says nothing about frequency, and an earlier note here
-      wrongly read it as evidence of rarity. Settle it with **raw frame logging
-      left on for an hour** and count the `C3 41` polls: regular member of the
-      poll round, periodic sweep, or genuinely tied to our restarts.
+      **Partly answered 2026-08-20: it is not a member of the poll round.** A
+      95 s raw capture, 30 h after our last boot, counted 2 125 polls to node 1,
+      545 to node 4, six each to nodes 2 and 3 (~15.2 s apart) — and **zero** to
+      `0x41`. So it is rarer than a fifteen-second sweep, which leaves "tied to
+      enumeration or to our restarts" as the live reading.
+      Still worth an hour of raw logging to catch one in the act. Note the
+      anomaly log cannot answer it: it reports a signature only on its first
+      appearance per boot, so it is blind to every repeat, and an early note
+      here wrongly read "seen twice" as evidence of rarity.
 
 ### Status telegram
 
-- [ ] **Map the remaining bits in `[4]`.** The rotor alarm (B-alarm,
-      self-acknowledging) and the overheat thermostat (A-alarm, requires manual
-      reset inside the unit) are the documented CS 50 alarms. The overheat
-      thermostat is safety-relevant and cannot be provoked safely. The
-      `unknown alarm` entity plus the anomaly log will capture whichever fires
-      first — **a capture from any installation with an active alarm would
-      settle this immediately.**
+- [ ] **Map the remaining bits in `[4]`.** The full alarm list is in the
+      CS 50/CS 500 manual (94269N-02 p. 22-23). Excluding everything marked
+      "ikke CS 50" and the sensors a rotary unit does not have, these can fire
+      on our hardware:
+
+      | Alarm | Signal | Class |
+      |---|---|---|
+      | Collective A-alarm | — | A |
+      | Collective B-alarm | — | B |
+      | Supply air sensor out of range (< −45 / > +50 °C) | B1 | A |
+      | Overheat thermostat tripped | BT | A |
+      | Rotor alarm | RA | B |
+      | Filter alarm | — | B ✅ already decoded |
+
+      **Two of these are collective flags**, which is worth knowing before
+      assuming every set bit is a distinct fault — an A-alarm and its collective
+      bit would light together. The overheat thermostat is safety-relevant and
+      must not be provoked. The `unknown alarm` entity plus the anomaly log will
+      capture whichever fires first; **a capture from any installation with an
+      active alarm would settle this immediately.**
 - [ ] **`[15]` high nibble** — the low nibble turned out to be boost
-      (PROTOCOL.md §5.4), which leaves only the high nibble, taking 2 or 3.
-      "Afterheater" fits the evidence but has never been tested directly.
-      **One controlled toggle of the afterheater while watching `[15]` settles
-      it** — cheap, and safe while there is no heat demand.
+      (PROTOCOL.md §5.5), which leaves only the high nibble, taking 2 or 3.
+      "Afterheater **enabled**" fits the evidence but has never been tested
+      directly. **One controlled toggle of the afterheater setting while
+      watching `[15]` settles it.**
+      Note that the 30 hours of afterheater work on 18-19 August did **not**
+      settle it, tempting as it looks: `[15]` held `0x30` throughout while the
+      element cycled on and off hundreds of times — but the *setting* stayed on
+      the whole time, so the hypothesis was never put at risk. The element
+      switching is `[2]` bit1; this is a different question.
+      No longer free, either: the earlier note called it "safe while there is no
+      heat demand", which was true in summer. With the setpoint high there now
+      is heat demand, so toggling the setting actually stops the heating.
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
       but what the value itself encodes is unknown.
 - [x] **`[2]` bit 1** — ~~assumed bypass~~ **the afterheater element,
@@ -174,8 +198,11 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       **This can only be settled by diffing two installations with different
       equipment.** It must NEVER be probed by writing — a wrong write
       reconfigures the unit for hardware it does not have.
-- [ ] **Explain the two moving high-byte fields** in `0xC6` (`0x0E` word 10 high
-      and `0x00` word 0 high). Both are logged; look for a pattern over days.
+- [ ] **Explain the moving high byte of `0xC6` `0x00` word 0.** The low byte is
+      the maximum setpoint (25); the high byte reads 8 and has been seen to move.
+      ~~`0x0E` word 10 high~~ is no longer part of this: that word is the filter
+      timer in full, a plain 16-bit counter, so its high byte moves for the
+      obvious reason — the count passed 255.
 - [ ] `0xC7` register `0x15`: `0`, `0.1`, `0.1` — still unexplained.
 - [ ] **Is there a serial number, and can it be recovered from the bus?**
       Worth having: it would date the unit independently, and could settle the
@@ -190,25 +217,33 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       followed by 18 zero bytes, so there is room reserved next to it that
       carries nothing here.
 
-      Two things to do, in order:
+      **The bus route is closed, per the manual.** `Test → Informasjon` is where
+      the firmware strings come from, and the manual lists its entire contents
+      (94269N-02 p. 20-21): main board hardware and software revision, the same
+      two for each of four panel slots, I/O, factory parameters, priorities,
+      hour counter, filter time and the alarm history. **No serial number, no
+      production date — on either panel type.** Searching the CS 50/CS 500
+      manual for "serienr", "Serial" and "art.nr" returns nothing at all.
 
-      1. **Look at the hardware.** Find the rating plate on the unit itself and
-         any label inside the CI 50 panel, and write down every number on them,
-         including production date and article number. Photograph them. This
-         costs nothing and settles whether there is a serial to look for at all
-         — some Flexit units of this age carry only an article number.
-      2. **Check the panel's `Test → Information` menu.** This is the decisive
-         step, and it is cheap. That menu is where the two firmware strings come
-         from, and bank `0x22` is only ever polled at register `0x00`. If the
-         menu also shows a serial or production number, then it *must* cross the
-         bus, and capturing while walking through the menu will expose which
-         register carries it. If the menu shows nothing but firmware, the number
-         most likely lives only on the label and the search ends there.
+      That matters because the CS 50 polls a fixed set of registers and we
+      cannot ask for others — `0xC0` is not a read request (PROTOCOL.md §4.1).
+      A field the panel never displays is a field nothing provokes onto the bus,
+      so there is no capture that would reveal it.
 
-      Note the constraint that makes step 2 necessary: the CS 50 polls a fixed
-      set of registers and we cannot ask for others — `0xC0` is not a read
-      request (PROTOCOL.md §4.1). Anything never polled is invisible to us
-      unless something on the panel provokes it.
+      **What is left is the label.** Find the rating plate on the unit and any
+      label inside the CI 50 panel, and note every number, including production
+      date and article number. If a serial exists it lives only there, and the
+      dating it would give has to be carried into the docs by hand.
+- [ ] **Read the hardware revision, not just the software revision.** The
+      manual's information menu offers *Maskinvare rev.* alongside
+      *Programvare rev.* for the main board and for every panel slot, but we
+      decode only one 8-byte ASCII string per node (`R1A 2.8` and `R1A 1.2`) —
+      which, given the menu, are the software ones. So a second string exists
+      somewhere and we have not found it. Since the panel displays it, it must
+      cross the bus, which makes this the *opposite* case to the serial number
+      above and therefore findable: capture while walking that menu on the
+      panel. Worth having in bug reports, where a hardware revision would
+      distinguish board variants that a firmware string alone cannot.
 
 ### Boost — answered 2026-08-16
 
