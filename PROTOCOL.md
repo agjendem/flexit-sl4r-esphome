@@ -113,33 +113,53 @@ they are. ✅
 | Node | Role |
 |---|---|
 | 1 | CS50 control board (the master's own data source) |
-| 2, 3 | Probed at startup, unused on our installation |
-| 4 | CI50 panel 1 |
-| 5 | Panel 2 — **inferred**, see below 🟡 |
-| 0x41 (65) | Polled, unexplained — see below ❓ |
+| 2, 3 | The two **CS 500** panel slots — polled forever, never answered here 🟡 |
+| 4 | **CS 50** panel 1 — our physical CI 50 ✅ |
+| 5 | **CS 50** panel 2 — where we answer 🟡 |
+| 0x41 (65) | Polled occasionally, unexplained — see below ❓ |
 
-**What is measured, and what is inferred.** We have measured that answering as
-node 5 works, that it survives our own restarts, and that no physical second
-panel is needed for the CS50 to poll it. Calling node 5 "panel 2" is the
-inference: the CI 50 manual states that switch 3 must be set differently on each
-panel when more than one is fitted, and our panel — factory default, switch 3
-off — is node 4. Nobody has set a physical panel to panel 2 and observed it
-appear as node 5, so the mapping between that switch and this address is
-reasoning, not observation. It has no practical consequence for the
-integration: node 5 is free and answering on it works.
+**The manual explains the address space.** `Test → Informasjon → Kontrollpaneler`
+lists exactly four panel slots, in this order: *CS 500 panel 1, CS 500 panel 2,
+CS 50 panel 1, CS 50 panel 2* (94269N-02 p. 21). Four slots, and four addresses
+2–5, with our physical CS 50 panel answering on 4. The mapping is an inference,
+but it is now supported by two independent lines of reasoning that agree, and it
+explains why nodes 2 and 3 are polled on an installation that has neither: the
+master offers all four slots regardless of what is fitted.
 
-The address space is not closed at 5. Checksum-valid polls to node `0x41` have
-been captured twice, each a few minutes after a restart of our node (at 7.5 and
-3.9 minutes).
+**Nodes 2 and 3 are not merely "probed at startup".** Counted over 95 s of raw
+frame logging on 2026-08-20, 30 hours after our node last booted: ✅
 
-**Do not read "twice" as "rare".** Both sightings came from the anomaly log,
-which reports a frame signature only on its *first* appearance after each boot —
-so a second occurrence is something it cannot report by construction. The
-honest statement is that `C3 41` is polled at least occasionally and may well be
-a regular member of the poll round; characterising it needs raw frame logging
-over a stretch of time, not the anomaly log. An earlier draft of this document
-claimed it was "not repeated in the 21 hours that followed", which was an
-artefact of the detector rather than an observation.
+| Node | Polls in 95 s | Interval |
+|---|---|---|
+| 1 | 2 125 | continuous |
+| 4 | 545 | continuous |
+| 2 | 6 | ~15.2 s |
+| 3 | 6 | ~15.2 s |
+| `0x41` | **0** | — |
+
+The master sweeps the two empty CS 500 slots every fifteen seconds, forever,
+and they never answer. An earlier draft of this document described them as
+probed only at startup, which was wrong: that reading came from a cold-start
+capture, where they *are* dropped from the fast round after a few polls — but
+the slow sweep continues indefinitely. Node 5 does not appear in the table
+because we answer it ourselves and do not log our own transmissions.
+
+**What is measured about node 5, and what is inferred.** Measured: answering as
+node 5 works, survives our own restarts, and needs no physical second panel.
+Inferred: that node 5 is what the CI 50's switch 3 selects. Nobody has set a
+physical panel to panel 2 and watched it appear on node 5, so that step is
+reasoning. It has no practical consequence — node 5 is free and answering on it
+works.
+
+**Node `0x41` is not a member of the poll round.** ❓ It did not appear once in
+the 95 s above, while nodes 2 and 3 each appeared six times, so whatever it is,
+it is rarer than a 15-second sweep. Both known sightings came a few minutes
+after a restart of our node (7.5 and 3.9 minutes), which keeps the "tied to
+enumeration" reading alive. Note that neither sighting can be read as evidence
+of *frequency*: they came from the anomaly log, which reports a signature only
+on its first appearance per boot. An early draft claimed it was "not repeated in
+the 21 hours that followed", which was an artefact of the detector, not an
+observation.
 
 It is harmless either way — we answer only for our own node.
 
