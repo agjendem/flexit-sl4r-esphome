@@ -419,13 +419,20 @@ sensor:
         name: "Filtertimer"
         internal: true
         unit_of_measurement: "h"
-      # Samme mønster i reg 0x00 ord 0: lavbyten er stabilt 25 (maks settpunkt),
-      # mens høybyten gikk 0x00 -> 0x08 i samme tidsrom. To «høybyte-flagg» som
-      # beveger seg — verdt å følge.
+      # LØST 2026-08-20 (PROTOCOL.md §5.2): høybyten av reg 0x00 ord 0 er den
+      # lagrede ettervarme-innstillingen — 0x08 på, 0x00 av. Den er den ikke-
+      # flyktige tvillingen til status [6] bit7, altså til bryteren «Ettervarme».
+      # Bekreftet over tre vekslinger, i begge retninger. Lavbyten i samme ord er
+      # maks settpunkt og ligger urørt på 25.
+      #
+      # Verdien er rå: 8 = på, 0 = av. Den beholdes som egen entitet nettopp
+      # fordi den kan være uenig med bryteren — et ukeprogram eller en skriving
+      # som ikke tok ville vist seg her først, og det er hele poenget med å ha
+      # begge synlige.
       - register: 0x00
         index: 0
         mode: high_byte
-        name: "Flagg 0x00[0] høy"
+        name: "Lagret ettervarme"
       # IKKE filtertimeren, slik denne het fram til 2026-08-16. Den overlevde
       # nullstillingsprosedyren uendret (29419 både før og etter), mens
       # 0x0E[10] gikk til null. Teller også +1 per time, og ligger et konstant
