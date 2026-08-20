@@ -716,6 +716,15 @@ should be distrusted: three unknowns — commissioning date, downtime, wrap
 count — against one equation will always yield a fit. It is offered here as an
 illustration of the ambiguity, not as a result.
 
+**One of the three is now anchored.** 🟡 The wall panel's board is dated
+March 2006 (§11), and the owner reports it is original, which puts commissioning
+in 2006–2007 on a physical artefact rather than on the age of the house. That
+does not make the two-wrap row a result: it would still need the control board
+to be original too — unestablished, and the only claim the panel's date cannot
+support — and it leaves the running-versus-wall-clock question untouched. But
+the fit is no longer purely circular, and the one-wrap row (commissioned ~2016)
+now requires a board replacement to survive at all.
+
 **The measurement that would resolve most of it** is whether these are
 *running* hours or *wall-clock* hours: cut power to the unit across an hour
 boundary and see whether the counter advances. Running hours make the downtime
@@ -964,16 +973,25 @@ Reading it, field by field, with the confidence each part deserves:
   software revision and the hardware revision is the one we have not found.
   That makes it a *findable* target rather than a hopeful one: we now know the
   value to search a capture for.
-* **`060314` is a date, but which way round is not settled.** ❓ Read as
-  `YYMMDD` it is 14 March 2006; read the Norwegian way, `DDMMYY`, it is
-  6 March 2014. Both are plausible — the first fits a house built in 2006–2007,
-  the second fits a panel replaced later in life.
+* **`060314` is 14 March 2006**, read `YYMMDD`. 🟡 The order looked ambiguous
+  at first — Norwegian convention would read `DDMMYY`, giving 6 March 2014 —
+  but the two readings are not equally possible here. The owner reports the
+  panel is original to the installation, and the house was built in 2006–2007.
+  A board manufactured in 2014 cannot be original to it, so the `DDMMYY`
+  reading is excluded and only `YYMMDD` survives. Whether the date is
+  manufacture or board revision is not distinguishable from the marking alone,
+  but for dating purposes the difference is immaterial.
 
-**It does not date the unit, either way.** The marking is on the *panel*, while
-the hour counters live in the CS 50 control board (node 1). A panel can be
-replaced without touching the board that counts. So this cannot settle the
-`0x1C` word 8 epoch, tempting as the 2006 reading looks — for that, the board
-inside the unit has to be read directly.
+  The step that rests on testimony rather than measurement is "original, not
+  replaced" — worth stating plainly, since everything downstream leans on it.
+
+**It still does not date the *unit*.** The marking is on the panel, while the
+hour counters live in the CS 50 control board (node 1), and a panel can be
+replaced without touching the board that counts — the argument above runs the
+other way and says nothing about the board. What March 2006 does buy is an
+anchor for the *installation*: see §9.3, where commissioning date was one of
+three free unknowns behind the wrap-count arithmetic. Pinning the control
+board itself needs its own marking read directly.
 
 ---
 
