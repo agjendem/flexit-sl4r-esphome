@@ -259,6 +259,31 @@ reply carrying the same bank/reg. ✅ (negative result)
 the CS50 broadcasts its entire register set continuously in a fixed round of
 15 blocks, so every value arrives within a couple of seconds regardless.
 
+### 4.2 Every block arrives at the same rate
+
+Measured over a 3.5-hour capture, counting each block type separately:
+
+| Block | Frames | Median gap | Range |
+|---|---|---|---|
+| status telegram `0xC1` `0x20` `0x0E` | 2 704 | 0.74 s | 0.49–2.66 s |
+| parameters `0xC6` `0x20` `0x00` | 2 811 | 0.73 s | 0.55–2.23 s |
+| parameters `0xC6` `0x20` `0x0E` | 2 721 | 0.74 s | 0.41–2.01 s |
+| parameters `0xC6` `0x20` `0x1C` | 2 679 | ~0.74 s | — |
+| measurements `0xC2` | 5 584 | 0.64 s | 0.00–2.05 s |
+
+There is **no slow tier**: the stored parameters are not an occasional
+housekeeping broadcast, they arrive as often as the live status. Two consequences
+worth stating plainly:
+
+- **Startup is not a problem.** A node that attaches to a running bus has every
+  register within a second or two, so there is no case for seeding entity state
+  from the parameter blocks to "get something on screen faster" — there is
+  nothing to gain.
+- **Where a value exists in both places, prefer the status telegram.** It is
+  what the unit is doing now; the parameter block is what it has stored. They
+  agree in practice, and when they do not, the difference is the interesting
+  part and should not be flattened by reading only one of them.
+
 ---
 
 ## 5. The status telegram
@@ -317,10 +342,15 @@ time: **bit0 = boost, bit7 = afterheater enabled**. ✅
 
 The enable flag is **stored, not merely broadcast**: bank `0x20` register `0x00`
 word 0's *high byte* carries the same setting in the parameter block — `0x08`
-enabled, `0x00` disabled (§9.3). The parameter word leads the status telegram by
-about a second, and that lead is what identified it: across three toggles of the
-setting (two on 2026-08-14, one on 2026-08-20) the word moves first and `[6]`
-bit7 follows in the next telegram. ✅
+enabled, `0x00` disabled (§9.3). Verified across three toggles of the setting
+(two on 2026-08-14, one on 2026-08-20), agreeing in both directions, with the
+last of them timed to the second against Home Assistant's own history of the
+switch entity. ✅
+
+In all three the parameter word showed the new value in the same second as, or
+one second before, `[6]` bit7. Since both blocks ride the same ~0.74 s carousel
+(§4.2), one carousel period of apparent lead is **not** evidence of a systematic
+ordering, and nothing here should be built on it.
 
 There is consequently **no "element is heating now" indicator on the bus**,
 even though the CI50 has a dedicated LED for it. That remains an open question.
@@ -481,8 +511,11 @@ settle a second or two after the fans do.
 
 An implementation that treats a change in these fields as an anomaly will
 therefore log three of them per mains cycle. That is the detector working, not
-noise — but it is worth expecting, and it is the reason these are described as
-constant rather than reserved.
+noise — but it is the reason these are described as constant rather than
+reserved, and this component now holds the comparison until 180 s after boot
+rather than reporting the startup to itself. The startup window is not left
+unwatched: the boot capture buffer records it in full, which is the better tool
+for reading it.
 
 ---
 
