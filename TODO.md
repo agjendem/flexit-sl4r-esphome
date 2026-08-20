@@ -177,6 +177,38 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
 - [ ] **Explain the two moving high-byte fields** in `0xC6` (`0x0E` word 10 high
       and `0x00` word 0 high). Both are logged; look for a pattern over days.
 - [ ] `0xC7` register `0x15`: `0`, `0.1`, `0.1` — still unexplained.
+- [ ] **Is there a serial number, and can it be recovered from the bus?**
+      Worth having: it would date the unit independently, and could settle the
+      epoch of the `0x1C` word 8 hour counter, which is currently guesswork
+      anchored on the house being built in 2006-2007.
+
+      **What is already known: no serial number is broadcast.** A capture
+      covering all 17 frame shapes was scanned for printable runs, and the only
+      ASCII anywhere on the bus is the two firmware strings — `R1A 2.8`
+      (controller, bank `0x20` reg `0x00`) and `R1A 1.2` (panel, bank `0x22`
+      reg `0x00`). Both sit in 28- and 8-byte fields; the controller's is
+      followed by 18 zero bytes, so there is room reserved next to it that
+      carries nothing here.
+
+      Two things to do, in order:
+
+      1. **Look at the hardware.** Find the rating plate on the unit itself and
+         any label inside the CI 50 panel, and write down every number on them,
+         including production date and article number. Photograph them. This
+         costs nothing and settles whether there is a serial to look for at all
+         — some Flexit units of this age carry only an article number.
+      2. **Check the panel's `Test → Information` menu.** This is the decisive
+         step, and it is cheap. That menu is where the two firmware strings come
+         from, and bank `0x22` is only ever polled at register `0x00`. If the
+         menu also shows a serial or production number, then it *must* cross the
+         bus, and capturing while walking through the menu will expose which
+         register carries it. If the menu shows nothing but firmware, the number
+         most likely lives only on the label and the search ends there.
+
+      Note the constraint that makes step 2 necessary: the CS 50 polls a fixed
+      set of registers and we cannot ask for others — `0xC0` is not a read
+      request (PROTOCOL.md §4.1). Anything never polled is invisible to us
+      unless something on the panel provokes it.
 
 ### Boost — answered 2026-08-16
 
