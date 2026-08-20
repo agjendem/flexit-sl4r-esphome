@@ -236,14 +236,20 @@ The CS 50 terminal list confirms both outputs exist, and neither is marked
       code. Exactly the outcome this item anticipated for a unit of this age.
       Written up in PROTOCOL.md §11.
 
+      The date code reads **14 March 2006** (`YYMMDD`). The Norwegian `DDMMYY`
+      reading, 6 March 2014, is excluded rather than merely disfavoured: the
+      owner reports the panel is original, and a 2014 board cannot be original
+      to a house built in 2006–2007. That step rests on testimony, not
+      measurement, and is flagged as such in the docs.
+
       **What is left is the control board inside the unit.** That is the one
-      that matters: the hour counters live there, not in the panel, so only its
-      marking can date them. A panel can be replaced without touching it — and
-      the panel's own date code is ambiguous (`YYMMDD` gives March 2006,
-      Norwegian `DDMMYY` gives March 2014), which is precisely why the panel
-      cannot settle the epoch. Note every number on the control board, and if
-      it carries a date code in the same shape, whether it agrees with the
-      panel's — two boards reading 06 and 14 would say the panel was replaced.
+      that matters for the epoch: the hour counters live there, not in the
+      panel, and the argument above says nothing about it — a panel being
+      original does not make the board original. Note every number on it, and
+      whether it carries a date code in the same shape. Agreement with the
+      panel would put the last free unknown behind the `0x1C` word 8 wrap
+      arithmetic on a physical artefact; disagreement would be just as
+      informative.
 - [ ] **Read the hardware revision, not just the software revision.** The
       manual's information menu offers *Maskinvare rev.* alongside
       *Programvare rev.* for the main board and for every panel slot, but we
