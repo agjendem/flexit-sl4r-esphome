@@ -151,15 +151,32 @@ physical panel to panel 2 and watched it appear on node 5, so that step is
 reasoning. It has no practical consequence — node 5 is free and answering on it
 works.
 
-**Node `0x41` is not a member of the poll round.** ❓ It did not appear once in
-the 95 s above, while nodes 2 and 3 each appeared six times, so whatever it is,
-it is rarer than a 15-second sweep. Both known sightings came a few minutes
-after a restart of our node (7.5 and 3.9 minutes), which keeps the "tied to
-enumeration" reading alive. Note that neither sighting can be read as evidence
-of *frequency*: they came from the anomaly log, which reports a signature only
-on its first appearance per boot. An early draft claimed it was "not repeated in
-the 21 hours that followed", which was an artefact of the detector, not an
-observation.
+**Node `0x41` is probably not a node at all.** ❓ It did not appear once in the
+95 s above, while nodes 2 and 3 each appeared six times, so whatever it is, it
+is rarer than a fifteen-second sweep. A third sighting, captured whole on
+2026-08-20 at 2 233 s after a cold boot, is what shifts the reading:
+
+```
+C3 41 00 00 00 00 00 00 00 00
+```
+
+Everything after `C3 41` is zero, **and the checksum is not valid**. A genuine
+poll to node `0x41` would end `04 CB` — the poll checksum is deterministic and
+reproduces exactly for nodes 1–5 (`C4 4B`, `C5 4D`, `C6 4F`, `C7 51`, `C8 53`),
+so this is a check we can make with confidence. It is also the same shape as
+the rare all-zero signature the frame census has been counting separately,
+about once every few hours: the two mysteries are one mystery.
+
+A framing artefact — a collision, a break condition, or a mis-synchronised read
+of an idle line — fits this better than a hidden node does. Against that, the
+leading bytes are suspiciously stable for noise. Earlier notes described the
+sightings as *checksum-valid*, which this frame is not; those frames were not
+kept, so the discrepancy cannot be resolved now, and both readings stay open.
+
+Note also that no sighting can be read as evidence of *frequency*: they come
+from the anomaly log, which reports a signature only on its first appearance per
+boot. An early draft claimed it was "not repeated in the 21 hours that
+followed", which was an artefact of the detector, not an observation.
 
 It is harmless either way — we answer only for our own node.
 
@@ -188,6 +205,18 @@ integration exposes this as a binary sensor, and you should alert on it.
 The margin exists because the CS50's own boot is slower than an ESP32's. That
 is a property of the hardware, not luck — but it is under half a second, so do
 not rely on it blindly.
+
+**Confirmed again on a deliberate power cycle** (2026-08-20, mains switched
+remotely rather than pulled by hand): the node was enumerated and answering
+polls **21 seconds** after power returned, with the reset reason reading
+`power-on event`, and setpoint, fan level and filter interval all intact. This
+works precisely *because* node and unit share a supply — they boot together,
+which is the case the margin was measured for. A node on separate power that
+happens to be down when the CS50 boots is the dangerous case, not this one.
+
+Note also that the node's boot-frame buffer starts recording before Wi-Fi is
+up, so the enumeration window is observable after the fact even though nothing
+can be streamed live while it happens.
 
 ### 3.3 Idle response
 
@@ -725,10 +754,44 @@ support — and it leaves the running-versus-wall-clock question untouched. But
 the fit is no longer purely circular, and the one-wrap row (commissioned ~2016)
 now requires a board replacement to survive at all.
 
-**The measurement that would resolve most of it** is whether these are
-*running* hours or *wall-clock* hours: cut power to the unit across an hour
-boundary and see whether the counter advances. Running hours make the downtime
-explanation possible; wall-clock hours rule it out entirely. See TODO.md.
+**They are running hours, and the part-hour is discarded at power-off.**
+✅ Measured 2026-08-20 by cutting mains to the unit for 31 minutes across a
+predicted tick. Both counters advance in step, 62 s apart, every 3 619 s
+(§9.3), which makes the tick times predictable to the second and the test
+sharp. Three outcomes were distinguishable in advance:
+
+| Prediction | Meaning |
+|---|---|
+| counter **+1** at restore, next tick ≈5 min later | wall-clock: it kept time while off |
+| counter **unchanged**, next tick ≈20 min later | running hours, part-hour preserved |
+| counter **unchanged**, next tick ≈60 min later | running hours, part-hour discarded |
+
+Power was cut at 11:09:00, 40 min 22 s into the hour, leaving 19 min 57 s to
+run. The tick due at 11:28:57 **did not happen**, and the counter read exactly
+its pre-outage value when power returned at 11:40:00 — so wall-clock is out.
+The cold-boot capture makes the same point independently: the very first frames
+after power-up already carry `0x0E[10] = 84` and `0x1C[8] = 29 503`, the values
+from before the cut. The counters are restored from non-volatile storage, not
+reconstructed from a clock.
+
+No tick followed at 11:59:57 either, which rules out the part-hour surviving.
+The next tick landed at **12:41:21.85**, against 12:41:21 predicted for a full
+interval from power-on plus the counters' known 62 s offset — under a second
+out. The sub-hour accumulator restarts from zero at every power-up.
+
+This matters beyond the epoch question: **the counters run slow in two
+independent ways, both downward.** The 0.53 % long hour, and up to a full hour
+discarded per power interruption. Indicated hours are therefore a *lower bound*
+on real running time, and the filter alarm is correspondingly late. It also
+means the counters cannot be used to detect an outage retrospectively — a power
+cut leaves no trace in them at all.
+
+For the wrap arithmetic the effect is small but real. Taking the two-wrap
+reading at face value, 160 491 indicated hours is at least 161 342 real running
+hours once the long hour is corrected, against roughly 170 900 wall-clock hours
+since 2007 — leaving on the order of a year of downtime rather than the 16
+months estimated before. Still an illustration, not a result: it now rests on
+one assumption instead of three, but the wrap count itself is still unmeasured.
 
 **What the field width itself tells you.** It is worth asking why a designer
 would build an hour counter and then not spend the two extra bits that would
