@@ -480,11 +480,33 @@ void FlexitSL4RComponent::watch_param_block_() {
     return;  // first sighting establishes the baseline, it is not a change
   }
 
+  // Words that advance on their own by design. Both are decoded and published
+  // as their own entities, so filing them as parameter changes told us nothing
+  // and cost 48 anomalies a day - two an hour, every hour - which is enough to
+  // bury anything that matters. The shadow is still kept current for them.
+  static const struct {
+    uint8_t bank, reg, word;
+  } FREE_RUNNING_COUNTERS[] = {
+      {0x20, 0x0E, 10},  // filter timer: hours since the filter was last reset
+      {0x20, 0x1C, 8},   // operating hours: never resets
+  };
+
   bool changed = false;
   for (size_t i = 0; i < words && i < block->words; i++) {
     const uint16_t now = static_cast<uint16_t>((data[i * 2] << 8) | data[i * 2 + 1]);
     if (now == block->value[i])
       continue;
+    bool free_running = false;
+    for (const auto &c : FREE_RUNNING_COUNTERS) {
+      if (c.bank == bank && c.reg == reg && c.word == i) {
+        free_running = true;
+        break;
+      }
+    }
+    if (free_running) {
+      block->value[i] = now;
+      continue;
+    }
     // Logged individually: which word moved and to what is the whole point,
     // and the stored frame alone would make you count bytes to find out.
     ESP_LOGW(TAG, "PARAMETER CHANGED: bank 0x%02X reg 0x%02X word %u: %u -> %u (0x%04X -> 0x%04X)",

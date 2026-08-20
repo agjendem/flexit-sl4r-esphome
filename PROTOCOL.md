@@ -585,6 +585,14 @@ not exist on a rotary unit.
 
 These are the parameter tables from the Flexit manual, broadcast continuously.
 
+**The register number is an element offset, counted in the frame's own data
+type.** Integer (`0xC6`) frames carry 14 words each and step `0x00`, `0x0E`,
+`0x1C` — words 0, 14, 28. Float (`0xC7`, `0xC2`) frames carry seven floats each
+and step `0x00`, `0x07`, `0x0E`, `0x15` — floats 0, 7, 14, 21. So the same
+register number means a different byte offset depending on the frame type, and
+integers and floats live in **separate address spaces** within a bank. This is
+why §9.2's "grouped by type" holds: the grouping is the addressing.
+
 ### 9.1 The register map is the CS 500's
 
 Confirmed, not merely suspected: the cooling parameters `45` (minimum speed)
@@ -782,6 +790,84 @@ Recorded here so the factory values survive any future experiment:
 | 1 | 50 % | 50 % | 49 % |
 | 2 | 75 % | 75 % | 74 % |
 | 3 | 100 % | 100 % | 100 % |
+
+**The CS 50's hour is 3 619 seconds, not 3 600.** ✅ Both counters tick
+together, and timing 19 consecutive intervals against the ESP32's clock gives a
+mean of 3 619.0 s with a spread of only 3 618.5–3 619.7 s. That is far too
+tight to be noise, and far too large (5 300 ppm) to be our own crystal, which
+is good to a few tens of ppm. The counters therefore run **0.53 % slow against
+real time**: an indicated 29 500 hours is about 29 656 real hours, some 6.5
+days more, and the filter alarm arrives correspondingly late. Harmless for
+maintenance intervals, but worth knowing before treating either counter as a
+clock.
+
+Both words are excluded from the firmware's parameter-change watch. They are
+decoded and published as entities anyway, and letting them through filed two
+anomalies an hour — 48 a day — which is enough to bury anything worth reading.
+
+#### The complete `0xC6` map, bank `0x20`
+
+Every word in the integer space, from a capture on 2026-08-20. Words are shown
+as their two bytes where the pair is meaningful, since most parameters are
+byte-packed. `❓` means the word is observed and stable but not matched to a
+named parameter — per §9.2 these are CS 500 parameters we have not pinned down,
+not unknown *fields*.
+
+| Reg | Word | Bytes | Meaning |
+|---|---|---|---|
+| `0x00` | 0 | 8 / 25 | low byte = **maximum setpoint** ✅; high byte ❓ |
+| `0x00` | 1 | 30 | ❓ |
+| `0x00` | 2 | 540 | ❓ |
+| `0x00` | 3, 4 | 20 / 80 | identical pair ❓ |
+| `0x00` | 5, 7 | 250 | ❓ |
+| `0x00` | 6, 8 | 20 / 100 | identical pair ❓ |
+| `0x00` | 9 | 16 / 35 | **min / max supply air temperature** ✅ |
+| `0x00` | 10 | 16 / 35 | repeats word 9 ❓ |
+| `0x00` | 11 | 15 / 2 | **outdoor compensation**: temperature / deviation ✅ |
+| `0x00` | 12 | 5 / 12 | ❓ |
+| `0x00` | 13 | 30 | ❓ |
+| `0x0E` | 0 | 15 / 50 | high byte = **minimum setpoint** ✅; low byte ❓ |
+| `0x0E` | 1 | 40 / 80 | ❓ |
+| `0x0E` | 2, 3 | 20 / 20 | ❓ |
+| `0x0E` | 4 | 180 | **shutdown sequence**, seconds ✅ |
+| `0x0E` | 5 | 6 | **filter interval**, months ✅ |
+| `0x0E` | 6 | 30 | **motor protection delay**, seconds ✅ |
+| `0x0E` | 7 | 180 | ❓ |
+| `0x0E` | 8 | 50 / 75 | **fan duty**, levels 1 and 2 ✅ |
+| `0x0E` | 9 | 100 / 0 | **fan duty**, level 3 ✅ |
+| `0x0E` | 10 | — | **the filter timer**, hours ✅ |
+| `0x0E` | 11 | 2 / 50 | ❓ |
+| `0x0E` | 12 | 25 / 1 | **stored user settings**: setpoint / fan level ✅ |
+| `0x0E` | 13 | 50 / 75 | repeats word 8 ❓ |
+| `0x1C` | 0 | 100 / 15 | ❓ |
+| `0x1C` | 1, 2, 4, 5 | 0 | ❓ |
+| `0x1C` | 3, 6 | 300 | ❓ |
+| `0x1C` | 7 | 301 | ❓ |
+| `0x1C` | 8 | — | **operating hours**, never resets ✅ |
+| `0x1C` | 9 | 100 | ❓ |
+
+38 words in total: 12 named, 26 observed but unnamed. Note the repeated pairs
+(`0x00` words 9/10, `0x0E` words 8/13) — consistent with §9.2's finding that
+min/max and duplicate-purpose parameters cluster.
+
+#### The observed frame inventory
+
+Every `(type, bank, register)` combination seen on the bus, from the same
+capture. Nothing else appears:
+
+| Bank | Registers seen | Types | What it is |
+|---|---|---|---|
+| `0x20` | `0x00` | `0xC1` | controller firmware, ASCII `R1A 2.8` (§11) |
+| `0x20` | `0x00`, `0x07` | `0xC2` | measurements (§8) |
+| `0x20` | `0x00`, `0x0E`, `0x1C` | `0xC6` | integer parameters (map above) |
+| `0x20` | `0x00`, `0x07`, `0x0E`, `0x15` | `0xC7` | float parameters (§9.4) |
+| `0x20` | `0x0E` | `0xC1` | **the status telegram** (§5) |
+| `0x21` | `0x00`, `0x0E`, `0x1C` | `0xC6` | clock storage (§10) |
+| `0x22` | `0x00` | `0xC1` | panel firmware, ASCII `R1A 1.2` (§11) |
+
+The status telegram shares bank `0x20` register `0x0E` with a parameter block
+and is told apart by frame type and length (`0xC1`, length `0x16`) — a trap
+worth knowing when writing a parser.
 
 ### 9.4 `0xC7` floats
 
