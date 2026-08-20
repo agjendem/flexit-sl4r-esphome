@@ -336,17 +336,21 @@ against what PROTOCOL.md says they contain.
       months; the anomaly log records the alarm changing state whether or not
       anyone is watching. Replace the constant then, and the sensor becomes
       exact instead of approximate.
-- [ ] **What is `0x1C[8]`'s epoch, and do these counters track running hours or
-      wall-clock hours?** The wrap behaviour and the ambiguity it creates are
-      documented in PROTOCOL.md §9.3, with a worked example from this
-      installation; what is missing is a measurement.
+- [ ] **What is `0x1C[8]`'s epoch?** ~~And do these counters track running
+      hours or wall-clock hours?~~ **The second half is answered: running
+      hours, with the part-hour discarded at power-off** (2026-08-20, mains cut
+      for 31 minutes across a predicted tick; PROTOCOL.md §9.3). The tick due
+      during the outage never happened, the counter returned at exactly its
+      pre-outage value, and the next tick came a full interval after power-up
+      rather than at the 20 minutes that were left to run — measured within a
+      second of prediction.
 
-      **Cut power to the unit across an hour boundary** — the tick lands around
-      :51–:58 — and see whether the counter advances. If it does not, these are
-      running hours and a unit's downtime shows up as a shortfall against
-      calendar time. If it does, the CS 50 keeps a real-time clock and the
-      epoch is something else entirely. Roughly twenty minutes with the
-      ventilation off; the wall socket is enough, no need to open anything.
+      That leaves the epoch itself. Two consequences worth carrying into it:
+      indicated hours are a **lower bound**, since the long hour (0.53 %) and
+      the discarded part-hours both bias the same way; and a power cut leaves
+      **no trace at all** in these counters, so past downtime cannot be
+      recovered from them retrospectively — only inferred as a shortfall
+      against calendar time.
 
       A second installation with a known commissioning date and no downtime
       would settle the epoch outright, since the counter would then have to
