@@ -106,17 +106,24 @@ here.
       active alarm would settle this immediately.**
 - [ ] **`[15]` high nibble** — the low nibble turned out to be boost
       (PROTOCOL.md §5.5), which leaves only the high nibble, taking 2 or 3.
-      "Afterheater **enabled**" fits the evidence but has never been tested
-      directly. **One controlled toggle of the afterheater setting while
-      watching `[15]` settles it.**
-      Note that the 30 hours of afterheater work on 18-19 August did **not**
-      settle it, tempting as it looks: `[15]` held `0x30` throughout while the
-      element cycled on and off hundreds of times — but the *setting* stayed on
-      the whole time, so the hypothesis was never put at risk. The element
-      switching is `[2]` bit1; this is a different question.
-      No longer free, either: the earlier note called it "safe while there is no
-      heat demand", which was true in summer. With the setpoint high there now
-      is heat demand, so toggling the setting actually stops the heating.
+      **"Afterheater enabled" is now disproved.** The test we kept planning had
+      already been run: the raw-frame captures from 14-15 August contain three
+      toggles of the *setting*, and `[15]` held `0x33` across every one, in both
+      directions. No experiment needed — the answer was in the archive.
+      (The 30 hours of afterheater work on 18-19 August never put the hypothesis
+      at risk either: the element cycled hundreds of times while the setting
+      stayed on. Element switching is `[2]` bit1; a different question.)
+      Nothing correlates with the high nibble now. Next candidates worth
+      logging against it: heat recovery running (`[2]` bit0) and the season /
+      outdoor temperature.
+- [ ] **Name the changed word in the "parameter register changed" anomaly.**
+      The dump prints the whole frame and leaves the reader to diff 14 words by
+      eye against the map. Logging `bank/reg/word: old -> new` would have made
+      the 2026-08-20 dump self-explanatory: two of its three entries were an
+      ordinary setpoint edit and the third was the afterheater setting, which
+      took a round of manual decoding plus a cross-check against Home
+      Assistant's history to establish.
+
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
       but what the value itself encodes is unknown.
 - [x] **`[2]` bit 1** — ~~assumed bypass~~ **the afterheater element,
