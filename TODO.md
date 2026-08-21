@@ -144,7 +144,8 @@ here.
       in the split-tap fault (PROTOCOL.md §5.8). Whether they say "start-up in
       progress" or something narrower is unknown; a second occurrence, or a
       deliberate mains cut watched to completion, would separate the two.
-- [ ] **Reproduce the split-tap fault of §5.8.** The single most valuable
+- [ ] **Reproduce the split-tap fault of §5.8** *(recovery now measured — see
+      §5.8; the remaining unknown is cause, not cure)*. The single most valuable
       capture we do not have. It would answer whether an incomplete start-up
       causes it, what `[20]` = `0x38` means, and whether `[2]` bit 0 behaves
       normally throughout. Not worth provoking deliberately — the unit runs

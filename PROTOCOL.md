@@ -601,9 +601,27 @@ switch and the climate entity now read `[6]` bit0.
 steady, level 2 blinking. The steady LED is the tap the supply fan is on; the
 blinking one is the level it is trying to reach.
 
-**Recovery:** cut power to the unit and let it start cleanly. Afterwards `[2]`
-should read `0x90`/`0x48`/`0x24` and `[18]` `[19]` `[20]` should settle at
-`98 88 88`.
+**Recovery — measured 2026-08-21, and it settles one of the two readings.**
+Commands were tried first. Ordering the fans *down* to level 1 worked
+immediately: `[5]` went to `0x11`, both relay groups to tap 1, and the plug's
+own power meter fell 129.6 W → 86.8 W, confirming from outside the bus that the
+extract fan really stepped. Ordering them back *up* to 2 reproduced the fault
+exactly — extract to tap 2, supply stuck on tap 1, 129.6 W again. So the supply
+fan could hold tap 1 but not climb, and no command could fix that.
+
+A 60-second mains cut did. On return: `[2]` = tap 1 / tap 1, `[20]` = `0x88`,
+`[15]` = `0x30` — the standing boost request of `0x33` gone — and level 2 then
+engaged **both** relays, 74 % / 74 %, 182.3 W.
+
+Two things follow. The supply relay is **not faulty**: it climbs perfectly
+after a clean start. And the fault is **fully recoverable in software terms**,
+requiring only power. That does not prove the incomplete start-up *caused* the
+split taps, but it is what one would expect if it had, and it removes the
+hardware explanation that would otherwise have been the first suspicion.
+
+Worth doing before the power cut, if the fault is ever seen again: order the
+fans to a level the stuck one can reach. The unit boots to its stored level, so
+leaving it at an unreachable one risks coming straight back up into the fault.
 
 **Implemented as two separate indicators**, because they are two distinct
 faults and either can occur without the other:
@@ -1226,7 +1244,7 @@ Contributions that would settle these are very welcome; see the README.
 
 | # | Question | What would settle it |
 |---|---|---|
-| 0 | Does an incomplete start-up *cause* the split taps of §5.8, or merely accompany them? And what is `[20]` = `0x38`? | A second occurrence. One event cannot separate the two, and `0x38` has been seen exactly once |
+| 0 | Does an incomplete start-up *cause* the split taps of §5.8, or merely accompany them? And what is `[20]` = `0x38`? | A second occurrence. One event cannot separate the two, and `0x38` has been seen exactly once. Narrowed 2026-08-21: a clean start cures it and the supply relay climbs normally afterwards, so the hardware is sound — but that still does not establish cause |
 | 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
 | 2 | What is `[10]`'s unit and control law? | It gates the afterheater at 10/4 and behaves like a deviation accumulator (§5.4), but the rising and falling rates do not follow the same rule. A capture logging `[10]` against supply air across a slow setpoint sweep |
 | 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.5). **Not the afterheater setting** — the archived raw-frame captures from 14–15 August span three toggles of that setting and `[15]` held `0x33` across every one, in both directions. The nibble takes 2 or 3; no correlate is left standing |
