@@ -123,7 +123,9 @@ here.
       dump cost exactly that. The stored reason now carries the same detail.
 
 - [ ] **`[20]`** — tracks boost cleanly (`0x88` normal, `0x44` during boost),
-      but what the value itself encodes is unknown.
+      but what the value itself encodes is unknown. A third value, `0x38`,
+      appeared once: during the split-tap fault of 2026-08-21 (PROTOCOL.md
+      §5.8). One sighting, no interpretation.
 - [x] **`[2]` bit 1** — ~~assumed bypass~~ **the afterheater element,
       energised.** Settled 2026-08-19 exactly as predicted below: the element
       is relay-driven and `[2]` is the relay byte. See PROTOCOL.md §5.3.
@@ -134,8 +136,20 @@ here.
       from ~5 s/step in ordinary cycling to ~1.4 s/step right after a 5 °C
       setpoint drop. Logging `[10]` against supply air through a slow sweep of
       the whole 15–25 °C range would pin the law down.
-- [ ] **`[12]`, `[16]`–`[19]`, `[21]`** — no variation observed. Possibly
+- [ ] **`[12]`, `[16]`, `[17]`, `[21]`** — no variation observed. Possibly
       options we do not have, or CS 500-only fields.
+- [ ] **`[18]`, `[19]`** — were on that list until 2026-08-21. They are
+      `98 88` in steady state and `96 66` during start-up, and on 2026-08-21
+      they *stayed* at `96 66` for the best part of an hour while the unit sat
+      in the split-tap fault (PROTOCOL.md §5.8). Whether they say "start-up in
+      progress" or something narrower is unknown; a second occurrence, or a
+      deliberate mains cut watched to completion, would separate the two.
+- [ ] **Reproduce the split-tap fault of §5.8.** The single most valuable
+      capture we do not have. It would answer whether an incomplete start-up
+      causes it, what `[20]` = `0x38` means, and whether `[2]` bit 0 behaves
+      normally throughout. Not worth provoking deliberately — the unit runs
+      unbalanced while it lasts — but the next mains cut for a filter change is
+      a free opportunity, and the raw capture from 2026-08-21 is archived.
 
 ### The afterheater — when does the element actually heat?
 

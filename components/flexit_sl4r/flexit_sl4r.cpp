@@ -785,20 +785,80 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
     if (this->fan_level_return_sensor_ != nullptr)
       this->fan_level_return_sensor_->publish_state(return_level);
 #endif
-    // If boost has ended by any other route - the panel cancelled it, someone
-    // wrote a fan level - our timer must not survive it. Leaving it armed would
-    // mean a later boost started FROM THE PANEL gets cancelled by our stale
-    // deadline, which is both wrong and hard to explain from the panel's side.
-    if (running_level == return_level)
-      this->boost_deadline_ms_ = 0;
-    else
-      this->boost_request_ms_ = 0;  // boost is running - nothing left to confirm
+  }
+
+  // Boost comes from [6] bit0, the unit's own statement, NOT from the [5]
+  // nibbles disagreeing. Those two are not equivalent: a level change the unit
+  // accepts but never carries out leaves the nibbles unequal with no boost in
+  // sight, and the old rule then latched the switch ON with no way back. See
+  // PROTOCOL.md 5.8.
+  //
+  // If boost has ended by any other route - the panel cancelled it, someone
+  // wrote a fan level - our timer must not survive it. Leaving it armed would
+  // mean a later boost started FROM THE PANEL gets cancelled by our stale
+  // deadline, which is both wrong and hard to explain from the panel's side.
+  const bool boost = status_boost_active(raw_afterheat);
+  if (!boost)
+    this->boost_deadline_ms_ = 0;
+  else
+    this->boost_request_ms_ = 0;  // boost is running - nothing left to confirm
 #ifdef USE_BINARY_SENSOR
-    // Boost = the unit is running a different level than the one it will fall
-    // back to. A precise indicator, free from data we already have.
-    if (this->boost_active_binary_sensor_ != nullptr)
-      this->boost_active_binary_sensor_->publish_state(running_level != return_level);
+  if (this->boost_active_binary_sensor_ != nullptr)
+    this->boost_active_binary_sensor_->publish_state(boost);
 #endif
+
+  // --- Fan relay feedback, and the imbalance it can reveal ---
+  // [2] reports which transformer tap each fan is actually sitting on. It is
+  // the only field that separates "boosting" from "out of balance": under a
+  // real boost both groups read tap 3 while [5] shows 0x31.
+  const uint8_t raw_relays = this->raw_status_[2];
+  const uint8_t supply_tap = fan_relay_supply_level(raw_relays);
+  const uint8_t extract_tap = fan_relay_extract_level(raw_relays);
+#ifdef USE_SENSOR
+  if (supply_tap != 0 && this->fan_relay_supply_level_sensor_ != nullptr)
+    this->fan_relay_supply_level_sensor_->publish_state(supply_tap);
+  if (extract_tap != 0 && this->fan_relay_extract_level_sensor_ != nullptr)
+    this->fan_relay_extract_level_sensor_->publish_state(extract_tap);
+#endif
+  // A level change the unit accepted but never carried out. Independent of the
+  // relays: [5] can hold the (from, to) command shape while both fans still
+  // sit on the old tap together, which the balance check above cannot see.
+  const bool change_pending = fan_level_valid(raw_fan_level) && fan_level_change_pending(raw_fan_level);
+  if (!this->have_change_pending_ || change_pending != this->change_pending_) {
+    if (change_pending)
+      ESP_LOGW(TAG, "STALLED FAN LEVEL CHANGE: [5] = 0x%02X - the unit accepted a change to level %u but is still on %u",
+               static_cast<unsigned>(raw_fan_level), static_cast<unsigned>(return_level),
+               static_cast<unsigned>(running_level));
+    this->change_pending_ = change_pending;
+    this->have_change_pending_ = true;
+#ifdef USE_BINARY_SENSOR
+    if (this->fan_level_change_stalled_binary_sensor_ != nullptr)
+      this->fan_level_change_stalled_binary_sensor_->publish_state(change_pending);
+#endif
+  }
+
+  // Only judge balance once both groups decode. An all-zero telegram during
+  // start-up means "the fans are not running yet", not "the fans disagree",
+  // and reporting a fault there would cry wolf on every power cut.
+  if (fan_relays_known(raw_relays)) {
+    const bool imbalance = !fan_relays_balanced(raw_relays);
+    if (!this->have_fan_imbalance_ || imbalance != this->fan_imbalance_) {
+      if (imbalance) {
+        ESP_LOGW(TAG,
+                 "FAN IMBALANCE: supply fan on tap %u, extract fan on tap %u. Balanced ventilation "
+                 "is out of balance - the house is being over- or under-pressurised. Power-cycle the "
+                 "unit to let it complete a clean start.",
+                 static_cast<unsigned>(supply_tap), static_cast<unsigned>(extract_tap));
+      } else if (this->have_fan_imbalance_) {
+        ESP_LOGI(TAG, "Fan imbalance cleared: both fans on tap %u", static_cast<unsigned>(supply_tap));
+      }
+      this->fan_imbalance_ = imbalance;
+      this->have_fan_imbalance_ = true;
+#ifdef USE_BINARY_SENSOR
+      if (this->fan_imbalance_binary_sensor_ != nullptr)
+        this->fan_imbalance_binary_sensor_->publish_state(imbalance);
+#endif
+    }
   }
 
 #ifdef USE_SENSOR
@@ -847,14 +907,13 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   // as the sole source the field sat at its default (off) after every restart -
   // and since the value is mirrored into all our writes, the first fan command
   // afterwards switched the afterheater off without anyone asking for it.
-  const bool boost_bit = (raw_afterheat & STATUS_BOOST_ACTIVE) != 0;
   this->afterheat_enabled_ = (raw_afterheat & STATUS_AFTERHEAT_ENABLED) != 0;
   this->have_afterheat_state_ = true;
   this->last_raw_afterheat_ = raw_afterheat;
 
 #ifdef USE_BINARY_SENSOR
   if (this->afterheat_active_binary_sensor_ != nullptr)
-    this->afterheat_active_binary_sensor_->publish_state(boost_bit);
+    this->afterheat_active_binary_sensor_->publish_state(boost);
   if (this->afterheat_enabled_binary_sensor_ != nullptr)
     this->afterheat_enabled_binary_sensor_->publish_state(this->afterheat_enabled_);
   if (this->filter_alarm_binary_sensor_ != nullptr)
@@ -879,12 +938,14 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
 void FlexitSL4RComponent::publish_climate_() {
   if (this->ventilation_climate_ == nullptr)
     return;
-  // Boost = the unit runs a different level than the one it falls back to. The
-  // fan mode should show the RETURN LEVEL, not 3 - that is the user's chosen
-  // level, and the one the unit returns to when boost ends.
+  // While boost runs, the fan mode should show the RETURN LEVEL, not 3 - that
+  // is the user's chosen level, and the one the unit returns to when boost
+  // ends. Whether boost runs at all is [6] bit0's to say; deriving it from the
+  // nibbles disagreeing made the climate entity report a boost during a
+  // stalled level change (PROTOCOL.md 5.8).
   const uint8_t running = this->last_raw_fan_level_ >> 4;
   const uint8_t ret = this->last_raw_fan_level_ & 0x0F;
-  const bool boost = running != ret;
+  const bool boost = this->get_boost_active();
   // "Heating now" is derived from heat demand ([11]), not from [6] bit0 - that
   // bit turned out to be boost. A demand above zero means the unit is actually
   // calling for heat.

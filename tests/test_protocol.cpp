@@ -132,7 +132,7 @@ static void test_fan_level() {
     CHECK(fan_level_running(c.raw) == c.running, "0x%02X running: expected %u, got %u", c.raw, c.running,
           fan_level_running(c.raw));
     CHECK(fan_level_return(c.raw) == c.ret, "0x%02X return: expected %u, got %u", c.raw, c.ret, fan_level_return(c.raw));
-    CHECK(boost_from_fan_level(c.raw) == c.boost, "0x%02X boost: expected %d", c.raw, c.boost);
+    CHECK(fan_level_nibbles_disagree(c.raw) == c.boost, "0x%02X nibbles disagree: expected %d", c.raw, c.boost);
     CHECK(fan_level_valid(c.raw), "0x%02X should be a valid fan level", c.raw);
   }
 
@@ -143,6 +143,56 @@ static void test_fan_level() {
   CHECK(!fan_level_valid(0x00), "0x00 accepted as a fan level");
   CHECK(!fan_level_valid(0x44), "0x44 accepted as a fan level");
   CHECK(!fan_level_valid(0x10), "0x10 accepted as a fan level");
+
+  // 0x12, observed live on 2026-08-21: a level change accepted and never
+  // carried out. The nibbles disagree, and it is emphatically NOT boost.
+  CHECK(fan_level_valid(0x12), "0x12 is a legal pair of nibbles");
+  CHECK(fan_level_nibbles_disagree(0x12), "0x12 nibbles do disagree");
+  CHECK(fan_level_change_pending(0x12), "0x12 is a stalled level change");
+  CHECK(!fan_level_change_pending(0x31), "boost must not read as a stalled change");
+  CHECK(!fan_level_change_pending(0x22), "a settled level must not read as a stalled change");
+}
+
+// ---------------------------------------------------------------------------
+// payload[2]: which tap each fan is on, and the imbalance that hid there.
+// ---------------------------------------------------------------------------
+static void test_fan_relays() {
+  section("fan relay feedback");
+
+  // Every value seen across both archived captures, plus the fault state.
+  struct Case {
+    uint8_t raw;
+    uint8_t supply, extract;
+    bool balanced;
+  };
+  const Case cases[] = {
+      {0x90, 1, 1, true},   // level 1, rotor still
+      {0x48, 2, 2, true},   // level 2
+      {0x24, 3, 3, true},   // level 3 - and the value seen during boost
+      {0x91, 1, 1, true},   // level 1 with the rotor turning (bit0)
+      {0x26, 3, 3, true},   // level 3, rotor + afterheater drawing power
+      {0x89, 1, 2, false},  // 2026-08-21: supply on tap 1, extract on tap 2
+  };
+  for (const auto &c : cases) {
+    CHECK(fan_relay_supply_level(c.raw) == c.supply, "0x%02X supply tap: expected %u, got %u", c.raw, c.supply,
+          fan_relay_supply_level(c.raw));
+    CHECK(fan_relay_extract_level(c.raw) == c.extract, "0x%02X extract tap: expected %u, got %u", c.raw, c.extract,
+          fan_relay_extract_level(c.raw));
+    CHECK(fan_relays_known(c.raw), "0x%02X should decode both groups", c.raw);
+    CHECK(fan_relays_balanced(c.raw) == c.balanced, "0x%02X balanced: expected %d", c.raw, c.balanced);
+  }
+
+  // The distinction the whole alarm rests on: during boost the relays AGREE
+  // while the fan level nibbles disagree. Reading balance off [5] would have
+  // called every boost a fault, and reading boost off [5] called this fault a
+  // boost.
+  CHECK(fan_relays_balanced(0x24) && fan_level_nibbles_disagree(0x31), "boost: relays agree, nibbles do not");
+
+  // Nothing running yet, or bits we cannot make sense of: report "unknown"
+  // rather than inventing a fault. A power cut must not raise an alarm.
+  CHECK(!fan_relays_known(0x00), "an all-zero telegram must not decode as taps");
+  CHECK(!fan_relays_balanced(0x00), "an all-zero telegram must not read as balanced");
+  CHECK(fan_relay_supply_level(0xE0) == 0, "several bits in one group is not a tap");
 }
 
 // ---------------------------------------------------------------------------
@@ -202,8 +252,13 @@ struct CaptureStats {
   size_t status_telegrams = 0;
   size_t resync_skips = 0;
   uint8_t setpoint_min = 0xFF, setpoint_max = 0;
-  bool saw_boost_fan_level = false;
+  bool saw_nibbles_disagreeing = false;
   bool all_fan_levels_valid = true;
+  // Both were true across every archived telegram before 2026-08-21. Asserting
+  // them here is what makes "never seen before" a measurement rather than a
+  // recollection - and what will catch it if a future capture disagrees.
+  bool all_fan_duties_equal = true;
+  bool all_relays_balanced = true;
 };
 
 static bool read_hex_file(const char *path, std::vector<uint8_t> &out) {
@@ -246,8 +301,13 @@ static CaptureStats scan(const std::vector<uint8_t> &data) {
       const uint8_t setpoint = f[FRAME_HEADER_LENGTH + 9];
       if (!fan_level_valid(fan))
         st.all_fan_levels_valid = false;
-      if (boost_from_fan_level(fan))
-        st.saw_boost_fan_level = true;
+      if (fan_level_nibbles_disagree(fan))
+        st.saw_nibbles_disagreeing = true;
+      if (f[FRAME_HEADER_LENGTH + 13] != f[FRAME_HEADER_LENGTH + 14])
+        st.all_fan_duties_equal = false;
+      const uint8_t relays = f[FRAME_HEADER_LENGTH + 2];
+      if (fan_relays_known(relays) && !fan_relays_balanced(relays))
+        st.all_relays_balanced = false;
       if (setpoint >= 10 && setpoint <= 30) {
         if (setpoint < st.setpoint_min)
           st.setpoint_min = setpoint;
@@ -261,7 +321,7 @@ static CaptureStats scan(const std::vector<uint8_t> &data) {
 }
 
 static void test_capture(const char *path, bool expect_boost, uint8_t expect_setpoint_low,
-                         uint8_t expect_setpoint_high) {
+                         uint8_t expect_setpoint_high, bool expect_balanced = true) {
   section(path);
   std::vector<uint8_t> data;
   if (!read_hex_file(path, data)) {
@@ -277,6 +337,15 @@ static void test_capture(const char *path, bool expect_boost, uint8_t expect_set
   CHECK(st.frames > 100, "only %zu frames found - the scanner is not finding the structure", st.frames);
   CHECK(st.status_telegrams > 10, "only %zu status telegrams", st.status_telegrams);
   CHECK(st.all_fan_levels_valid, "a status telegram carried an invalid fan level");
+  if (expect_balanced) {
+    CHECK(st.all_fan_duties_equal, "the two fan duties differed - see PROTOCOL.md 5.8");
+    CHECK(st.all_relays_balanced, "the fan relay groups disagreed - see PROTOCOL.md 5.8");
+  } else {
+    // The fault capture. Asserting that the decoder still SEES it guards the
+    // detection logic against being quietly weakened later.
+    CHECK(!st.all_fan_duties_equal, "expected unequal fan duties in the fault capture");
+    CHECK(!st.all_relays_balanced, "expected the relay groups to disagree in the fault capture");
+  }
 
   // Frames should dominate the stream. If resynchronisation were broken we
   // would be skipping far more bytes than we consume.
@@ -284,7 +353,7 @@ static void test_capture(const char *path, bool expect_boost, uint8_t expect_set
   CHECK(consumed > 0.8, "only %.0f%% of the stream was consumed as frames", consumed * 100);
 
   if (expect_boost)
-    CHECK(st.saw_boost_fan_level, "expected a boost fan level (nibbles differing) in this capture");
+    CHECK(st.saw_nibbles_disagreeing, "expected the fan level nibbles to differ somewhere in this capture");
   if (expect_setpoint_low != 0) {
     CHECK(st.setpoint_min <= expect_setpoint_low, "setpoint never reached %u (min was %u)", expect_setpoint_low,
           st.setpoint_min);
@@ -297,6 +366,7 @@ int main(int argc, char **argv) {
   test_checksum();
   test_frame_validation();
   test_fan_level();
+  test_fan_relays();
   test_boost_command();
   test_param_words();
 
@@ -307,6 +377,10 @@ int main(int argc, char **argv) {
     test_capture(argv[1], true, 15, 25);
   if (argc > 2)
     test_capture(argv[2], false, 0, 0);
+  // The 2026-08-21 fault: supply fan on tap 1, extract on tap 2, for the whole
+  // capture. Setpoint held at 25. See PROTOCOL.md 5.8.
+  if (argc > 3)
+    test_capture(argv[3], true, 25, 25, false);
 
   std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
   return g_failures == 0 ? 0 : 1;

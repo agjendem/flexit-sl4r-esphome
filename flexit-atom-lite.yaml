@@ -348,6 +348,15 @@ sensor:
       name: "Viftetrinn kjørende"
     fan_level_return:
       name: "Viftetrinn retur"
+    # payload[2] bit 7/6/5 og 4/3/2 — to én-hot-grupper som sier hvilket
+    # trafotrinn hver vifte FAKTISK står på. [5] sier hva aggregatet vil;
+    # disse to sier hva kontaktorene gjorde med det. Under ekte forsering står
+    # begge på 3 mens [5] viser 0x31 — det er nettopp derfor de skiller
+    # forsering fra ubalanse. Se PROTOCOL.md §5.8.
+    fan_relay_supply_level:
+      name: "Relétrinn tilluft"
+    fan_relay_extract_level:
+      name: "Relétrinn avtrekk"
     # Teller rammer som feilet sjekksum. Stiger den mens TX-testen står på,
     # ØDELEGGER vi CS50s trafikk — og da driver vi beviselig bussen.
     frames_discarded:
@@ -560,8 +569,11 @@ binary_sensor:
     # er en plateveksler-funksjon og finnes ikke på et rotoraggregat.
     # payload[6] bit0 = FORSERING (avklart ved styrt forsøk 2026-08-15: biten
     # var satt under forsering mens ettervarmen beviselig var av). Beholdes som
-    # diagnostikk fordi den er en UAVHENGIG kilde til forseringstilstanden —
-    # «Forsering aktiv» utledes av [5]-niblene. Spriker de to, har vi lært noe.
+    # diagnostikk. MERK: fra 21.08.2026 leser «Forsering aktiv» den SAMME biten
+    # — den ble tidligere utledet av [5]-niblene, og det var feil. Nibblene
+    # spriker også når et trinnbytte henger, og da låste bryteren seg PÅ uten
+    # vei tilbake. Kryssjekken ligger nå i «Viftetrinn i ubalanse» og
+    # «Trinnbytte ikke utført», som leser [2] og [5] hver for seg.
     afterheat_active:
       name: "Forsering (statusbit)"
       entity_category: diagnostic
@@ -604,6 +616,22 @@ binary_sensor:
       name: "Flexit-kommunikasjon OK"
     boost_active:
       name: "Forsering aktiv"
+    # Viftene står på HVERT SITT trafotrinn. Dette er en feil, ikke en
+    # driftsmodus: balansert ventilasjon forutsetter at de følges ad, og
+    # spriker de, står huset i vedvarende under- eller overtrykk — med
+    # tilhørende slitasje på viftene og på balansen i kanalnettet.
+    # Sett første gang 21.08.2026: tilluft på trinn 1, avtrekk på trinn 2 i
+    # over 40 minutter etter et filterbytte med strømbrudd. Ingenting i
+    # systemet fanget det opp — panelet var eneste varsel (fast lys på 1,
+    # blinkende 2). Se PROTOCOL.md §5.8.
+    fan_imbalance:
+      name: "Viftetrinn i ubalanse"
+    # Aggregatet tok imot et trinnbytte og utførte det aldri: [5] blir stående
+    # med kommandoformen (fra, til) i stedet for å legge seg på det nye
+    # trinnet. Uavhengig av relésjekken over — denne fyrer også når begge
+    # viftene fortsatt står sammen på det gamle trinnet.
+    fan_level_change_stalled:
+      name: "Trinnbytte ikke utført"
     # Blir vi fortsatt pollet av CS50? Enumereringen skjer KUN ved aggregatets
     # oppstart. Er noden nede da, droppes vi — og skriving feiler STILLE.
     # Går denne av, må aggregatet strømsykles for å slippe oss inn igjen.

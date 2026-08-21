@@ -296,10 +296,10 @@ Indices below are into the payload, where `[0]` is the bank byte.
 |---|---|---|
 | 0 | `0x20` — bank | constant |
 | 1 | `0x0E` — register | constant |
-| 2 | bit0 = **heat recovery running**; bits 2–4 and 5–7 = fan relay feedback, two one-hot groups (level 3/2/1) for supply and extract; bit1 see below | ✅ |
+| 2 | bit0 = **heat recovery running**; bits 2–4 and 5–7 = fan relay feedback, two one-hot groups (level 3/2/1) for supply and extract; bit1 see below. The two groups can disagree — §5.8 | ✅ |
 | 3 | `0x80` | constant |
 | 4 | **alarm bit field**; bit1 (`0x02`) = filter alarm | ✅ for bit1 |
-| 5 | **fan level, two nibbles**: high = running, low = return. `0x31` = boost | ✅ |
+| 5 | **fan level, two nibbles**: high = running, low = return. `0x31` = boost. Can also hold an *unexecuted command* — `0x12`, §5.8 | ✅ |
 | 6 | bit0 (`0x01`) = **boost active**; bit7 (`0x80`) = **afterheater enabled** | ✅ |
 | 7 | `0x04` | constant |
 | 8 | `0x00` | constant |
@@ -307,12 +307,12 @@ Indices below are into the payload, where `[0]` is the bank byte.
 | 10 | `0` | constant |
 | 11 | **heat demand**, 0–100, drives the rotor (J5 pin 11,12) | ✅ |
 | 12 | `0` | constant |
-| 13 | **supply fan duty**, % (49 / 74 / 100) | ✅ |
-| 14 | **extract fan duty**, % | ✅ |
+| 13 | **supply fan duty**, % (49 / 74 / 100). Tracks the HIGH nibble of `[5]` | ✅ |
+| 14 | **extract fan duty**, %. Tracks the LOW nibble. Equal to `[13]` in all 296 archived telegrams — asserted by the test sweep — but not always, §5.8 | ✅ |
 | 15 | `32 / 35 / 48 / 51` — varies, no known correlate | ❓ |
 | 16, 17 | `0` | constant |
-| 18, 19 | `0x98`, `0x88` | constant |
-| 20 | `0x88` normal, `0x44` during boost | ✅ correlate, meaning unknown |
+| 18, 19 | `0x98`, `0x88` in steady state. `96 66` during start-up, and it can *stay* there — §5.7, §5.8 | ⚠️ not constant |
+| 20 | `0x88` normal, `0x44` during boost, `0x38` observed once alongside the §5.8 fault | ❓ correlate, meaning unknown |
 | 21 | `0` | constant |
 
 ### 5.1 Fan level is two nibbles
@@ -324,7 +324,16 @@ unit returns to when boost ends. `0x11`/`0x22`/`0x33` are steady states,
 Dividing the byte by 17 happens to work for the steady states and breaks on
 boost. Use `raw >> 4` and `raw & 0x0F`. ✅
 
-**Boost detection comes free:** high nibble ≠ low nibble.
+**Boost detection does NOT come free.** This section used to end with "high
+nibble ≠ low nibble", and that rule shipped. It is wrong in both directions and
+was disproved on 2026-08-21 — see §5.8. Boost is `[6]` bit0. What the nibbles
+tell you is which of three situations you are in:
+
+| Nibbles | Meaning |
+|---|---|
+| high = low | settled on that level |
+| high > low | running above the fallback level — boost, if `[6]` bit0 agrees |
+| high < low | a level change the unit **accepted and did not carry out** |
 
 ### 5.2 `[6]` — two independent bits, and three wrong answers
 
@@ -518,6 +527,94 @@ unwatched: the boot capture buffer records it in full, which is the better tool
 for reading it.
 
 ---
+
+### 5.8 The two fans can end up on different taps
+
+Observed live on 2026-08-21, and the reason this section exists: an SL4 R can
+sit indefinitely with its **supply and extract fans on different transformer
+taps**. Balanced ventilation stops being balanced. The building is left
+permanently over- or under-pressurised, the fans work against a duct system
+designed for neither, and nothing on the bus calls it an alarm.
+
+**What produced it.** A filter was changed physically, which meant cutting
+mains. The unit came back and never finished starting:
+
+| Time | Event |
+|---|---|
+| 20:46 | mains off for the filter change |
+| 20:57:01 | mains back |
+| 20:57:22 | extract fan starts, 49 % |
+| 20:58:03 | supply fan starts, 49 % — **41 s later** (motor protection, §5.7) |
+| 21:08:07 | boost pressed: `[14]` → 100 %, `[13]` stays 49 % → `[5]` = `0x13` |
+| 21:08:50 | fan level set to 2 by hand: `[14]` → 74 % → `[5]` = `0x12` |
+| +40 min | unchanged |
+
+Both commands were accepted and each moved **one fan**. The state that resulted:
+
+| Field | Every archived capture | The fault |
+|---|---|---|
+| `[2]` relay feedback | `0x90` / `0x48` / `0x24` — groups agree | **`0x89`** — supply tap 1, extract tap 2 |
+| `[5]` fan level | `0x11` / `0x22` / `0x33` / `0x31` | **`0x12`** |
+| `[6]` bit0 boost | set only while boosting | **clear** — no boost anywhere |
+| `[13]` / `[14]` duty | always equal | **49 / 74** |
+| `[18]` `[19]` `[20]` | `98 88 88` | **`96 66 38`** |
+| `[15]` boost request | `0x20` idle, `0x23` requested | **`0x33`** — a request left standing |
+| `[4]` alarm field | `0x02`, filter overdue | `0x00`, just reset |
+
+`[15]`'s low nibble stuck at 3 matters operationally: §5.6 says a request left
+standing can swallow the *next* boost press. Do not keep pressing.
+
+**`[2]` is the field that settles it, and `[5]` is not.** Under a genuine boost
+the two relay groups in `[2]` *agree* — both read tap 3 — while `[5]` shows
+`0x31` and its nibbles disagree. So:
+
+* balance must be read from `[2]`. Reading it from `[5]` would call every boost
+  a fault.
+* boost must be read from `[6]` bit0. Reading it from `[5]` called this fault a
+  boost — see below.
+
+`[2]` is relay feedback (§5.3): it reports where the contactors actually are,
+not what the unit intends. That is why it can contradict `[5]` at all, and why
+it is worth more than the duty bytes, which are derived from `[5]`'s nibbles.
+
+**`[5]` was holding an unexecuted command.** In command form the byte is
+`(from, to)` — §7.3 — and `0x12` is exactly "from 1 to 2". A change the unit
+accepts but does not complete leaves that shape sitting in the status telegram,
+which is why the high nibble ends up *below* the low one. Boost is the opposite
+ordering. `0x13` at 21:08:07 reads the same way: "from 1 to 3", the boost.
+
+**The unit had not finished starting.** `[18]` `[19]` sat at `96 66`, which
+§5.7 records as a *start-up transient* that resolves to `98 88` — measured
+through the mains cut of 2026-08-20, where it went `96 66` → `99 99` → `98 88`.
+This time it never got there. `[20]` = `0x38` has not been seen before or since
+and has no interpretation yet. Whether the incomplete start-up *caused* the
+split taps or merely accompanied them is **not established**: one occurrence,
+no repeat.
+
+**A bug this cost us.** Boost was derived from "the `[5]` nibbles disagree".
+`0x12` satisfies that, so the boost switch in Home Assistant latched ON for
+forty minutes while `[6]` bit0 said plainly that nothing was boosting — and
+because the switch reflected bus state, nothing could turn it off. Both the
+switch and the climate entity now read `[6]` bit0.
+
+**What the panel showed**, and it was the only warning anywhere: fan level 1 lit
+steady, level 2 blinking. The steady LED is the tap the supply fan is on; the
+blinking one is the level it is trying to reach.
+
+**Recovery:** cut power to the unit and let it start cleanly. Afterwards `[2]`
+should read `0x90`/`0x48`/`0x24` and `[18]` `[19]` `[20]` should settle at
+`98 88 88`.
+
+**Implemented as two separate indicators**, because they are two distinct
+faults and either can occur without the other:
+
+| Entity | Source | Fires when |
+|---|---|---|
+| fan imbalance | `[2]` | the two relay groups name different taps |
+| fan level change stalled | `[5]` | high nibble < low nibble |
+
+Neither judges anything until its source decodes, so a power cut — where `[2]`
+is all zero because no fan is running yet — raises no alarm.
 
 ## 6. The panel state frame
 
@@ -1129,6 +1226,7 @@ Contributions that would settle these are very welcome; see the README.
 
 | # | Question | What would settle it |
 |---|---|---|
+| 0 | Does an incomplete start-up *cause* the split taps of §5.8, or merely accompany them? And what is `[20]` = `0x38`? | A second occurrence. One event cannot separate the two, and `0x38` has been seen exactly once |
 | 1 | Which bits in `[4]` are the rotor alarm and the overheat thermostat? | A capture from any installation while an alarm is active |
 | 2 | What is `[10]`'s unit and control law? | It gates the afterheater at 10/4 and behaves like a deviation accumulator (§5.4), but the rising and falling rates do not follow the same rule. A capture logging `[10]` against supply air across a slow setpoint sweep |
 | 3 | What is `[15]`'s HIGH nibble? | The low nibble is boost (§5.5). **Not the afterheater setting** — the archived raw-frame captures from 14–15 August span three toggles of that setting and `[15]` held `0x33` across every one, in both directions. The nibble takes 2 or 3; no correlate is left standing |
