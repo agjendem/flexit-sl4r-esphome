@@ -24,6 +24,8 @@ CONF_AFTERHEATER_HEATING = "afterheater_heating"
 CONF_COMMUNICATION = "communication"
 CONF_BOOST_ACTIVE = "boost_active"
 CONF_ENUMERATED = "enumerated"
+CONF_FAN_IMBALANCE = "fan_imbalance"
+CONF_FAN_LEVEL_CHANGE_STALLED = "fan_level_change_stalled"
 
 CONFIG_SCHEMA = {
     cv.GenerateID(CONF_ID): cv.declare_id(cg.EntityBase),
@@ -68,6 +70,18 @@ CONFIG_SCHEMA = {
         device_class=DEVICE_CLASS_CONNECTIVITY,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
+    # The two fans are on different transformer taps. A fault, not a mode:
+    # balanced ventilation depends on them matching, and a mismatch leaves the
+    # building permanently over- or under-pressurised.
+    cv.Optional(CONF_FAN_IMBALANCE): binary_sensor.binary_sensor_schema(
+        device_class="problem", icon="mdi:fan-alert"
+    ),
+    # A fan level change the unit accepted but never carried out.
+    cv.Optional(CONF_FAN_LEVEL_CHANGE_STALLED): binary_sensor.binary_sensor_schema(
+        device_class="problem",
+        icon="mdi:fan-off",
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ),
 }
 
 
@@ -100,3 +114,9 @@ async def to_code(config):
     if enumerated_config := config.get(CONF_ENUMERATED):
         sens = await binary_sensor.new_binary_sensor(enumerated_config)
         cg.add(flexit_sl4r_component.set_enumerated_binary_sensor(sens))
+    if fan_imbalance_config := config.get(CONF_FAN_IMBALANCE):
+        sens = await binary_sensor.new_binary_sensor(fan_imbalance_config)
+        cg.add(flexit_sl4r_component.set_fan_imbalance_binary_sensor(sens))
+    if stalled_config := config.get(CONF_FAN_LEVEL_CHANGE_STALLED):
+        sens = await binary_sensor.new_binary_sensor(stalled_config)
+        cg.add(flexit_sl4r_component.set_fan_level_change_stalled_binary_sensor(sens))

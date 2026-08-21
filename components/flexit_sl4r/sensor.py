@@ -25,6 +25,8 @@ CONF_FAN_DUTY_SUPPLY = "fan_duty_supply"
 CONF_FAN_DUTY_EXTRACT = "fan_duty_extract"
 CONF_FAN_LEVEL_RUNNING = "fan_level_running"
 CONF_FAN_LEVEL_RETURN = "fan_level_return"
+CONF_FAN_RELAY_SUPPLY_LEVEL = "fan_relay_supply_level"
+CONF_FAN_RELAY_EXTRACT_LEVEL = "fan_relay_extract_level"
 CONF_FRAMES_DISCARDED = "frames_discarded"
 CONF_STATUS_INTERVAL = "status_interval"
 CONF_ANOMALIES = "anomalies"
@@ -110,6 +112,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_FAN_DUTY_EXTRACT): _percent_schema(),
         cv.Optional(CONF_FAN_LEVEL_RUNNING): _diagnostic_schema(),
         cv.Optional(CONF_FAN_LEVEL_RETURN): _diagnostic_schema(),
+        # Which transformer tap each fan is on, straight from the relay
+        # feedback in payload[2]. The [5] nibbles say what the unit intends;
+        # these two say what the contactors did about it.
+        cv.Optional(CONF_FAN_RELAY_SUPPLY_LEVEL): _diagnostic_schema(),
+        cv.Optional(CONF_FAN_RELAY_EXTRACT_LEVEL): _diagnostic_schema(),
         cv.Optional(CONF_FRAMES_DISCARDED): _diagnostic_schema(),
         cv.Optional(CONF_ANOMALIES): _diagnostic_schema(),
         cv.Optional(CONF_HEAT_DEMAND): sensor.sensor_schema(
@@ -135,6 +142,8 @@ _SIMPLE = {
     CONF_FAN_DUTY_SUPPLY: "set_fan_duty_supply_sensor",
     CONF_FAN_DUTY_EXTRACT: "set_fan_duty_extract_sensor",
     CONF_FAN_LEVEL_RUNNING: "set_fan_level_running_sensor",
+    CONF_FAN_RELAY_SUPPLY_LEVEL: "set_fan_relay_supply_level_sensor",
+    CONF_FAN_RELAY_EXTRACT_LEVEL: "set_fan_relay_extract_level_sensor",
     CONF_FAN_LEVEL_RETURN: "set_fan_level_return_sensor",
     CONF_FRAMES_DISCARDED: "set_frames_discarded_sensor",
     CONF_STATUS_INTERVAL: "set_status_interval_sensor",

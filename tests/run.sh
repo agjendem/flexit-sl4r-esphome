@@ -18,4 +18,5 @@ done
 
 "$tmp/test_protocol" \
   "$tmp/2026-08-13-panelsekvens.hex" \
-  "$tmp/2026-08-14-tilluftkorrelasjon.hex"
+  "$tmp/2026-08-14-tilluftkorrelasjon.hex" \
+  "$tmp/2026-08-21-viftetrinn-ubalanse.hex"

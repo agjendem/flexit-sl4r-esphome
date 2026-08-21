@@ -158,6 +158,16 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_BINARY_SENSOR(afterheater_heating)   // payload[2] bit1 - the element is drawing power right now
   SUB_BINARY_SENSOR(communication)
   SUB_BINARY_SENSOR(boost_active)
+  // The two fans are sitting on DIFFERENT transformer taps. Balanced
+  // ventilation stops being balanced, and the house is left permanently over-
+  // or under-pressurised until someone notices. Read from [2]'s relay
+  // feedback, which tells boost and imbalance apart - see PROTOCOL.md 5.8.
+  SUB_BINARY_SENSOR(fan_imbalance)
+  // The unit accepted a fan level change and then did not carry it out: [5]
+  // keeps the (from, to) command shape instead of settling on the new level.
+  // Independent of the relay check - this one fires even when both fans are
+  // still on the old tap together.
+  SUB_BINARY_SENSOR(fan_level_change_stalled)
   // Are we actually being polled? Enumeration happens ONLY when the CS50 boots.
   // If our node is down at that moment we are dropped - and since writing is
   // done as a poll response, it then fails SILENTLY. Without this signal
@@ -171,6 +181,11 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   SUB_SENSOR(fan_duty_extract)             // status payload[14], %
   SUB_SENSOR(fan_level_running)            // high nibble of payload[5]
   SUB_SENSOR(fan_level_return)             // low nibble - the level boost falls back to
+  // Where the fans ACTUALLY are, straight off the relay feedback in [2]. The
+  // [5] nibbles are what the unit intends; these two are what the contactors
+  // did about it, and the 2026-08-21 fault was exactly the two disagreeing.
+  SUB_SENSOR(fan_relay_supply_level)       // payload[2] bits 7/6/5
+  SUB_SENSOR(fan_relay_extract_level)      // payload[2] bits 4/3/2
   SUB_SENSOR(frames_discarded)             // frames failing checksum - makes bus corruption measurable
   SUB_SENSOR(status_interval)              // seconds between status telegrams
   SUB_SENSOR(heat_demand)                  // payload[11] - heat demand, drives the rotor
@@ -231,13 +246,18 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   void set_afterheat_enabled(bool on);
   bool get_afterheat_enabled() const { return this->afterheat_enabled_; }
 
-  // Boost is on when the unit is running a level other than the one it will
-  // fall back to. Reading the state from the bus like this is what lets boost
-  // be a switch rather than a pair of buttons: the period is timed by the
-  // unit, so when it expires the switch follows by itself.
-  bool get_boost_active() const {
-    return (this->last_raw_fan_level_ >> 4) != (this->last_raw_fan_level_ & 0x0F);
-  }
+  // Boost is what the unit says it is: [6] bit0. Reading the state from the bus
+  // like this is what lets boost be a switch rather than a pair of buttons -
+  // the period is timed by the unit, so when it expires the switch follows by
+  // itself.
+  //
+  // This used to compare the two nibbles of [5], on the reasoning that running
+  // a level other than the fallback level can only mean boost. It can mean the
+  // opposite too. On 2026-08-21 a level change that the unit accepted but
+  // never carried out left [5] at 0x12 for forty minutes: nibbles unequal, no
+  // boost anywhere, and a switch stuck ON that nothing could turn off. The bit
+  // was right the whole time. See PROTOCOL.md 5.8.
+  bool get_boost_active() const { return status_boost_active(this->raw_status_[6]); }
 
   // Dumps the boot capture to the log. Necessary because the most interesting
   // bytes - the CS50 registering its panels - arrive within the first seconds
@@ -416,6 +436,13 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Previous status telegram, for detecting changes in "constant" fields.
   std::array<uint8_t, STATUS_DATA_LENGTH> prev_status_{};
   bool have_prev_status_{false};
+
+  // Edge tracking for the two fan faults, so each is logged when it appears
+  // and when it clears rather than once per status telegram.
+  bool fan_imbalance_{false};
+  bool have_fan_imbalance_{false};
+  bool change_pending_{false};
+  bool have_change_pending_{false};
   void note_anomaly_(const std::string &reason);
   bool communication_ok_{false};
 
