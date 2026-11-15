@@ -169,9 +169,15 @@ CS 50 does not run that clock. So a boost started **from the bus** is never
 timed by anything: measured, it ran 36 minutes with the panel silent throughout,
 and would have run until someone intervened.
 
-This integration therefore arms its own 30-minute timer whenever *it* starts a
-boost, and disarms it the moment boost ends by any other route — so a boost
-you start at the panel is still the panel's to time, not ours.
+This integration therefore keeps a deadline for every boost it can see: 30
+minutes for one *it* starts, and a backstop beyond the panel's longest boost
+(95 minutes) for one it did not — so a boost you start at the panel is still the
+panel's to end, and a boost nobody ends cannot run forever. A cancel counts
+only once the status telegram confirms it; until then it is sent again.
+
+Learned the hard way: an earlier version kept a deadline only for its own
+boosts, and dropped it on a status telegram that arrived before its own request
+had taken effect. Nothing timed that boost at all, and it ran for 7.5 hours.
 
 For the same reason the panel's 60- and 90-minute options (two and three
 presses) cannot be reached from the bus at all: the panel counts the presses

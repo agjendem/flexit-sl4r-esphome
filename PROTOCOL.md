@@ -739,7 +739,12 @@ frame, no command. It does not time what it did not start.
 
 Two consequences for anyone implementing this. **A boost you start over the bus
 runs until something cancels it** — you must keep your own timer, or the fans
-stay at maximum indefinitely.
+stay at maximum indefinitely. And keep it robust, because a lost deadline fails
+silently: arm one for **every** boost you see, not just your own; do not read a
+no-boost status telegram as "over" while your own request is still waiting for
+its poll slot; and send the cancel again until the status confirms it. All
+three are in `BoostTimer` in `protocol.h`. Without them a boost started from the
+bus ran for 7.5 hours on 2026-11-14.
 
 **And the press count for 60/90 minutes is not on the bus at all** — although
 the longer period is entirely real. ✅ Three measurements settle it:
