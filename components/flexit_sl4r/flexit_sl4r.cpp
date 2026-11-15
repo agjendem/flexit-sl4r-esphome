@@ -106,32 +106,35 @@ void FlexitSL4RComponent::loop() {
     }
   }
 
-  // Did a boost we asked for actually happen? The CS50 discards a request made
-  // within roughly three minutes of a previous boost ending, and it does so
-  // WITHOUT any reply - the command goes out, the status byte [15] even
-  // changes, and the fans simply never start. Measured 2026-08-16: refused at
-  // 69 s after the previous boost, accepted at 263 s (PROTOCOL.md §5.5).
-  //
-  // The switch already tells the truth on its own, because it reads the fan
-  // level rather than our intent, so it falls back to "off" by itself. What was
-  // missing is any explanation of WHY, which from the outside is
-  // indistinguishable from a broken button - it was in fact misdiagnosed as one.
-  if (this->boost_request_ms_ != 0 && (millis() - this->boost_request_ms_) > BOOST_CONFIRM_MS) {
-    if (!this->get_boost_active()) {
+  // Boost timing: report a request the unit discarded, and cancel a boost at
+  // its deadline - again and again until the status confirms it (BoostTimer).
+  // The CS50 discards a request made within roughly three minutes of a previous
+  // boost ending, WITHOUT any reply (measured 2026-08-16: refused at 69 s,
+  // accepted at 263 s - PROTOCOL.md §5.5). The switch tells the truth on its own
+  // because it reads the unit's flag, but not WHY, which from the outside looks
+  // like a broken button - it was in fact misdiagnosed as one.
+  switch (this->boost_timer_.poll(millis(), this->get_boost_active())) {
+    case BoostTimer::Action::NOT_STARTED:
       ESP_LOGW(TAG,
                "Boost was requested but the unit did not start it. The CS50 discards a boost "
                "request made within ~3 minutes of a previous boost ending; wait and try again.");
-      this->boost_deadline_ms_ = 0;  // nothing is running, so nothing to time out
-    }
-    this->boost_request_ms_ = 0;
-  }
-
-  // Time out a boost we started ourselves. The CI50 never does it for us; see
-  // trigger_boost(). Comparing the difference against the period rather than
-  // the deadline against millis() keeps this correct across the 49-day wrap.
-  if (this->boost_deadline_ms_ != 0 && static_cast<int32_t>(millis() - this->boost_deadline_ms_) >= 0) {
-    ESP_LOGI(TAG, "Boost period elapsed - cancelling");
-    this->cancel_boost();  // clears the deadline
+      break;
+    case BoostTimer::Action::CANCEL:
+      if (this->boost_timer_.cancel_attempts() <= 1) {
+        ESP_LOGI(TAG, "Boost deadline reached - cancelling");
+      } else {
+        ESP_LOGW(TAG, "Boost still running after %u cancel(s) - sending another",
+                 static_cast<unsigned>(this->boost_timer_.cancel_attempts() - 1));
+      }
+      // Only with a status to mirror from, and not on top of a frame still
+      // waiting for our poll slot: if that one has not gone out, piling more
+      // behind it helps nothing and grows the queue for as long as we are not
+      // being polled.
+      if (this->have_status_ && this->tx_queue_.empty())
+        this->queue_boost_command_(false);
+      break;
+    case BoostTimer::Action::NONE:
+      break;
   }
 
   // Are we still in the CS50's poll round? If this goes away, every write
@@ -601,11 +604,11 @@ void FlexitSL4RComponent::handle_boost_command_() {
            static_cast<unsigned>(duty));
 
   // A panel boost is the panel's to time, not ours - it runs 30, 60 or 90
-  // minutes depending on a press count we cannot see, so we must not arm our
-  // own deadline against it. Clearing is the safe direction: worst case the
-  // boost outlives what we would have guessed.
-  this->boost_deadline_ms_ = 0;
-  this->boost_request_ms_ = 0;
+  // minutes depending on a press count we cannot see. We used to clear our
+  // deadline here on the reasoning that clearing is the safe direction. It is
+  // not: a boost without a deadline is exactly the one that never ends. So the
+  // panel gets a backstop beyond its longest boost instead.
+  this->boost_timer_.on_panel_command(millis(), on);
 }
 
 void FlexitSL4RComponent::handle_int_frame_() {
@@ -793,15 +796,14 @@ void FlexitSL4RComponent::parse_and_publish_status_() {
   // sight, and the old rule then latched the switch ON with no way back. See
   // PROTOCOL.md 5.8.
   //
-  // If boost has ended by any other route - the panel cancelled it, someone
-  // wrote a fan level - our timer must not survive it. Leaving it armed would
-  // mean a later boost started FROM THE PANEL gets cancelled by our stale
-  // deadline, which is both wrong and hard to explain from the panel's side.
+  // The timer ends with the boost, by whatever route - the panel cancelled it,
+  // someone wrote a fan level - so a stale deadline never cuts a later panel
+  // boost short. Two exceptions, both in BoostTimer: a telegram that arrives
+  // while our own request is still waiting for our poll slot means "not yet",
+  // not "over" (reading it as "over" left a boost without a deadline for 7.5
+  // hours on 2026-11-14), and a boost seen without a deadline gets one.
   const bool boost = status_boost_active(raw_afterheat);
-  if (!boost)
-    this->boost_deadline_ms_ = 0;
-  else
-    this->boost_request_ms_ = 0;  // boost is running - nothing left to confirm
+  this->boost_timer_.on_status(millis(), boost);
 #ifdef USE_BINARY_SENSOR
   if (this->boost_active_binary_sensor_ != nullptr)
     this->boost_active_binary_sensor_->publish_state(boost);
@@ -1064,10 +1066,7 @@ void FlexitSL4RComponent::trigger_boost() {
   // sent (node 4); a boost started from the bus ran 36 minutes with the panel
   // silent throughout, and would have run indefinitely. The timer lives in the
   // CI50, and the CI50 only times what it started itself. So we keep our own.
-  this->boost_deadline_ms_ = millis() + BOOST_PERIOD_MS;
-  this->boost_request_ms_ = millis();
-  if (this->boost_request_ms_ == 0)
-    this->boost_request_ms_ = 1;  // 0 is our "nothing outstanding" marker
+  this->boost_timer_.on_request(millis());
 }
 
 void FlexitSL4RComponent::cancel_boost() {
@@ -1077,8 +1076,7 @@ void FlexitSL4RComponent::cancel_boost() {
   }
   ESP_LOGI(TAG, "Cancelling boost");
   this->queue_boost_command_(false);
-  this->boost_deadline_ms_ = 0;
-  this->boost_request_ms_ = 0;
+  this->boost_timer_.on_cancel_sent(millis());  // sent again until the status confirms it
 }
 
 // Boost on and off are the SAME command with one nibble different, which is why
