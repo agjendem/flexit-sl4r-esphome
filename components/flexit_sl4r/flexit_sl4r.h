@@ -82,18 +82,7 @@ static constexpr float SENSOR_DISCONNECTED = -55.0f;
 // Verified both ways: enable -> 0x80, disable -> 0x00, boost -> 0x01.
 // Vongraven's original "0=off, 128=on" was right all along.
 
-// How long a boost we started ourselves is allowed to run before we cancel it.
-// The CI50 times its OWN boost at 30 minutes for a single press (measured
-// 2026-08-16: 30 min 24 s) and sends the cancel itself. It does not time a
-// boost started from the bus, so we match its behaviour rather than leave the
-// fans at maximum indefinitely.
-static constexpr uint32_t BOOST_PERIOD_MS = 30UL * 60UL * 1000UL;
-
-// How long to wait for a boost request to take effect before reporting that it
-// did not. The CS50 normally acts within a second (0.8 s measured), so five is
-// generous. It matters because a request made within roughly three minutes of a
-// previous boost ending is discarded in silence - see PROTOCOL.md §5.5.
-static constexpr uint32_t BOOST_CONFIRM_MS = 5000UL;
+// Boost timing (BOOST_PERIOD_MS and friends) lives in protocol.h with BoostTimer.
 
 // The same flag in the PANEL's state frame (`data[4]` of the node 4 frame
 // `20 0F`), which is the format we write in ourselves. Bit6 is a momentary
@@ -462,11 +451,9 @@ class FlexitSL4RComponent final : public Component, public uart::UARTDevice {
   // Set once a status telegram has been parsed, i.e. once raw_status_ holds
   // real bytes. Commands that mirror status fields must not run before this.
   bool have_status_{false};
-  // millis() deadline for a boost WE started; 0 = no boost of ours pending.
-  uint32_t boost_deadline_ms_{0};
-  // millis() when we last asked for boost, while we wait to see it take effect;
-  // 0 = nothing outstanding.
-  uint32_t boost_request_ms_{0};
+  // Every visible boost has a deadline, and a cancel counts only once the
+  // status confirms it. The whole policy is in protocol.h (host-tested).
+  BoostTimer boost_timer_;
   // PRINCIPLE: everything we do not understand is mirrored from the panel's
   // last frame, so that a write changes only what we ACTUALLY mean to change.
   // We once hardcoded fields we believed constant and thereby switched off the

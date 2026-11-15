@@ -179,4 +179,140 @@ inline uint8_t param_word_low(const uint8_t *data, size_t index) { return data[i
 // bank/register precede the words).
 inline size_t param_word_count(uint8_t len_byte) { return len_byte < 2 ? 0 : (len_byte - 2u) / 2u; }
 
+// --- Boost timing ---
+// The CS50 times NOTHING. A boost started at the panel is ended by the PANEL
+// (CI 50), which counts its own presses - 30, 60 or 90 minutes - and sends the
+// cancel itself. A boost started from the bus runs until someone cancels it:
+// measured 36 minutes with the panel silent (2026-08-16), and 7.5 hours on
+// 2026-11-14, when the deadline we kept for it did not survive. So the rule is:
+//
+//   1. Every boost we can see has a deadline. One we did not start - a panel
+//      boost, or one we lost track of, e.g. across our own reboot - gets a
+//      backstop longer than the panel's longest boost, so the panel still ends
+//      its own boosts and the backstop only catches one that never ends.
+//   2. A status telegram without boost ends the boost - EXCEPT while our own
+//      request is outstanding. Our command waits for our poll slot, so the
+//      telegrams in between still show the old state; reading those as "over"
+//      disarmed the deadline before the boost had even started.
+//   3. A cancel is not done until the status telegram says so. Unconfirmed, it
+//      is sent again: quickly a few times, then slowly for as long as it takes.
+//
+// Kept here as a pure class so the policy can be tested on the host - see
+// tests/test_protocol.cpp. The component feeds it events stamped with millis()
+// and acts on what poll() returns. Every comparison is on a difference, so the
+// 49-day millis() wrap is harmless.
+
+// How long a boost we started may run - the same as one panel press (measured
+// 30 min 24 s).
+static constexpr uint32_t BOOST_PERIOD_MS = 30UL * 60UL * 1000UL;
+
+// Deadline for a boost we did not start. Three panel presses run ~91 minutes at
+// the measured clock drift, so 95 leaves the panel to end every boost it
+// started itself.
+static constexpr uint32_t BOOST_BACKSTOP_MS = 95UL * 60UL * 1000UL;
+
+// How long to wait for a boost request to take effect before reporting that it
+// did not. The CS50 normally acts within a second (0.8 s measured), so five is
+// generous. It matters because a request made within roughly three minutes of a
+// previous boost ending is discarded in silence - see PROTOCOL.md §5.5.
+static constexpr uint32_t BOOST_CONFIRM_MS = 5000UL;
+
+// Re-sending a cancel the unit has not acted on: every 15 s for the first few,
+// then every 5 minutes - a boost stuck at full fan is worse than bus traffic.
+static constexpr uint32_t BOOST_CANCEL_RETRY_MS = 15UL * 1000UL;
+static constexpr uint32_t BOOST_CANCEL_RETRY_SLOW_MS = 5UL * 60UL * 1000UL;
+static constexpr uint8_t BOOST_CANCEL_FAST_ATTEMPTS = 4;
+
+class BoostTimer {
+ public:
+  enum class Action : uint8_t {
+    NONE,
+    NOT_STARTED,  // our request was not carried out (see BOOST_CONFIRM_MS)
+    CANCEL,       // send a cancel now - the first one, or a retry
+  };
+
+  // We asked the unit to boost.
+  void on_request(uint32_t now) {
+    this->arm_(now + BOOST_PERIOD_MS);
+    this->request_ms_ = now;
+    this->requested_ = true;
+    this->cancel_attempts_ = 0;
+  }
+
+  // We sent a cancel for a reason of our own (the switch was turned off). Keep
+  // watching: if the unit is still boosting when the retry delay is up, poll()
+  // asks for another.
+  void on_cancel_sent(uint32_t now) {
+    this->requested_ = false;
+    this->cancel_attempts_ = 1;
+    this->arm_(now + BOOST_CANCEL_RETRY_MS);
+  }
+
+  // A panel asked for boost on or off. On: the panel times it, we keep only the
+  // backstop. Off: nothing left to time - and if the status keeps showing boost
+  // anyway, on_status() arms the backstop again.
+  void on_panel_command(uint32_t now, bool on) {
+    this->requested_ = false;
+    this->cancel_attempts_ = 0;
+    if (on) {
+      this->arm_(now + BOOST_BACKSTOP_MS);
+    } else {
+      this->armed_ = false;
+    }
+  }
+
+  // A status telegram arrived. `boost` is the unit's own flag, [6] bit0.
+  void on_status(uint32_t now, bool boost) {
+    if (boost) {
+      this->requested_ = false;  // it took effect
+      if (!this->armed_)
+        this->arm_(now + BOOST_BACKSTOP_MS);  // rule 1
+    } else if (!this->requested_) {
+      this->armed_ = false;  // over - by our cancel, the panel's, or anyone's
+      this->cancel_attempts_ = 0;
+    }
+    // else: rule 2 - our request is still on its way, "no boost" means "not yet".
+  }
+
+  // Call regularly with the unit's current boost flag.
+  Action poll(uint32_t now, bool boost) {
+    if (this->requested_ && (now - this->request_ms_) > BOOST_CONFIRM_MS) {
+      this->requested_ = false;
+      if (!boost) {
+        this->armed_ = false;  // nothing is running, so nothing to time out
+        return Action::NOT_STARTED;
+      }
+    }
+    if (this->armed_ && static_cast<int32_t>(now - this->deadline_ms_) >= 0) {
+      if (this->cancel_attempts_ < UINT8_MAX)
+        this->cancel_attempts_++;
+      this->arm_(now + (this->cancel_attempts_ < BOOST_CANCEL_FAST_ATTEMPTS ? BOOST_CANCEL_RETRY_MS
+                                                                             : BOOST_CANCEL_RETRY_SLOW_MS));
+      return Action::CANCEL;
+    }
+    return Action::NONE;
+  }
+
+  bool armed() const { return this->armed_; }
+  // Cancels sent for the current boost, including the one poll() just asked for.
+  uint8_t cancel_attempts() const { return this->cancel_attempts_; }
+  // Time left until poll() acts; meaningful only while armed().
+  uint32_t remaining_ms(uint32_t now) const {
+    const int32_t left = static_cast<int32_t>(this->deadline_ms_ - now);
+    return left > 0 ? static_cast<uint32_t>(left) : 0;
+  }
+
+ private:
+  void arm_(uint32_t deadline_ms) {
+    this->deadline_ms_ = deadline_ms;
+    this->armed_ = true;
+  }
+
+  uint32_t deadline_ms_{0};
+  uint32_t request_ms_{0};
+  bool armed_{false};
+  bool requested_{false};
+  uint8_t cancel_attempts_{0};
+};
+
 }  // namespace esphome::flexit_sl4r

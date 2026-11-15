@@ -219,6 +219,117 @@ static void test_boost_command() {
 }
 
 // ---------------------------------------------------------------------------
+// Boost timing: every visible boost has a deadline, and a cancel is not done
+// until the status says so. The first case is 2026-11-14, when a boost we
+// started ran for 7.5 hours.
+// ---------------------------------------------------------------------------
+static void test_boost_timer() {
+  section("boost timer");
+  using A = BoostTimer::Action;
+  const uint32_t MIN = 60UL * 1000UL;
+
+  {
+    // Our request waits for our poll slot, so the telegram that arrives in the
+    // meantime still shows no boost. That must not disarm the deadline.
+    BoostTimer t;
+    t.on_request(0);
+    t.on_status(400, false);
+    CHECK(t.armed(), "a no-boost telegram before our request took effect disarmed the deadline");
+    t.on_status(1600, true);
+    CHECK(t.poll(30 * MIN - 1, true) == A::NONE, "cancelled before the period was up");
+    CHECK(t.poll(30 * MIN, true) == A::CANCEL, "no cancel at the end of our 30 minutes");
+    CHECK(t.cancel_attempts() == 1, "first cancel should count as attempt 1, got %u", t.cancel_attempts());
+    t.on_status(30 * MIN + 1200, false);
+    CHECK(!t.armed(), "still armed after the status confirmed the boost ended");
+    CHECK(t.poll(31 * MIN, false) == A::NONE, "acted after the boost had ended");
+  }
+  {
+    // A cancel the unit ignores is sent again: 15 s apart at first, then 5 min.
+    BoostTimer t;
+    t.on_request(0);
+    t.on_status(1000, true);
+    uint32_t now = 30 * MIN;
+    CHECK(t.poll(now, true) == A::CANCEL, "no first cancel");
+    for (uint8_t attempt = 2; attempt <= BOOST_CANCEL_FAST_ATTEMPTS; attempt++) {
+      t.on_status(now + 1000, true);  // still boosting
+      CHECK(t.poll(now + BOOST_CANCEL_RETRY_MS - 1, true) == A::NONE, "retry %u came early", attempt);
+      now += BOOST_CANCEL_RETRY_MS;
+      CHECK(t.poll(now, true) == A::CANCEL, "no fast retry %u", attempt);
+    }
+    CHECK(t.poll(now + BOOST_CANCEL_RETRY_MS, true) == A::NONE, "fast retries did not stop after %u",
+          BOOST_CANCEL_FAST_ATTEMPTS);
+    now += BOOST_CANCEL_RETRY_SLOW_MS;
+    CHECK(t.poll(now, true) == A::CANCEL, "no slow retry");
+    now += BOOST_CANCEL_RETRY_SLOW_MS;
+    CHECK(t.poll(now, true) == A::CANCEL, "slow retries must go on for as long as the boost does");
+    t.on_status(now + 1000, false);
+    CHECK(!t.armed() && t.cancel_attempts() == 0, "a confirmed end must reset the retries");
+  }
+  {
+    // A request the unit discards is reported, and leaves nothing armed.
+    BoostTimer t;
+    t.on_request(0);
+    t.on_status(1200, false);
+    t.on_status(2400, false);
+    CHECK(t.poll(BOOST_CONFIRM_MS, false) == A::NONE, "reported before the confirm window was over");
+    CHECK(t.poll(BOOST_CONFIRM_MS + 1, false) == A::NOT_STARTED, "a discarded request was not reported");
+    CHECK(!t.armed(), "armed after a discarded request");
+    CHECK(t.poll(40 * MIN, false) == A::NONE, "acted on a boost that never started");
+  }
+  {
+    // A boost we did not start - the panel's, or one we lost track of, e.g.
+    // across our own reboot - gets the backstop, never nothing.
+    BoostTimer t;
+    t.on_status(0, true);
+    CHECK(t.armed(), "a boost without a deadline was left without one");
+    CHECK(t.poll(91 * MIN, true) == A::NONE, "backstop cut into the panel's 90 minutes");
+    CHECK(t.poll(BOOST_BACKSTOP_MS, true) == A::CANCEL, "no cancel at the backstop");
+  }
+  {
+    // A panel press during our boost hands it to the panel: no cancel at our
+    // 30 minutes, but still the backstop.
+    BoostTimer t;
+    t.on_request(0);
+    t.on_status(1000, true);
+    t.on_panel_command(10 * MIN, true);
+    CHECK(t.poll(30 * MIN, true) == A::NONE, "cut a boost the panel had taken over");
+    CHECK(t.poll(10 * MIN + BOOST_BACKSTOP_MS, true) == A::CANCEL, "no backstop after a panel press");
+  }
+  {
+    // A panel cancel the unit ignores: the boost carries on, so it gets the
+    // backstop again rather than running free.
+    BoostTimer t;
+    t.on_status(0, true);
+    t.on_panel_command(30 * MIN, false);
+    t.on_status(30 * MIN + 1000, true);
+    CHECK(t.armed(), "a boost that outlived the panel's cancel was left without a deadline");
+  }
+  {
+    // Turning the switch off when nothing runs must not start a retry loop.
+    BoostTimer t;
+    t.on_cancel_sent(0);
+    t.on_status(1000, false);
+    CHECK(t.poll(BOOST_CANCEL_RETRY_MS, false) == A::NONE, "retried a cancel the status had confirmed");
+    // ...and one the unit ignores is retried like any other.
+    BoostTimer u;
+    u.on_status(0, true);
+    u.on_cancel_sent(1000);
+    u.on_status(2000, true);
+    CHECK(u.poll(1000 + BOOST_CANCEL_RETRY_MS, true) == A::CANCEL, "an ignored manual cancel was not retried");
+    CHECK(u.cancel_attempts() == 2, "manual cancel + retry should be 2 attempts, got %u", u.cancel_attempts());
+  }
+  {
+    // millis() wraps after 49 days; the deadline must not care.
+    BoostTimer t;
+    const uint32_t start = 0xFFFFFFFFUL - 10UL * MIN;
+    t.on_request(start);
+    t.on_status(start + 1000, true);
+    CHECK(t.poll(start + 20 * MIN, true) == A::NONE, "cancelled early across the millis() wrap");
+    CHECK(t.poll(start + 30 * MIN, true) == A::CANCEL, "missed the deadline across the millis() wrap");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 0xC6 words are BIG endian, and adjacent bytes are not always one number.
 // ---------------------------------------------------------------------------
 static void test_param_words() {
@@ -368,6 +479,7 @@ int main(int argc, char **argv) {
   test_fan_level();
   test_fan_relays();
   test_boost_command();
+  test_boost_timer();
   test_param_words();
 
   // The panel sequence capture documents a setpoint sweep 17->25->15 and a
